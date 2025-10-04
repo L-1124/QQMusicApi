@@ -60,7 +60,7 @@ include = ["/qqmusic_api", "/tests", "LICENSE", "README.md"]
 [dependency-groups]
 testing = [
   "pytest<9.0.0,>=8.2.0",
-  "pytest-asyncio<1.1.0,>=1.0.0",
+  "pytest-asyncio<1.2.1,>=1.2.0",
   "pytest-sugar<2.0.0,>=1.0.0",
 ]
 docs = [
