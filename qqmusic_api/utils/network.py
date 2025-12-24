@@ -67,7 +67,7 @@ class BaseRequest(ABC):
 
     # 公共参数默认值
     COMMON_DEFAULTS: ClassVar[dict[str, str]] = {
-        "ct": "11",
+        "ct": "19",
         "tmeAppID": "qqmusic",
         "format": "json",
         "inCharset": "utf-8",
