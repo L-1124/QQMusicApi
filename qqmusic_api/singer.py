@@ -213,7 +213,7 @@ async def get_info(mid: str):
     Args:
         mid: 歌手 mid
     """
-    return {"SingerMid": mid}, NO_PROCESSOR
+    return {"SingerMid": mid, "common": {"ct": "11"}}, NO_PROCESSOR
 
 
 @api_request("music.UnifiedHomepage.UnifiedHomepageSrv", "GetHomepageTabDetail")
@@ -233,11 +233,12 @@ async def get_tab_detail(mid: str, tab_type: TabType, page: int = 1, num: int = 
         "PageNum": page - 1,
         "PageSize": num,
         "Order": 0,
+        "common": {"ct": "11"},
     }
 
     def _processor(data: dict[str, Any]) -> list[dict[str, Any]]:
         data = data[tab_type.tab_name]
-        return data.get("List", data.get("VideoList", data.get("AlbumList", data)))
+        return data.get("List") or data.get("VideoList") or data.get("AlbumList") or []
 
     return params, _processor
 

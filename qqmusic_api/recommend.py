@@ -13,7 +13,7 @@ async def get_home_feed():
     }, NO_PROCESSOR
 
 
-@api_request("music.radioProxy.MbTrackRadioSvr", "get_radio_track")
+@api_request("music.radioProxy.MbTrackRadioSvr", "get_radio_track", cacheable=False)
 async def get_guess_recommend():
     """获取猜你喜欢"""
     return {

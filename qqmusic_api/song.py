@@ -159,7 +159,7 @@ async def get_song_urls(
         urls = {}
         data = res["midurlinfo"]
         for info in data:
-            song_url = domain + info["wifiurl"] if info["wifiurl"] else ""
+            song_url = domain + info.get("purl") or info.get("wifiurl") if info.get("purl") or info.get("wifiurl") else ""
             if not encrypted:
                 urls[info["songmid"]] = song_url
             else:
