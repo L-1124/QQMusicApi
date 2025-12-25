@@ -1,7 +1,6 @@
 import pytest
 
 from qqmusic_api import recommend
-from qqmusic_api.exceptions import CredentialExpiredError
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
 
@@ -11,8 +10,7 @@ async def test_get_home_feed():
 
 
 async def test_get_guess_recommend():
-    with pytest.raises(CredentialExpiredError):
-        await recommend.get_guess_recommend()
+    assert await recommend.get_guess_recommend()
 
 
 async def test_get_radar_recommend():

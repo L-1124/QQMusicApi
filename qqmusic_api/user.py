@@ -40,7 +40,7 @@ async def get_homepage(euin: str, *, credential: Credential | None = None):
         euin: encrypt_uin
         credential: 凭证
     """
-    return {"uin": euin, "IsQueryTabDetail": 1, "common": {"ct": "11"}}, NO_PROCESSOR
+    return {"uin": euin, "IsQueryTabDetail": 1}, NO_PROCESSOR
 
 
 @api_request("VipLogin.VipLoginInter", "vip_login_base", verify=True, cacheable=False)
