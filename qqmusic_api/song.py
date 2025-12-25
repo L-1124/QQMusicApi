@@ -159,14 +159,14 @@ async def get_song_urls(
         urls = {}
         data = res["midurlinfo"]
         for info in data:
-            song_url = domain + info["wifiurl"] if info["wifiurl"] else ""
+            song_url = domain + info.get("purl") or info.get("wifiurl") if info.get("purl") or info.get("wifiurl") else ""
             if not encrypted:
                 urls[info["songmid"]] = song_url
             else:
                 urls[info["songmid"]] = (song_url, info["ekey"])
         return urls
 
-    rg = RequestGroup(credential=credential)
+    rg = RequestGroup(common={"ct": "19"}, credential=credential)
     for mid in mid_list:
         # 构造请求参数
         file_name = [f"{file_type.s}{_}{_}{file_type.e}" for _ in mid]

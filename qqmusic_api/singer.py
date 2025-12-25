@@ -237,7 +237,7 @@ async def get_tab_detail(mid: str, tab_type: TabType, page: int = 1, num: int = 
 
     def _processor(data: dict[str, Any]) -> list[dict[str, Any]]:
         data = data[tab_type.tab_name]
-        return data.get("List", data.get("VideoList", data.get("AlbumList", data)))
+        return data.get("List") or data.get("VideoList") or data.get("AlbumList") or []
 
     return params, _processor
 
