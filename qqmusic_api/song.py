@@ -159,7 +159,9 @@ async def get_song_urls(
         urls = {}
         data = res["midurlinfo"]
         for info in data:
-            song_url = domain + info.get("purl") or info.get("wifiurl") if info.get("purl") or info.get("wifiurl") else ""
+            song_url = (
+                domain + info.get("purl") or info.get("wifiurl") if info.get("purl") or info.get("wifiurl") else ""
+            )
             if not encrypted:
                 urls[info["songmid"]] = song_url
             else:
@@ -182,7 +184,6 @@ async def get_song_urls(
             params=params,
             credential=credential,
             exclude_params=["guid"],
-            cacheable=False,
         )
         req.processor = _processor
         rg.add_request(req)
@@ -198,7 +199,6 @@ async def get_song_urls(
     "music.vkey.GetVkey",
     "UrlGetVkey",
     exclude_params=["guid"],
-    cacheable=False,
 )
 async def get_try_url(mid: str, vs: str):
     """获取试听文件链接
