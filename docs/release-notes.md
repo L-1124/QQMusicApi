@@ -12,6 +12,7 @@
 
 ### 功能更新
 
+- 删除API缓存功能 - ([34e36d9](https://github.com/luren-dc/QQMusicApi/commit/34e36d991e00f6ff1cc2f085634471e878e7cbfa)) by [@L-1124](https://github.com/L-1124) 
 - 支持QQ音乐APP扫码登录 - ([9f8c855](https://github.com/luren-dc/QQMusicApi/commit/9f8c855210c23fa38885d4d150419ec551bb6d03)) by [@L-1124](https://github.com/L-1124) 
 
 ### 文档更新
@@ -20,8 +21,8 @@
 - 更新 README.md - ([ebf3347](https://github.com/luren-dc/QQMusicApi/commit/ebf33472e0ff1e532b378fa353bf9ce51caf2d0a)) by [@L-1124](https://github.com/L-1124) 
 
 ## 贡献者
-* @github-actions[bot]
 * @L-1124
+* @github-actions[bot]
 * @jinzhongjia [#219](https://github.com/luren-dc/QQMusicApi/pull/219)
 * @renovate[bot] [#190](https://github.com/luren-dc/QQMusicApi/pull/190)
 ## [[0.3.6](https://github.com/luren-dc/QQMusicApi/compare/v0.3.5..v0.3.6)] - 2025-08-22
