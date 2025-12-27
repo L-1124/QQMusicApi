@@ -10,6 +10,7 @@ dependencies = [
   "httpx[http2]>=0.27.0",
   "aiocache>=0.12.3",
   "orjson>=3.10.15",
+  "httpx-ws>=0.8.2",
 ]
 requires-python = ">=3.10"
 readme = "README.md"

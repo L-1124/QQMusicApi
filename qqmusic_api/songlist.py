@@ -80,7 +80,7 @@ async def get_songlist(
 
 @api_request("music.musicasset.PlaylistBaseWrite", "AddPlaylist", verify=True, cacheable=False)
 async def create(dirname: str, *, credential: Credential | None = None):
-    """添加歌单, 重名会在名称后面添加时间戳
+    """创建歌单, 重名会在名称后面添加时间戳
 
     Args:
         dirname: 歌单名称

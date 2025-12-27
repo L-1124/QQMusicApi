@@ -3,6 +3,7 @@
 import mimetypes
 import random
 import re
+from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -15,6 +16,8 @@ import httpx
 from .exceptions.api_exception import CredentialExpiredError, LoginError, ResponseCodeError
 from .utils.common import hash33
 from .utils.credential import Credential
+from .utils.mqtt import Client as MqttClient
+from .utils.mqtt import MqttRedirectError, PropertyId
 from .utils.network import ApiRequest
 from .utils.session import get_session
 
@@ -124,10 +127,12 @@ class QRLoginType(Enum):
 
     + QQ: QQ登录
     + WX: 微信登录
+    + MOBILE: 手机客户端登录
     """
 
     QQ = "qq"
     WX = "wx"
+    MOBILE = "mobile"
 
 
 @dataclass()
@@ -138,7 +143,7 @@ class QR:
         data: 二维码图像数据
         qr_type: 二维码类型
         mimetype: 二维码图像类型
-        identitfier: 标识符
+        identifier: 标识符
     """
 
     data: bytes
@@ -164,10 +169,13 @@ class QR:
         return file_path
 
 
+# 修改 qqmusic_api/login.py 中的 get_qrcode 函数
 async def get_qrcode(login_type: QRLoginType) -> QR:
     """获取登录二维码"""
     if login_type == QRLoginType.WX:
         return await _get_wx_qr()
+    if login_type == QRLoginType.MOBILE:
+        return await _get_mobile_qr()
     return await _get_qq_qr()
 
 
@@ -216,6 +224,27 @@ async def _get_wx_qr() -> QR:
         )
     ).read()
     return QR(qrcode_data, QRLoginType.WX, "image/jpeg", uuid)
+
+
+async def _get_mobile_qr() -> QR:
+    import base64
+
+    res = await ApiRequest[[], dict[str, Any]](
+        "music.login.LoginServer",
+        "CreateQRCode",
+        params={
+            "tmeAppID": "qqmusic",
+            "ct": 11,
+            "cv": 13020508,
+        },
+    )()
+
+    return QR(
+        data=base64.b64decode(res["qrcode"].split(",")[-1]),
+        qr_type=QRLoginType.MOBILE,
+        mimetype="image/png",
+        identifier=res["qrcodeID"],
+    )
 
 
 async def check_qrcode(qrcode: QR) -> tuple[QRCodeLoginEvents, Credential | None]:
@@ -300,6 +329,95 @@ async def _check_wx_qr(qrcode: QR) -> tuple[QRCodeLoginEvents, Credential | None
         return event, await _authorize_wx_qr(wx_code)
 
     return event, None
+
+
+async def check_mobile_qr(qrcode: QR) -> AsyncGenerator[tuple[QRCodeLoginEvents, Credential | None], None]:  # noqa: C901
+    """检查手机客户端登录二维码状态
+
+    Args:
+        qrcode: 二维码对象
+    """
+    if qrcode.qr_type != QRLoginType.MOBILE:
+        raise ValueError(f"不支持{qrcode.qr_type}类型的二维码")
+    client_id = f"{int(time() * 1000)}{random.randint(1000, 9999)}"
+    client = MqttClient(client_id=client_id, host="mu.y.qq.com", port=443, path="/ws/handshake", keep_alive=45)
+    async with client:
+        max_redirects = 3
+        for attempt in range(max_redirects + 1):
+            try:
+                await client.connect(
+                    properties={
+                        PropertyId.AUTH_METHOD: "pass",
+                        PropertyId.USER_PROPERTY: [
+                            ("tmeAppID", "qqmusic"),
+                            ("business", "management"),
+                            ("hashTag", qrcode.identifier),
+                            ("clientTag", "management.user"),
+                            ("userID", qrcode.identifier),
+                        ],
+                    },
+                    headers={
+                        "Origin": "https://y.qq.com",
+                        "Referer": "https://y.qq.com/",
+                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+                    },
+                )
+                break
+            except MqttRedirectError as e:
+                if attempt == max_redirects:
+                    raise LoginError("[MobileLogin] 重定向次数过多") from e
+
+                client.path = f"/ws/handshake/{e.new_address}"
+                continue
+        await client.subscribe(
+            f"management.qrcode_login/{qrcode.identifier}",
+            properties={
+                PropertyId.USER_PROPERTY: [
+                    ("authorization", "tmelogin"),
+                    ("pubsub", "unicast"),
+                ]
+            },
+        )
+        yield QRCodeLoginEvents.SCAN, None
+        async for msg in client.messages():
+            event_type = msg.properties.get("type")
+
+            match event_type:
+                case "scanned":
+                    yield QRCodeLoginEvents.CONF, None
+
+                case "cookies":
+                    data = msg.json
+                    if data:
+                        cookies: dict[str, Any] = {
+                            k: v.get("value") if isinstance(v, dict) else v for k, v in data.get("cookies", {}).items()
+                        }
+                        res = await ApiRequest[[], dict[str, Any]](
+                            "music.login.LoginServer",
+                            "Login",
+                            params={
+                                "musicid": int(cookies.get("qqmusic_uin", 0)),
+                                "qrCodeID": qrcode.identifier,
+                                "token": cookies.get("qqmusic_key", ""),
+                            },
+                            common={"tmeLoginType": "6"},
+                        )()
+
+                        yield QRCodeLoginEvents.DONE, Credential.from_cookies_dict(res)
+                    else:
+                        yield QRCodeLoginEvents.OTHER, None
+                    break
+                case "canceled":
+                    yield QRCodeLoginEvents.REFUSE, None
+                    break
+                case "timeout":
+                    yield QRCodeLoginEvents.TIMEOUT, None
+                    break
+                case "loginFailed":
+                    yield QRCodeLoginEvents.OTHER, None
+                    break
+                case _:
+                    pass
 
 
 async def _authorize_qq_qr(uin: str, sigx: str) -> Credential:
