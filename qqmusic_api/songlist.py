@@ -78,7 +78,7 @@ async def get_songlist(
     return songs
 
 
-@api_request("music.musicasset.PlaylistBaseWrite", "AddPlaylist", verify=True, cacheable=False)
+@api_request("music.musicasset.PlaylistBaseWrite", "AddPlaylist", verify=True)
 async def create(dirname: str, *, credential: Credential | None = None):
     """创建歌单, 重名会在名称后面添加时间戳
 
@@ -94,7 +94,7 @@ async def create(dirname: str, *, credential: Credential | None = None):
     }, lambda data: cast(dict[str, Any], data["result"])
 
 
-@api_request("music.musicasset.PlaylistBaseWrite", "DelPlaylist", verify=True, cacheable=False)
+@api_request("music.musicasset.PlaylistBaseWrite", "DelPlaylist", verify=True)
 async def delete(dirid: int, *, credential: Credential | None = None):
     """删除歌单
 
@@ -110,7 +110,7 @@ async def delete(dirid: int, *, credential: Credential | None = None):
     }, lambda data: data["result"]["dirId"] == dirid
 
 
-@api_request("music.musicasset.PlaylistDetailWrite", "AddSonglist", verify=True, cacheable=False)
+@api_request("music.musicasset.PlaylistDetailWrite", "AddSonglist", verify=True)
 async def add_songs(dirid: int = 1, song_ids: list[int] = [], *, credential: Credential | None = None):
     """添加歌曲到歌单
 
@@ -128,7 +128,7 @@ async def add_songs(dirid: int = 1, song_ids: list[int] = [], *, credential: Cre
     }, lambda data: bool(data["result"]["updateTime"])
 
 
-@api_request("music.musicasset.PlaylistDetailWrite", "DelSonglist", verify=True, cacheable=False)
+@api_request("music.musicasset.PlaylistDetailWrite", "DelSonglist", verify=True)
 async def del_songs(dirid: int = 1, song_ids: list[int] = [], *, credential: Credential | None = None):
     """删除歌单歌曲
 
