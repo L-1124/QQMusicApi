@@ -183,7 +183,6 @@ async def get_song_urls(
             api_data[1],
             params=params,
             credential=credential,
-            exclude_params=["guid"],
         )
         req.processor = _processor
         rg.add_request(req)
@@ -195,11 +194,7 @@ async def get_song_urls(
     return result
 
 
-@api_request(
-    "music.vkey.GetVkey",
-    "UrlGetVkey",
-    exclude_params=["guid"],
-)
+@api_request("music.vkey.GetVkey", "UrlGetVkey")
 async def get_try_url(mid: str, vs: str):
     """获取试听文件链接
 
@@ -217,7 +212,7 @@ async def get_try_url(mid: str, vs: str):
         "guid": get_guid(),
         "songmid": [mid],
         "songtype": [1],
-    }, lambda res: f"https://isure.stream.qqmusic.qq.com/{url}" if (url := res["midurlinfo"][0]["wifiurl"]) else ""
+    }, lambda res: f"https://isure.stream.qqmusic.qq.com/{url}" if (url := res["midurlinfo"][0]["wifiurl"]) else None
 
 
 @api_request("music.pf_song_detail_svr", "get_song_detail_yqq")

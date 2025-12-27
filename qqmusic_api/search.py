@@ -33,13 +33,13 @@ class SearchType(Enum):
     AUDIO = 18
 
 
-@api_request("music.musicsearch.HotkeyService", "GetHotkeyForQQMusicMobile", exclude_params=["search_id"])
+@api_request("music.musicsearch.HotkeyService", "GetHotkeyForQQMusicMobile")
 async def hotkey():
     """获取热搜词"""
     return {"search_id": get_searchID()}, NO_PROCESSOR
 
 
-@api_request("music.smartboxCgi.SmartBoxCgi", "GetSmartBoxResult", exclude_params=["search_id"])
+@api_request("music.smartboxCgi.SmartBoxCgi", "GetSmartBoxResult")
 async def complete(keyword: str):
     """搜索词补全
 
@@ -70,7 +70,7 @@ async def quick_search(keyword: str) -> dict[str, Any]:
     return resp.json()["data"]
 
 
-@api_request("music.adaptor.SearchAdaptor", "do_search_v2", exclude_params=["searchid"])
+@api_request("music.adaptor.SearchAdaptor", "do_search_v2")
 async def general_search(
     keyword: str,
     page: int = 1,
@@ -94,7 +94,7 @@ async def general_search(
     }, NO_PROCESSOR
 
 
-@api_request("music.search.SearchCgiService", "DoSearchForQQMusicMobile", exclude_params=["searchid"])
+@api_request("music.search.SearchCgiService", "DoSearchForQQMusicMobile")
 async def search_by_type(
     keyword: str,
     search_type: SearchType = SearchType.SONG,

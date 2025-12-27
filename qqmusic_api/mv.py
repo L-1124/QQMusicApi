@@ -43,7 +43,7 @@ async def get_detail(vids: list[str]):
     }, NO_PROCESSOR
 
 
-@api_request("music.stream.MvUrlProxy", "GetMvUrls", exclude_params=["guid"])
+@api_request("music.stream.MvUrlProxy", "GetMvUrls")
 async def get_mv_urls(vids: list[str]):
     """获取 MV 播放链接
 

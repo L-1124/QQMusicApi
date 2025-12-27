@@ -36,7 +36,6 @@ def api_request(
     verify: bool = False,
     ignore_code: bool = False,
     process_bool: bool = True,
-    exclude_params: list[str] | None = None,
     catch_error_code: list[int] | None = None,
 ):
     """API请求"""
@@ -51,7 +50,6 @@ def api_request(
             verify=verify,
             ignore_code=ignore_code,
             process_bool=process_bool,
-            exclude_params=exclude_params,
             catch_error_code=catch_error_code,
         )
 
@@ -195,7 +193,6 @@ class ApiRequest(BaseRequest, Generic[_P, _R]):
         verify: bool = False,
         ignore_code: bool = False,
         process_bool: bool = True,
-        exclude_params: list[str] | None = None,
         catch_error_code: list[int] | None = None,
     ) -> None:
         super().__init__(common, credential, verify, ignore_code)
@@ -205,7 +202,6 @@ class ApiRequest(BaseRequest, Generic[_P, _R]):
         self.api_func = api_func
         self.proceduce_bool = process_bool
         self.processor: Callable[[dict[str, Any]], Any] = NO_PROCESSOR
-        self.exclude_params = exclude_params or []
         self.catch_error_code = catch_error_code or []
 
     def copy(self) -> "ApiRequest[_P, _R]":  # noqa: D102
