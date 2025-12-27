@@ -5,7 +5,7 @@ authors = [
   { name = "Luren", email = "68656403+luren-dc@users.noreply.github.com" },
 ]
 dependencies = [
-  "cryptography>=45.0.5,<45.0.6",
+  "cryptography>=46.0.3,<46.0.4",
   "typing-extensions>=4.12.2",
   "httpx[http2]>=0.27.0",
   "aiocache>=0.12.3",
