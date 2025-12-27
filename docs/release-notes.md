@@ -19,9 +19,9 @@
 - 更新 README.md - ([ebf3347](https://github.com/luren-dc/QQMusicApi/commit/ebf33472e0ff1e532b378fa353bf9ce51caf2d0a)) by [@L-1124](https://github.com/L-1124) 
 
 ## 贡献者
+* @github-actions[bot]
 * @L-1124
 * @jinzhongjia [#219](https://github.com/luren-dc/QQMusicApi/pull/219)
-* @github-actions[bot]
 * @renovate[bot] [#190](https://github.com/luren-dc/QQMusicApi/pull/190)
 ## [[0.3.6](https://github.com/luren-dc/QQMusicApi/compare/v0.3.5..v0.3.6)] - 2025-08-22
 
