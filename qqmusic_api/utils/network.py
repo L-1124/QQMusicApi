@@ -11,7 +11,6 @@ import orjson as json
 from typing_extensions import override
 
 from ..exceptions import CredentialExpiredError, ResponseCodeError, SignInvalidError
-from .common import calc_md5
 from .credential import Credential
 from .session import Session, get_session
 from .sign import sign
@@ -36,8 +35,6 @@ def api_request(
     verify: bool = False,
     ignore_code: bool = False,
     process_bool: bool = True,
-    cache_ttl: int | None = None,
-    cacheable: bool = True,
     exclude_params: list[str] | None = None,
     catch_error_code: list[int] | None = None,
 ):
@@ -53,8 +50,6 @@ def api_request(
             verify=verify,
             ignore_code=ignore_code,
             process_bool=process_bool,
-            cacheable=cacheable,
-            cache_ttl=cache_ttl,
             exclude_params=exclude_params,
             catch_error_code=catch_error_code,
         )
@@ -86,7 +81,6 @@ class BaseRequest(ABC):
         self._credential = credential
         self.verify = verify
         self.ignore_code = ignore_code
-        self.cache = self.session._cache
 
     @property
     def session(self) -> Session:
@@ -192,8 +186,6 @@ class ApiRequest(BaseRequest, Generic[_P, _R]):
         verify: bool = False,
         ignore_code: bool = False,
         process_bool: bool = True,
-        cache_ttl: int | None = None,
-        cacheable: bool = True,
         exclude_params: list[str] | None = None,
         catch_error_code: list[int] | None = None,
     ) -> None:
@@ -204,8 +196,6 @@ class ApiRequest(BaseRequest, Generic[_P, _R]):
         self.api_func = api_func
         self.proceduce_bool = process_bool
         self.processor: Callable[[dict[str, Any]], Any] = NO_PROCESSOR
-        self.cacheable = cacheable
-        self.cache_ttl = cache_ttl
         self.exclude_params = exclude_params or []
         self.catch_error_code = catch_error_code or []
 
@@ -221,8 +211,6 @@ class ApiRequest(BaseRequest, Generic[_P, _R]):
             verify=self.verify,
             ignore_code=self.ignore_code,
             process_bool=self.proceduce_bool,
-            cacheable=self.cacheable,
-            cache_ttl=self.cache_ttl,
             exclude_params=self.exclude_params.copy(),
             catch_error_code=self.catch_error_code,
         )
@@ -246,15 +234,6 @@ class ApiRequest(BaseRequest, Generic[_P, _R]):
             "method": self.method,
             "param": params,
         }
-
-    def _generate_cache_key(self) -> str:
-        params = self.params.copy()
-        for key in self.exclude_params:
-            params.pop(key, None)
-        if self.credential:
-            params["credential"] = f"{self.credential.musicid}{self.credential.musickey}"
-        sorted_params = json.dumps(params, option=json.OPT_SORT_KEYS)
-        return calc_md5(sorted_params)
 
     @override
     async def _process_response(self, resp: httpx.Response) -> dict[str, Any]:
@@ -302,14 +281,8 @@ class ApiRequest(BaseRequest, Generic[_P, _R]):
             instance._common.update(params.pop("common", {}))
             instance.params.update(params)
             instance.processor = processor
-        key = instance._generate_cache_key()
-        if self.session.enable_cache and self.cacheable:
-            if cache_data := await self.cache.get(key):
-                return cache_data
         resp = await instance.request()
         resp = cast(_R, instance.processor(await instance._process_response(resp)))
-        if self.session.enable_cache and self.cacheable:
-            await self.cache.set(key, resp, ttl=self.cache_ttl)
         return resp
 
     def __repr__(self) -> str:
@@ -377,8 +350,6 @@ class RequestGroup(BaseRequest):
                     data = req_item["processor"](req_data.get("data", req_data))
                 else:
                     data = req_data.get("data", req_data)
-                if self.session.enable_cache and req.cacheable:
-                    await self.cache.set(req._generate_cache_key(), data, ttl=req.cache_ttl)
                 self._results[req_item["id"]] = data
         except json.JSONDecodeError:
             self._results = [{"data": resp.text}]
@@ -400,26 +371,12 @@ class RequestGroup(BaseRequest):
         data.update(merged_data)
         return data
 
-    async def _get_cache(self):
-        keys = [req["request"]._generate_cache_key() for req in self._requests if req["request"].cacheable]
-        cache = self.cache
-        cache_data = await cache.multi_get(keys)
-        remove_index = []
-        for idx, data in enumerate(cache_data):
-            if data:
-                self._results[idx] = data
-                remove_index.append(idx)
-        self._requests = [req for idx, req in enumerate(self._requests) if idx not in remove_index]
-
     async def _execute(self) -> list[Any]:
         """执行合并请求并返回各请求结果"""
         if not self._requests:
             return []
         self._results = [None] * len(self._requests)
         await self._prepare_request()
-        if self.session.enable_cache:
-            await self._get_cache()
-
         if not self._requests:
             return self._results
         resp = await self.request()
