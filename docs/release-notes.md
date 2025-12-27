@@ -16,11 +16,12 @@
 
 ### 文档更新
 
+- Update README links and image sources - ([7c09d07](https://github.com/luren-dc/QQMusicApi/commit/7c09d07468e6b35802d558c73e81f490a99533bc)) by [@L-1124](https://github.com/L-1124) 
 - 更新 README.md - ([ebf3347](https://github.com/luren-dc/QQMusicApi/commit/ebf33472e0ff1e532b378fa353bf9ce51caf2d0a)) by [@L-1124](https://github.com/L-1124) 
 
 ## 贡献者
-* @github-actions[bot]
 * @L-1124
+* @github-actions[bot]
 * @jinzhongjia [#219](https://github.com/luren-dc/QQMusicApi/pull/219)
 * @renovate[bot] [#190](https://github.com/luren-dc/QQMusicApi/pull/190)
 ## [[0.3.6](https://github.com/luren-dc/QQMusicApi/compare/v0.3.5..v0.3.6)] - 2025-08-22
