@@ -1,5 +1,6 @@
 """网络请求"""
 
+import copy
 import logging
 from abc import ABC, abstractmethod
 from collections import defaultdict
@@ -127,13 +128,21 @@ class BaseRequest(ABC):
             )
         return common
 
-    def _set_cookies(self, credential: Credential):
+    @staticmethod
+    def build_cookies(credential: Credential) -> httpx.Cookies | None:
+        """根据凭证生成 cookies"""
         if credential.has_musicid() and credential.has_musickey():
             cookies = httpx.Cookies()
             cookies.set("uin", str(credential.musicid), domain=".qq.com")
             cookies.set("qqmusic_key", credential.musickey, domain=".qq.com")
             cookies.set("qm_keyst", credential.musickey, domain=".qq.com")
             cookies.set("tmeLoginType", str(credential.login_type), domain=".qq.com")
+            return cookies
+        return None
+
+    def _set_cookies(self, credential: Credential):
+        cookies = self.build_cookies(credential)
+        if cookies:
             self.session.cookies = cookies
 
     @abstractmethod
@@ -199,23 +208,8 @@ class ApiRequest(BaseRequest, Generic[_P, _R]):
         self.exclude_params = exclude_params or []
         self.catch_error_code = catch_error_code or []
 
-    def copy(self) -> "ApiRequest[_P, _R]":
-        """创建当前 ApiRequest 实例的副本"""
-        req = ApiRequest[_P, _R](
-            module=self.module,
-            method=self.method,
-            api_func=self.api_func,
-            params=self.params.copy(),
-            common=self._common.copy(),
-            credential=self.credential,
-            verify=self.verify,
-            ignore_code=self.ignore_code,
-            process_bool=self.proceduce_bool,
-            exclude_params=self.exclude_params.copy(),
-            catch_error_code=self.catch_error_code,
-        )
-        req.processor = self.processor
-        return req
+    def copy(self) -> "ApiRequest[_P, _R]":  # noqa: D102
+        return copy.deepcopy(self)
 
     @override
     def build_request_data(self) -> dict[str, Any]:
@@ -289,15 +283,19 @@ class ApiRequest(BaseRequest, Generic[_P, _R]):
         return f"<ApiRequest {self.module}.{self.method}>"
 
 
-class RequestItem(TypedDict):
-    """请求 Item"""
+TReq = TypeVar("TReq")
+TProc = TypeVar("TProc")
+
+
+class RequestItem(Generic[TReq, TProc], TypedDict):
+    """请求 Item (支持泛型)"""
 
     id: int
     key: str
-    request: ApiRequest
+    request: TReq
     args: tuple[Any, ...]
     kwargs: dict[str, Any]
-    processor: Callable[[dict[str, Any]], Any] | None
+    processor: Callable[[dict[str, Any]], TProc] | None
 
 
 class RequestGroup(BaseRequest):
