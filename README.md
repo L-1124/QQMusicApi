@@ -1,6 +1,6 @@
 <div align="center">
     <a>
-        <img src="https://socialify.git.ci/luren-dc/QQMusicApi/image?description=1&font=Source%20Code%20Pro&language=1&logo=https%3A%2F%2Fy.qq.com%2Fmediastyle%2Fmod%2Fmobile%2Fimg%2Flogo.svg&name=1&pattern=Overlapping%20Hexagons&theme=Auto">
+        <img src="https://socialify.git.ci/l-1124/QQMusicApi/image?description=1&font=Source%20Code%20Pro&language=1&logo=https%3A%2F%2Fy.qq.com%2Fmediastyle%2Fmod%2Fmobile%2Fimg%2Flogo.svg&name=1&pattern=Overlapping%20Hexagons&theme=Auto">
     </a>
     <a href="https://www.python.org">
         <img src="https://img.shields.io/badge/Python-3.10|3.11|3.12|3.13-blue" alt="Python">
@@ -72,7 +72,7 @@ asyncio.run(main())
 
 ## License
 
-本项目基于 **[MIT License](https://github.com/luren-dc/QQMusicApi?tab=MIT-1-ov-file)** 许可证发行。
+本项目基于 **[MIT License](https://github.com/l-1124/QQMusicApi?tab=MIT-1-ov-file)** 许可证发行。
 
 ## 免责声明
 
@@ -80,4 +80,4 @@ asyncio.run(main())
 
 ## 贡献者
 
-[![Contributor](https://contrib.rocks/image?repo=luren-dc/QQMusicApi)](https://github.com/luren-dc/QQMusicApi/graphs/contributors)
+[![Contributor](https://contrib.rocks/image?repo=l-1124/QQMusicApi)](https://github.com/l-1124/QQMusicApi/graphs/contributors)
