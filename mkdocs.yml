@@ -36,12 +36,12 @@ theme:
         icon: material/weather-night
         name: Switch to light mode
 
-repo_name: luren-dc/QQMusicApi
-repo_url: https://github.com/luren-dc/QQMusicApi
+repo_name: l-1124/QQMusicApi
+repo_url: https://github.com/l-1124/QQMusicApi
 extra:
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/luren-dc/QQMusicApi
+      link: https://github.com/l-1124/QQMusicApi
 
 extra_css:
   - css/font.css
@@ -141,14 +141,8 @@ nav:
       - 歌曲: examples/song.md
       - 用户: examples/user.md
   - API 文档:
-      - utils:
-          - common: api/utils/common.md
-          - qimei: api/utils/qimei.md
-          - network: api/utils/network.md
-          - credential: api/utils/credential.md
-          - session: api/utils/session.md
-          - tripledes: api/utils/tripledes.md
       - album: api/album.md
+      - comment: api/comment.md
       - login: api/login.md
       - mv: api/mv.md
       - search: api/search.md
@@ -159,6 +153,13 @@ nav:
       - lyric: api/lyric.md
       - user: api/user.md
       - exceptions: api/exceptions.md
+      - utils:
+          - common: api/utils/common.md
+          - qimei: api/utils/qimei.md
+          - network: api/utils/network.md
+          - credential: api/utils/credential.md
+          - session: api/utils/session.md
+          - tripledes: api/utils/tripledes.md
   - 帮助:
     - 贡献指南: contributing.md
     - 编写指南: coding.md

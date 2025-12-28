@@ -1,10 +1,7 @@
 """用户相关 API
 
-传入有效 credential 获取他人的信息会更完整但会留痕,且部分 API 不会验证
-credential 是否有效,强制 credential 的 API 在 credential 失效时会报错
-
-Credential 使用优先级:
-传入的 Credential > Session 的 Credential
+传入有效的 credential 获取他人信息时,返回内容会更完整,但会留下访问痕迹。
+部分 API 不会验证 credential 是否有效,只有强制要求 credential 的接口在 credential 失效时才会报错。
 """
 
 from typing import Any, cast
@@ -45,7 +42,7 @@ async def get_homepage(euin: str, *, credential: Credential | None = None):
 
 @api_request("VipLogin.VipLoginInter", "vip_login_base", verify=True)
 async def get_vip_info(*, credential: Credential | None = None):
-    """获取当前登录账号的 VIP 信息(需要凭证)"""
+    """获取当前登录账号的 VIP 信息"""
     return {}, NO_PROCESSOR
 
 
