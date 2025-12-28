@@ -6,13 +6,17 @@
 
 ## What's Changed
 
+### Bug 修复
+
+- resolve TypeError with Generic TypedDict on Python < 3.11 - ([f142965](https://github.com/l-1124/QQMusicApi/commit/f14296511ca453bf20e196d44e1eb0a6e14ba12a)) by [@L-1124](https://github.com/L-1124) 
+
 ### 文档更新
 
 - 添加评论 API 文档并更新用户 API 文档注释 - ([618bf5a](https://github.com/l-1124/QQMusicApi/commit/618bf5a482eb81bba49883c39afbbae4ea3b3077)) by [@L-1124](https://github.com/L-1124) 
 
 ## 贡献者
-* @github-actions[bot]
 * @L-1124
+* @github-actions[bot]
 ## [[0.4.1](https://github.com/l-1124/QQMusicApi/compare/v0.4.0..v0.4.1)] - 2025-12-28
 
 ### 文档更新
