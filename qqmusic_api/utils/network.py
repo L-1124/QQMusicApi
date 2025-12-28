@@ -5,11 +5,11 @@ import logging
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from collections.abc import Callable, Coroutine
-from typing import Any, ClassVar, Generic, ParamSpec, TypedDict, TypeVar, cast
+from typing import Any, ClassVar, Generic, ParamSpec, TypeVar, cast
 
 import httpx
 import orjson as json
-from typing_extensions import override
+from typing_extensions import TypedDict, override
 
 from ..exceptions import CredentialExpiredError, ResponseCodeError, SignInvalidError
 from .credential import Credential
