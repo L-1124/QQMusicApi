@@ -63,7 +63,7 @@ footer = """
 trim = true
 
 [remote.github]
-owner = "luren-dc"
+owner = "l-1124"
 repo = "QQMusicApi"
 
 [git]

@@ -43,15 +43,6 @@ async def main():
          ...
 ```
 
-### 自定义缓存策略
-
-```python
-async def main():
-    # 禁用缓存并设置缓存过期时间（秒）
-    async with Session(enable_cache=False, cache_ttl=300):
-        # 此上下文内的请求将不缓存
-        ...
-```
 
 ### 凭证管理
 

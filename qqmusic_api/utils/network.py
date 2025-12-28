@@ -38,7 +38,21 @@ def api_request(
     process_bool: bool = True,
     catch_error_code: list[int] | None = None,
 ):
-    """API请求"""
+    """API请求装饰器.
+
+    用于将普通函数转换为 `ApiRequest` 实例的工厂函数.
+
+    Args:
+        module: 模块名称 (e.g. `music.trackInfo.UniformRuleCtrl`).
+        method: 调用方法名称 (e.g. `CgiGetTrackInfo`).
+        verify: 是否验证凭证有效性.如果为 `True`,请求前会检查凭证是否过期,过期则抛出异常.
+        ignore_code: 是否忽略业务状态码检查.如果为 `True`,将跳过 `code != 0` 的验证.
+        process_bool: 是否转换布尔值.如果为 `True`,参数中的 `bool` 值会自动转换为 `int` (`0`/`1`).
+        catch_error_code: 视为成功的错误码列表.当响应 `code` 在此列表中时,不会抛出异常.
+
+    Returns:
+        一个装饰器,将函数转换为返回 `ApiRequest` 的可调用对象.
+    """
 
     def decorator(
         api_func: Callable[_P, Coroutine[None, None, tuple[dict[Any, Any], Callable[[dict[str, Any]], _R]]]],
@@ -178,7 +192,10 @@ class BaseRequest(ABC):
 
 
 class ApiRequest(BaseRequest, Generic[_P, _R]):
-    """API 请求处理器"""
+    """API 请求处理器.
+
+    封装单个 API 请求的构建、发送和处理逻辑.
+    """
 
     def __init__(
         self,
@@ -195,12 +212,26 @@ class ApiRequest(BaseRequest, Generic[_P, _R]):
         process_bool: bool = True,
         catch_error_code: list[int] | None = None,
     ) -> None:
+        """初始化 ApiRequest.
+
+        Args:
+            module: 模块名.
+            method: 方法名.
+            api_func: 被装饰的原始 API 函数
+            params: 请求参数字典.
+            common: 公共参数字典.
+            credential: 请求凭证.
+            verify: 是否验证凭证.
+            ignore_code: 是否忽略错误码.
+            process_bool: 是否处理布尔值.
+            catch_error_code: 捕获的错误码列表.
+        """
         super().__init__(common, credential, verify, ignore_code)
         self.module = module
         self.method = method
         self.params = params or {}
         self.api_func = api_func
-        self.proceduce_bool = process_bool
+        self.process_bool = process_bool
         self.processor: Callable[[dict[str, Any]], Any] = NO_PROCESSOR
         self.catch_error_code = catch_error_code or []
 
@@ -214,7 +245,7 @@ class ApiRequest(BaseRequest, Generic[_P, _R]):
     @property
     def data(self) -> dict[str, Any]:
         """API 请求数据"""
-        if self.proceduce_bool:
+        if self.process_bool:
             params = {k: int(v) if isinstance(v, bool) else v for k, v in self.params.items()}
         else:
             params = self.params
@@ -301,8 +332,15 @@ class RequestGroup(BaseRequest):
         self,
         common: dict[str, Any] | None = None,
         credential: Credential | None = None,
-        limit: int = 30,
+        limit: int = 20,
     ):
+        """初始化 RequestGroup.
+
+        Args:
+            common: 组级公共参数,将合并到每个子请求中.
+            credential: 组级凭证,将应用于所有子请求.
+            limit: 单次请求的最大子请求数量.超过此数量会自动分批发送.
+        """
         super().__init__(common, credential)
         self._requests: list[RequestItem] = []
         self.limit = limit
@@ -310,7 +348,13 @@ class RequestGroup(BaseRequest):
         self._results = []
 
     def add_request(self, request: ApiRequest[_P, _R], *args: _P.args, **kwargs: _P.kwargs) -> None:
-        """添加请求,自动生成唯一键"""
+        """添加请求到组.
+
+        Args:
+            request: `ApiRequest` 实例或被 `@api_request` 装饰的函数.
+            *args: 传递给 API 函数的位置参数.
+            **kwargs: 传递给 API 函数的关键字参数.
+        """
         base_key = f"{request.module}.{request.method}"
         self._key_counter[base_key] += 1
         count = self._key_counter[base_key]
@@ -378,7 +422,13 @@ class RequestGroup(BaseRequest):
         return self._results
 
     async def execute(self) -> list[Any]:
-        """执行合并请求"""
+        """执行合并请求。
+
+        如果请求数量超过 `limit`,会自动分批执行并合并结果。
+
+        Returns:
+            list[Any]: 请求结果列表
+        """
         if not self._requests:
             return []
 

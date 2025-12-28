@@ -1,123 +1,139 @@
 # API 编写指南
 
-## 1. `ApiRequest` 的使用方法
 
-`ApiRequest` 是 QQMusic API 的核心类，用于封装 API 请求。它提供了多种方式来发起请求，以下是几种常见的使用方法：
+## 1. 使用 `@api_request` 装饰器
 
-### 1.1 直接使用 `ApiRequest` 类
+使用 `@api_request` 装饰器是编写新接口的标准方式。它能将一个普通的 Python 函数转换为一个具备自动参数构建、请求发送和响应处理功能的 API 对象。
 
-你可以直接实例化 `ApiRequest` 类来发起请求。以下是一个简单的示例：
+### 1.1 基础定义
+
+一个标准的 API 定义包含三个部分：装饰器配置、业务参数定义和返回值处理。
 
 ```python
-from qqmusicapi.network import ApiRequest
-from qqmusicapi.credential import Credential
-
 from typing import Any
+from qqmusic_api.utils.network import api_request, NO_PROCESSOR
 
-async def get_album_detail(album_id: int, credential: Credential):
-    req = ApiRequest[[], dict[str, Any]](
-        module="music.musichallAlbum.AlbumInfoServer",
-        method="GetAlbumDetail",
-        params={"albumId": album_id},
-        credential=credential,
-    )
-    response = await req()
-    return response
-```
-
-在这个示例中，我们创建了一个 `ApiRequest` 实例，指定了模块名、方法名、请求参数和凭证，然后通过 `await req()` 发起请求并获取响应。
-
-### 1.2 使用 `api_request` 装饰器
-
-`api_request` 是一个装饰器，用于简化 API 请求的编写。它可以将一个函数转换为一个返回 `ApiRequest` 实例的函数。以下是一个示例：
-
-```python
-from qqmusicapi.network import api_request, NO_PROCESSOR
-
+# 1. 装饰器配置: 指定调用的模块和方法
 @api_request("music.musichallAlbum.AlbumInfoServer", "GetAlbumDetail")
-async def get_album_detail(value: str | int):
-    if isinstance(value, int):
-        return {"albumId": value}, NO_PROCESSOR
-    return {"albumMId": value}, NO_PROCESSOR
+async def get_album_detail(album_id: int):
+    """获取专辑详情"""
+    
+    # 2. 业务逻辑: 构建请求参数字典
+    # 3. 返回值: (请求参数, 数据处理器)
+    return {"albumId": album_id}, NO_PROCESSOR
+
 ```
 
-在这个示例中，`get_album_detail` 函数被 `api_request` 装饰器修饰，它会自动返回一个 `ApiRequest` 实例。你可以通过 `await get_album_detail(album_id)` 来发起请求。
+### 1.2 动态凭证控制 (`credential`)
 
-### 1.3 使用 `RequestGroup` 进行批量请求
-
-`RequestGroup` 用于合并多个 API 请求，支持组级公共参数和重复模块方法处理。以下是一个示例：
+默认情况下，API 请求会自动使用全局 `Session` 中的凭证。**仅当您需要从外部传入特定凭证（以覆盖默认 Session 凭证）时**，才需要在函数定义中显式包含 `credential` 参数。
 
 ```python
-from qqmusicapi.network import RequestGroup, ApiRequest
+from qqmusic_api.utils.network import api_request, NO_PROCESSOR
+from qqmusic_api import Credential
 
-async def get_multiple_album_details(album_ids: list[int], credential: Credential):
-    rg = RequestGroup(credential=credential)
-    for album_id in album_ids:
-        req = ApiRequest(
-            module="music.musichallAlbum.AlbumInfoServer",
-            method="GetAlbumDetail",
-            params={"albumId": album_id},
-            credential=credential,
-        )
-        rg.add_request(req)
-    results = await rg.execute()
-    return results
+@api_request("music.trackInfo.UniformRuleCtrl", "CgiGetTrackInfo")
+async def query_song(
+    value: list[int],
+    *,
+    credential: Credential | None = None,
+):
+    return {"ids": value}, NO_PROCESSOR
+
+# 调用示例：
+# await query_song([101])                          # 使用 Session 凭证
+# await query_song([101], credential=my_cred)      # 使用 my_cred
+
 ```
 
-## 2. 请求流程
+### 1.3 返回值类型与处理器 (Processor)
 
-### 2.1 `ApiRequest`
+调用 API 函数时的返回值类型完全由数据处理器（Processor）的返回类型决定。
 
-```mermaid
-%% ApiRequest 流程图
-flowchart TD
-    A[调用ApiRequest实例] --> B[检查是否传入新Credential]
-    B -->|是| C[更新Credential]
-    C --> E
-    B -->|否| D[保持原有Credential]
-    D --> E[生成参数和处理器]
-    E --> F{是否启用缓存且存在缓存?}
-    F -->|是| G[直接返回缓存数据]
-    F -->|否| I[构建请求参数]
-    I --> J[发送POST请求]
-    J --> K{是否忽略状态码?}
-    K -->|否| L[验证HTTP状态码]
-    K -->|是| M[跳过状态码验证]
-    L --> N[处理响应JSON]
-    M --> N
-    N --> O{验证业务状态码}
-    O -->|0| P[提取数据字段]
-    O -->|非0| Q[抛出对应异常]
-    P --> R[应用数据处理器]
-    R --> S{是否启用缓存?}
-    S -->|是| T[保存结果到缓存]
-    S -->|否| U[返回结果]
-    T --> U
+#### 使用 `NO_PROCESSOR`
+
+如果使用默认的 `NO_PROCESSOR`，处理器不做任何转换，API 将返回原始响应数据的字典结构。此时返回值类型为 `dict[str, Any]`。
+
+```python
+@api_request(...)
+async def api_demo() -> tuple[dict, Any]:
+    return {}, NO_PROCESSOR
+
+# result 类型为 dict[str, Any]
+result = await api_demo()
+
 ```
 
-### 2.2 `RequestGroup`
+#### 使用自定义处理器
 
-```mermaid
-%% RequestGroup 流程图
-flowchart TD
-    A[创建RequestGroup实例] --> B[添加多个ApiRequest]
-    B --> C[遍历请求准备参数]
-    C --> D[合并公共参数]
-    D --> E{是否启用缓存?}
-    E -->|是| F[批量检查缓存]
-    E -->|否| K[构建合并请求体]
-    F --> G[移除已有缓存的请求]
-    G --> I{是否有剩余请求?}
-    I -->|否| J[直接返回缓存结果]
-    I -->|是| K
-    K --> L[发送合并POST请求]
-    L --> M[解析响应JSON]
-    M --> N[遍历子请求处理]
-    N --> O{子请求状态码是否正常?}
-    O -->|是| P[应用对应处理器]
-    O -->|否| Q[抛出异常]
-    P --> R{是否启用缓存?}
-    R -->|是| S[保存子结果到缓存]
-    S --> T
-    R -->|否| T[返回完整结果列表]
+如果定义了数据提取函数，API 的返回值类型即为该函数的返回值类型。
+
+```python
+# 定义处理器：输入 dict -> 输出 list[str]
+def _extract_urls(data: dict) -> list[str]:
+    return [item["url"] for item in data["items"]]
+
+@api_request(...)
+async def get_urls(mid: str):
+    return {"mid": mid}, _extract_urls
+
+# urls 的类型自动推断为 list[str]
+urls = await get_urls("001")
+
+```
+
+## 2. 批量请求 `RequestGroup`
+
+`RequestGroup` 用于合并多个 API 请求，能够自动合并公共参数并去除重复的 module/method 调用，显著减少网络开销。
+
+### 2.1 添加请求的方法
+
+`RequestGroup` 支持两种添加请求的方式：
+
+#### 添加装饰器函数
+
+直接将使用 `@api_request` 装饰的函数作为参数传入。
+
+```python
+from qqmusic_api.utils.network import RequestGroup
+from qqmusic_api.song import query_song
+
+async def batch_query(ids_list: list[list[int]]):
+    rg = RequestGroup()
+    for ids in ids_list:
+        # 参数1: 装饰器函数对象
+        # 参数2~N: 传递给该函数的参数
+        rg.add_request(query_song, ids)
+    return await rg.execute()
+
+```
+
+#### 添加 `ApiRequest` 实例
+
+适用于手动构建的请求对象。
+
+```python
+from qqmusic_api.utils.network import ApiRequest
+req = ApiRequest(module="...", method="...", params={...})
+rg.add_request(req)
+
+```
+
+## 3. 直接使用 `ApiRequest` 类
+
+```python
+from qqmusic_api.utils.network import ApiRequest
+
+async def dynamic_call(use_encryption: bool):
+    # 动态决定模块名
+    module_name = "music.vkey.GetEVkey" if use_encryption else "music.vkey.GetVkey"
+    
+    req = ApiRequest(
+        module=module_name,
+        method="UrlGetVkey",
+        params={"filename": "test.mp3"},
+        verify=True
+    )
+    return await req()
+
 ```

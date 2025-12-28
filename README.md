@@ -41,7 +41,6 @@
 
 - Cryptography
 - HTTPX
-- aiocache
 - orjson
 
 ## 快速上手
