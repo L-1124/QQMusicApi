@@ -2,7 +2,7 @@ default_install_hook_types: [pre-commit, commit-msg]
 
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v5.0.0
+    rev: v6.0.0
     hooks:
       - id: check-added-large-files
       - id: check-merge-conflict
@@ -20,7 +20,7 @@ repos:
         exclude: \.(html|svg|md)$
 
   - repo: https://github.com/commitizen-tools/commitizen
-    rev: v4.8.3
+    rev: v4.10.0
     hooks:
       - id: commitizen
         additional_dependencies: [cz-conventional-gitmoji]
@@ -31,13 +31,13 @@ repos:
       - id: conventional-gitmoji
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.12.10
+    rev: v0.14.10
     hooks:
       - id: ruff
         args: [--fix]
       - id: ruff-format
 
   - repo: https://github.com/DetachHead/basedpyright-pre-commit-mirror
-    rev: 1.31.3
+    rev: 1.36.2
     hooks:
     - id: basedpyright
