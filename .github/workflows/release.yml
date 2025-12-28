@@ -10,35 +10,13 @@ permissions:
   packages: write
 
 jobs:
-  generate-changelog:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-          token: ${{ secrets.GH_TOKEN }}
-      - name: Generate release-notes
-        id: git-cliff
-        uses: orhun/git-cliff-action@v4
-        env:
-          OUTPUT: docs/release-notes.md
-      - name: Commit
-        run: |
-          git checkout main
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          set +e docs/release-notes.md
-          git add docs/release-notes.md
-          git commit -m "🧹 chore(release-notes): Update release notes"
-          git push https://${{ secrets.GH_TOKEN }}@github.com/${GITHUB_REPOSITORY}.git main
-
   generate-release-body:
     runs-on: ubuntu-latest
     if: contains(github.event.head_commit.message, 'chore(release)')
     outputs:
       release_body: ${{ steps.git-cliff.outputs.content }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
       - name: Generate release body
@@ -54,9 +32,9 @@ jobs:
     permissions:
       id-token: write
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Install uv
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
       - name: Set up Python
@@ -70,10 +48,10 @@ jobs:
 
   release:
     runs-on: ubuntu-latest
-    needs: [generate-changelog, generate-release-body, publish]
+    needs: [generate-release-body, publish]
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
       - name: Get version
         run: echo "PACKAGE_VERSION=$(grep '__version__' qqmusic_api/__init__.py | awk -F'\"' '{print $2}')" >> $GITHUB_ENV
       - name: Release

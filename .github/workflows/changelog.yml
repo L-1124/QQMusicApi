@@ -1,0 +1,35 @@
+name: Generate Changelog
+
+on:
+  push:
+    branches:
+      - "main"
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  generate-changelog:
+    if: "!startsWith(github.event.head_commit.message, 'chore(release-notes)')"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GH_TOKEN }}
+      - name: Generate release-notes
+        id: git-cliff
+        uses: orhun/git-cliff-action@v4
+        env:
+          OUTPUT: docs/release-notes.md
+      - name: Commit
+        run: |
+          git checkout main
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          set +e docs/release-notes.md
+          git add docs/release-notes.md
+          git commit -m "🧹 chore(release-notes): Update release notes"
+          git push https://${{ secrets.GH_TOKEN }}@github.com/${GITHUB_REPOSITORY}.git main
