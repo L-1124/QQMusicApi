@@ -109,6 +109,7 @@ plugins:
       handlers:
         python:
           paths: [., qqmusic_api]
+          load_external_modules: true
           options:
             members_order: source
             separate_signature: true
@@ -125,7 +126,7 @@ plugins:
               - griffe_inherited_docstrings
               - docstring_inheritance.griffe
               - griffe_modernized_annotations
-          import:
+          inventories:
             - https://docs.python.org/3/objects.inv
 
 nav:

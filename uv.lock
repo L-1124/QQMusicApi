@@ -1241,7 +1241,7 @@ docs = [
     { name = "mkdocs", specifier = ">=1.6.0" },
     { name = "mkdocs-material", specifier = ">=9.5.29" },
     { name = "mkdocstrings", specifier = ">=0.25.1" },
-    { name = "mkdocstrings-python", specifier = ">=1.10.5" },
+    { name = "mkdocstrings-python", specifier = ">=2.0.1" },
 ]
 testing = [
     { name = "pytest", specifier = ">=9.0.2" },

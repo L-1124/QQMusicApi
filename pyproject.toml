@@ -40,7 +40,7 @@ documentation = "https://luren-dc.github.io/QQMusicApi/"
 [dependency-groups]
 docs = [
   "mkdocs-material>=9.5.29",
-  "mkdocstrings-python>=1.10.5",
+  "mkdocstrings-python>=2.0.1",
   "mkdocstrings>=0.25.1",
   "mkdocs>=1.6.0",
   "markdown-callouts>=0.4.0",
