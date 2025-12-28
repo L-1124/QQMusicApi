@@ -8,7 +8,6 @@ dependencies = [
   "cryptography>=45.0.5,<45.0.6",
   "typing-extensions>=4.12.2",
   "httpx[http2]>=0.27.0",
-  "aiocache>=0.12.3",
   "orjson>=3.10.15",
   "httpx-ws>=0.8.2",
 ]
