@@ -3,8 +3,7 @@
 所有对该项目的重要更改都将记录在此文件中。
 
 ---
-
-## What's Changed
+## [[0.4.1](https://github.com/l-1124/QQMusicApi/compare/v0.4.0..v0.4.1)] - 2025-12-28
 
 ### 文档更新
 
