@@ -11,8 +11,8 @@
 - 更新文档和代码注释 - ([62d41ee](https://github.com/l-1124/QQMusicApi/commit/62d41eecbfc00541f4910955625c6c1ee14cc13a)) by [@L-1124](https://github.com/L-1124) 
 
 ## 贡献者
-* @github-actions[bot]
 * @L-1124
+* @github-actions[bot]
 ## [[0.4.0](https://github.com/l-1124/QQMusicApi/compare/v0.3.6..v0.4.0)] - 2025-12-27
 
 ### Bug 修复
