@@ -1,5 +1,6 @@
 """请求描述符模块"""
 
+import logging
 from collections import defaultdict
 from collections.abc import AsyncGenerator, Generator
 from dataclasses import dataclass, field
@@ -11,9 +12,12 @@ from pydantic import BaseModel
 from tarsio import Struct
 
 from ..models import Credential
+from .exceptions import build_api_error, extract_api_error_code
 
 if TYPE_CHECKING:
     from .client import Client
+
+logger = logging.getLogger("qqmusicapi.request")
 
 
 class BatchRequestItem(TypedDict):
@@ -54,7 +58,7 @@ class RequestOutcome:
 class Request(Generic[R]):
     """请求描述符 (Awaitable Object)."""
 
-    _client: Client
+    _client: "Client"
     module: str
     method: str
     param: dict[str, Any] | dict[int, Any]
@@ -124,6 +128,9 @@ class RequestGroup:
         outcomes: list[RequestOutcome | None] = [None] * len(self._requests)
         async for outcome in self.execute_iter(batch_timeout=batch_timeout):
             outcomes[outcome.index] = outcome
+        if any(outcome is None for outcome in outcomes):
+            raise RuntimeError("批处理结果不完整")
+        logger.debug("批处理完成: total=%s", len(outcomes))
         return [outcome for outcome in outcomes if outcome is not None]
 
     async def execute_iter(self, batch_timeout: float | None = None) -> AsyncGenerator[RequestOutcome, None]:
@@ -143,6 +150,14 @@ class RequestGroup:
             grouped[self._group_key(req)].append((idx, req))
 
         batches = list(self._iter_batches(grouped))
+        logger.debug(
+            "批处理开始: requests=%s groups=%s batches=%s batch_size=%s inflight=%s",
+            len(self._requests),
+            len(grouped),
+            len(batches),
+            self.batch_size,
+            self.max_inflight_batches,
+        )
         send_stream, receive_stream = anyio.create_memory_object_stream[RequestOutcome](self.batch_size)
         batch_limiter = anyio.CapacityLimiter(self.max_inflight_batches)
 
@@ -152,8 +167,8 @@ class RequestGroup:
                     batch_group.start_soon(self._run_batch_stream, batch, send_stream, batch_limiter, batch_timeout)
             await send_stream.aclose()
 
-        async with anyio.create_task_group() as tg:
-            tg.start_soon(producer)
+        async with anyio.create_task_group() as task_group:
+            task_group.start_soon(producer)
             async with receive_stream:
                 async for outcome in receive_stream:
                     yield outcome
@@ -201,6 +216,14 @@ class RequestGroup:
             item = response.data.get(f"req_{req_idx}")
             if item is None:
                 raise KeyError(f"缺少响应字段: req_{req_idx}")
+            code, subcode = extract_api_error_code(item)
+            if code is not None and code != 0:
+                raise build_api_error(
+                    code=code,
+                    subcode=subcode,
+                    data=getattr(item, "data", None),
+                    context={"module": req.module, "method": req.method, "is_jce": False},
+                )
             output.append((origin_idx, self._client._build_result(item.data, req.response_model)))
         return output
 
@@ -211,6 +234,13 @@ class RequestGroup:
             item = response.data.get(f"req_{req_idx}")
             if item is None:
                 raise KeyError(f"缺少响应字段: req_{req_idx}")
+            code, _ = extract_api_error_code(item)
+            if code is not None and code != 0:
+                raise build_api_error(
+                    code=code,
+                    data=getattr(item, "data", None),
+                    context={"module": req.module, "method": req.method, "is_jce": True},
+                )
             output.append((origin_idx, self._client._build_result(item.data, req.response_model)))
         return output
 
@@ -245,6 +275,21 @@ class RequestGroup:
             return error_code
         return None
 
+    def _build_error_outcome(self, origin_idx: int, req: Request[Any], exc: Exception) -> RequestOutcome:
+        """构建失败结果."""
+        return RequestOutcome(
+            index=origin_idx,
+            module=req.module,
+            method=req.method,
+            success=False,
+            error=RequestErrorInfo(
+                kind=type(exc).__name__,
+                message=str(exc),
+                code=self._extract_error_code(exc),
+                context={"platform": req.platform, "is_jce": req.is_jce},
+            ),
+        )
+
     async def _run_batch_stream(
         self,
         batch: list[tuple[int, Request[Any]]],
@@ -255,6 +300,7 @@ class RequestGroup:
         """执行批次并将结果写入流."""
         await limiter.acquire()
         try:
+            logger.debug("执行批次: size=%s", len(batch))
             try:
                 if batch_timeout is None:
                     batch_values = await self._execute_batch(batch)
@@ -274,23 +320,8 @@ class RequestGroup:
                         )
                     )
             except Exception as exc:
+                logger.warning("批次执行失败: size=%s error=%s", len(batch), exc)
                 for origin_idx, req in batch:
-                    await send_stream.send(
-                        RequestOutcome(
-                            index=origin_idx,
-                            module=req.module,
-                            method=req.method,
-                            success=False,
-                            error=RequestErrorInfo(
-                                kind=type(exc).__name__,
-                                message=str(exc),
-                                code=self._extract_error_code(exc),
-                                context={
-                                    "platform": req.platform,
-                                    "is_jce": req.is_jce,
-                                },
-                            ),
-                        )
-                    )
+                    await send_stream.send(self._build_error_outcome(origin_idx, req, exc))
         finally:
             limiter.release()

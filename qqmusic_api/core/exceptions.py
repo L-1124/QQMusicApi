@@ -1,4 +1,4 @@
-"""统一异常定义模块"""
+"""统一异常定义模块."""
 
 from typing import Any
 
@@ -13,8 +13,9 @@ __all__ = [
     "LoginExpiredError",
     "NetworkError",
     "NotLoginError",
-    "RequestGroupError",
     "SignInvalidError",
+    "build_api_error",
+    "extract_api_error_code",
 ]
 
 
@@ -84,6 +85,28 @@ class ApiError(BaseError):
         self.data = data
 
 
+def extract_api_error_code(payload: Any) -> tuple[int | None, int | None]:
+    """从响应数据中提取 code/subcode.
+
+    Args:
+        payload: 任意响应数据对象。
+
+    Returns:
+        提取出的 `(code, subcode)`。
+    """
+    if hasattr(payload, "code"):
+        code = getattr(payload, "code")
+        subcode = getattr(payload, "subcode", None)
+        return (code if isinstance(code, int) else None, subcode if isinstance(subcode, int) else None)
+
+    if isinstance(payload, dict):
+        code = payload.get("code")
+        subcode = payload.get("subcode")
+        return (code if isinstance(code, int) else None, subcode if isinstance(subcode, int) else None)
+
+    return (None, None)
+
+
 class ApiDataError(ApiError):
     """API 请求成功,但数据错误."""
 
@@ -125,27 +148,78 @@ class SignInvalidError(ApiError):
         super().__init__(message, code=2000, data=data)
 
 
+_CODE_TO_EXCEPTION: dict[int, type[ApiError]] = {
+    1000: LoginExpiredError,
+    2000: SignInvalidError,
+}
+
+_CODE_TO_MESSAGE: dict[int, str] = {
+    10006: "参数校验失败",
+    40000: "方法不存在或方法参数非法",
+    103901: "请求参数数量不匹配或部分数据无效",
+    500001: "服务调用失败或权限不足",
+    500003: "模块不存在或模块不可用",
+}
+
+_SUBCODE_TO_MESSAGE: dict[int, str] = {
+    860100001: "模块路由失败或模块未注册",
+}
+
+
+def _default_api_error_message(code: int, subcode: int | None) -> str:
+    """构建默认 API 错误信息."""
+    if subcode is not None and subcode in _SUBCODE_TO_MESSAGE:
+        return f"{_SUBCODE_TO_MESSAGE[subcode]}(code={code}, subcode={subcode})"
+    if code in _CODE_TO_MESSAGE:
+        return f"{_CODE_TO_MESSAGE[code]}(code={code})"
+    if subcode is None:
+        return f"请求返回错误(code={code})"
+    return f"请求返回错误(code={code}, subcode={subcode})"
+
+
+def build_api_error(
+    *,
+    code: int | None = None,
+    subcode: int | None = None,
+    message: str | None = None,
+    data: Any = None,
+    context: dict[str, Any] | None = None,
+) -> ApiError:
+    """根据错误码构造统一异常对象.
+
+    Args:
+        code: 主错误码。
+        subcode: 子错误码。
+        message: 可选自定义错误信息。
+        data: 原始响应数据。
+        context: 可选上下文信息。
+
+    Returns:
+        对应的异常对象实例。
+    """
+    resolved_code = code if code is not None else -1
+    resolved_message = message or _default_api_error_message(resolved_code, subcode)
+    merged_context = dict(context or {})
+    if subcode is not None:
+        merged_context["subcode"] = subcode
+
+    exc_cls = _CODE_TO_EXCEPTION.get(resolved_code)
+    if exc_cls is LoginExpiredError:
+        return LoginExpiredError(message=resolved_message, data=data if isinstance(data, dict) else None)
+    if exc_cls is SignInvalidError:
+        return SignInvalidError(message=resolved_message, data=data if isinstance(data, dict) else None)
+
+    return ApiError(
+        resolved_message,
+        code=resolved_code,
+        data=data,
+        context=merged_context or None,
+    )
+
+
 class DataError(BaseError):
     """数据解析失败 (JSON 格式错误, 缺少字段, Pydantic 校验失败)."""
 
     def __init__(self, message: str, raw_data: Any = None, cause: BaseException | None = None):
         super().__init__(message, error_code="DATA_ERROR", context={"raw_data": raw_data}, cause=cause)
         self.raw_data = raw_data
-
-
-class RequestGroupError(BaseError):
-    """RequestGroup 执行失败 (兼容保留)."""
-
-    def __init__(
-        self,
-        message: str = "RequestGroup 执行失败",
-        partial_results: list[Any] | None = None,
-        errors: list[BaseException] | None = None,
-    ):
-        merged_context = {
-            "partial_results": partial_results if partial_results is not None else [],
-            "errors": errors if errors is not None else [],
-        }
-        super().__init__(message, error_code="REQUEST_GROUP_ERROR", context=merged_context)
-        self.partial_results = merged_context["partial_results"]
-        self.errors = merged_context["errors"]
