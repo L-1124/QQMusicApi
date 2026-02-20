@@ -4,6 +4,7 @@ import hashlib
 import random
 import time
 import zlib
+from typing import Any
 
 from .tripledes import DECRYPT, tripledes_crypt, tripledes_key_setup
 
@@ -56,6 +57,17 @@ def get_searchID() -> str:
     a = time.time()
     r = round(a * 1000) % (24 * 60 * 60 * 1000)
     return str(t + n + r)
+
+
+def bool_to_int(data: Any) -> Any:
+    """递归将 bool 转换为 int"""
+    if isinstance(data, bool):
+        return int(data)
+    if isinstance(data, dict):
+        return type(data)({k: bool_to_int(v) for k, v in data.items()})
+    if isinstance(data, list):
+        return [bool_to_int(v) for v in data]
+    return data
 
 
 def qrc_decrypt(encrypted_qrc: str | bytearray | bytes) -> str:

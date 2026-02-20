@@ -30,14 +30,37 @@ repos:
     hooks:
       - id: conventional-gitmoji
 
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.14.10
+  - repo: https://github.com/DavidAnson/markdownlint-cli2
+    rev: v0.20.0
+    hooks:
+      - id: markdownlint-cli2
+        args: ["--fix"]
+
+  - repo: local
     hooks:
       - id: ruff
+        name: ruff
+        entry: uv run ruff check
+        language: system
+        files: \.(py|pyi)$
         args: [--fix]
-      - id: ruff-format
 
-  - repo: https://github.com/DetachHead/basedpyright-pre-commit-mirror
-    rev: 1.36.2
-    hooks:
-    - id: basedpyright
+      - id: ruff-format
+        name: ruff-format
+        entry: uv run ruff format
+        language: system
+        files: \.(py|pyi)$
+
+      - id: basedpyright
+        name: basedpyright
+        entry: uv run basedpyright
+        language: system
+        files: \.(py|pyi)$
+
+      - id: docs-build
+        name: docs build
+        entry: uv run --group docs mkdocs build
+        files: ^docs/
+        pass_filenames: false
+        language: system
+        args: ["--strict"]

@@ -1,4 +1,4 @@
-"""生成设备相关信息"""
+"""生成设备相关信息."""
 
 import binascii
 import hashlib
@@ -9,16 +9,18 @@ from pathlib import Path
 from typing import ClassVar
 from uuid import uuid4
 
+import anyio
 import orjson as json
 
-device_path = Path(__file__).parent.parent / ".cache" / "device.json"
+# 默认设备缓存路径 (可被覆盖)
+DEFAULT_DEVICE_PATH = Path(__file__).parent.parent / ".cache" / "device.json"
 
 
 def random_imei() -> str:
     """生成随机 IMEI 号码.
 
     Returns:
-        随机生成的 IMEI 号码
+        随机生成的 IMEI 号码。
     """
     imei = []
     sum_ = 0
@@ -37,7 +39,7 @@ def random_imei() -> str:
 
 @dataclass
 class OSVersion:
-    """系统版本信息"""
+    """系统版本信息."""
 
     incremental: str = "5891938"
     release: str = "10"
@@ -47,7 +49,7 @@ class OSVersion:
 
 @dataclass
 class Device:
-    """设备相关信息"""
+    """设备相关信息."""
 
     display: str = field(default_factory=lambda: f"QMAPI.{random.randint(100000, 999999)}.001")
     product: str = "iarim"
@@ -55,11 +57,15 @@ class Device:
     board: str = "eomam"
     model: str = "MI 6"
     fingerprint: str = field(
-        default_factory=lambda: f"xiaomi/iarim/sagit:10/eomam.200122.001/{random.randint(1000000, 9999999)}:user/release-keys"
+        default_factory=lambda: (
+            f"xiaomi/iarim/sagit:10/eomam.200122.001/{random.randint(1000000, 9999999)}:user/release-keys"
+        )
     )
     boot_id: str = field(default_factory=lambda: str(uuid4()))
     proc_version: str = field(
-        default_factory=lambda: f"Linux 5.4.0-54-generic-{''.join(random.choices(string.ascii_letters + string.digits, k=8))} (android-build@google.com)"
+        default_factory=lambda: (
+            f"Linux 5.4.0-54-generic-{''.join(random.choices(string.ascii_letters + string.digits, k=8))} (android-build@google.com)"
+        )
     )
     imei: str = field(default_factory=random_imei)
     brand: str = "Xiaomi"
@@ -81,21 +87,36 @@ class Device:
     apn: str = "wifi"
     vendor_name: str = "MIUI"
     vendor_os_name: str = "qmapi"
-    qimei: None | str = None
+    qimei: str | None = None
+    qimei36: str | None = None
 
 
-def get_cached_device() -> Device:
-    """获取缓存 Device"""
-    if not device_path.exists():
-        device = Device()
-        save_device(device)
-        return device
-    device_data = json.loads(device_path.read_text())
+async def load_device(path: Path) -> Device:
+    """从指定路径加载设备信息."""
+    anyio_path = anyio.Path(path)
+    if not await anyio_path.exists():
+        return Device()
+
+    device_data = json.loads(await anyio_path.read_text())
     device_data["version"] = OSVersion(**device_data["version"])
     return Device(**device_data)
 
 
-def save_device(device: Device):
-    """缓存 Device"""
-    device_path.parent.mkdir(parents=True, exist_ok=True)
-    device_path.write_text(json.dumps(asdict(device)).decode())
+async def save_device(device: Device, path: Path | None = None) -> None:
+    """保存设备信息到指定路径."""
+    save_path = anyio.Path(path or DEFAULT_DEVICE_PATH)
+    await save_path.parent.mkdir(parents=True, exist_ok=True)
+    await save_path.write_text(json.dumps(asdict(device)).decode())
+
+
+async def get_cached_device(path: Path | None = None) -> Device:
+    """获取缓存的设备信息,如果不存在则创建新的."""
+    raw_path = path or DEFAULT_DEVICE_PATH
+    cache_path = anyio.Path(raw_path)
+
+    if not await cache_path.exists():
+        device = Device()
+        await save_device(device, raw_path)
+        return device
+
+    return await load_device(raw_path)
