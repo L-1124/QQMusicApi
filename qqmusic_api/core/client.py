@@ -53,11 +53,13 @@ class Client:
         session: httpx.AsyncClient | None = None,
         max_concurrency: int = 10,
         max_connections: int = 20,
+        qimei_timeout: float = 1.5,
     ):
         self.credential = credential or Credential()
         self.device = Device()
         self.enable_sign = enable_sign
         self.platform = platform
+        self.qimei_timeout = qimei_timeout
         self._guid = uuid.uuid4().hex
 
         self._limiter = anyio.CapacityLimiter(max_concurrency)
@@ -83,6 +85,7 @@ class Client:
         new_client.device = self.device
         new_client.enable_sign = self.enable_sign
         new_client.platform = self.platform
+        new_client.qimei_timeout = self.qimei_timeout
         new_client._guid = self._guid
         new_client._limiter = self._limiter
         new_client._owns_session = False
@@ -148,7 +151,9 @@ class Client:
             if self._qimei_loaded:
                 return self._qimei_cache
             try:
-                self._qimei_cache = await get_qimei("14.9.0.8", session=self._session)
+                self._qimei_cache = await get_qimei(
+                    "14.9.0.8", session=self._session, request_timeout=self.qimei_timeout
+                )
             except Exception as exc:
                 logger.warning("获取 QIMEI 失败: %s", exc)
                 self._qimei_cache = None
@@ -400,9 +405,9 @@ class Client:
 
         params: dict[str, str] = {}
         if self.enable_sign:
-            from ..utils.sign import sign
+            from ..algorithms.sign import sign_request
 
-            signature = sign(payload)
+            signature = sign_request(payload)
             if signature:
                 params["sign"] = signature
 

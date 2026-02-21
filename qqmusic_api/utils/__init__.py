@@ -1,6 +1,5 @@
-from .common import get_guid, get_searchID, hash33, qrc_decrypt
+from .common import get_guid, get_searchID, hash33
 from .qimei import QimeiResult, get_qimei
-from .sign import sign
 
 __all__ = [
     "QimeiResult",
@@ -8,6 +7,4 @@ __all__ = [
     "get_qimei",
     "get_searchID",
     "hash33",
-    "qrc_decrypt",
-    "sign",
 ]

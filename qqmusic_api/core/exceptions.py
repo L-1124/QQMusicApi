@@ -7,7 +7,6 @@ __all__ = [
     "ApiError",
     "BaseError",
     "CredentialError",
-    "DataError",
     "HTTPError",
     "LoginError",
     "LoginExpiredError",
@@ -24,7 +23,6 @@ class BaseError(Exception):
 
     Attributes:
         message: 错误描述。
-        error_code: 统一错误码。
         context: 结构化上下文。
         cause: 原始异常对象。
     """
@@ -32,13 +30,11 @@ class BaseError(Exception):
     def __init__(
         self,
         message: str,
-        error_code: int | str | None = None,
         context: dict[str, Any] | None = None,
         cause: BaseException | None = None,
     ):
         super().__init__(message)
         self.message = message
-        self.error_code = error_code
         self.context = context or {}
         self.cause = cause
 
@@ -50,7 +46,7 @@ class NetworkError(BaseError):
     """网络连接失败 (DNS, Timeout, Connection Refused)."""
 
     def __init__(self, message: str, original_exc: Exception | None = None):
-        super().__init__(message, error_code="NETWORK_ERROR", cause=original_exc)
+        super().__init__(message, cause=original_exc)
         self.original_exc = original_exc
 
 
@@ -58,12 +54,7 @@ class HTTPError(BaseError):
     """HTTP 状态码错误 (404, 500, 502)."""
 
     def __init__(self, message: str, status_code: int, cause: BaseException | None = None):
-        super().__init__(
-            f"HTTP {status_code}: {message}",
-            error_code=status_code,
-            context={"status_code": status_code},
-            cause=cause,
-        )
+        super().__init__(f"HTTP {status_code}: {message}", context={"status_code": status_code}, cause=cause)
         self.status_code = status_code
 
 
@@ -80,7 +71,7 @@ class ApiError(BaseError):
     ):
         merged_context = dict(context or {})
         merged_context.setdefault("data", data)
-        super().__init__(message, error_code=code, context=merged_context, cause=cause)
+        super().__init__(message, context=merged_context, cause=cause)
         self.code = code
         self.data = data
 
@@ -138,7 +129,7 @@ class LoginError(BaseError):
     """登录操作失败."""
 
     def __init__(self, message: str = "登录失败", cause: BaseException | None = None):
-        super().__init__(message, error_code="LOGIN_ERROR", cause=cause)
+        super().__init__(message, cause=cause)
 
 
 class SignInvalidError(ApiError):
@@ -215,11 +206,3 @@ def build_api_error(
         data=data,
         context=merged_context or None,
     )
-
-
-class DataError(BaseError):
-    """数据解析失败 (JSON 格式错误, 缺少字段, Pydantic 校验失败)."""
-
-    def __init__(self, message: str, raw_data: Any = None, cause: BaseException | None = None):
-        super().__init__(message, error_code="DATA_ERROR", context={"raw_data": raw_data}, cause=cause)
-        self.raw_data = raw_data

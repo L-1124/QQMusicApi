@@ -2,7 +2,7 @@
 
 import logging
 from collections import defaultdict
-from collections.abc import AsyncGenerator, Generator
+from collections.abc import AsyncGenerator, Awaitable, Callable, Generator
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Generic, TypedDict, TypeVar
 
@@ -116,15 +116,24 @@ class RequestGroup:
         self._requests.extend(requests)
         return self
 
-    async def execute(self, batch_timeout: float | None = None) -> list[RequestOutcome]:
+    async def execute(self, batch_timeout: float | None = None, max_collect: int | None = None) -> list[RequestOutcome]:
         """执行所有请求并返回统一结构结果列表.
 
         Args:
             batch_timeout: 单批次超时时间(秒)。超时后该批次返回失败结果。
+            max_collect: 最大可收集结果数。超限时抛出异常,建议改用流式接口。
 
         Returns:
-            与添加顺序一致的请求结果。
+            与添加顺序一致的请求结果。适合小中批量场景。
+
+        Raises:
+            ValueError: 请求总数超过 `max_collect`。
         """
+        if max_collect is not None and len(self._requests) > max_collect:
+            raise ValueError(
+                f"请求数量 {len(self._requests)} 超过 max_collect={max_collect}, "
+                "请改用 execute_iter() 或 execute_for_each() 进行流式消费"
+            )
         outcomes: list[RequestOutcome | None] = [None] * len(self._requests)
         async for outcome in self.execute_iter(batch_timeout=batch_timeout):
             outcomes[outcome.index] = outcome
@@ -132,6 +141,20 @@ class RequestGroup:
             raise RuntimeError("批处理结果不完整")
         logger.debug("批处理完成: total=%s", len(outcomes))
         return [outcome for outcome in outcomes if outcome is not None]
+
+    async def execute_for_each(
+        self,
+        handler: Callable[[RequestOutcome], Awaitable[None]],
+        batch_timeout: float | None = None,
+    ) -> None:
+        """流式执行请求并对每条结果执行回调.
+
+        Args:
+            handler: 每条结果的异步处理函数。
+            batch_timeout: 单批次超时时间(秒)。超时后该批次返回失败结果。
+        """
+        async for outcome in self.execute_iter(batch_timeout=batch_timeout):
+            await handler(outcome)
 
     async def execute_iter(self, batch_timeout: float | None = None) -> AsyncGenerator[RequestOutcome, None]:
         """流式执行请求并逐条返回结果.
@@ -149,12 +172,12 @@ class RequestGroup:
         for idx, req in enumerate(self._requests):
             grouped[self._group_key(req)].append((idx, req))
 
-        batches = list(self._iter_batches(grouped))
+        total_batches = sum((len(group) + self.batch_size - 1) // self.batch_size for group in grouped.values())
         logger.debug(
             "批处理开始: requests=%s groups=%s batches=%s batch_size=%s inflight=%s",
             len(self._requests),
             len(grouped),
-            len(batches),
+            total_batches,
             self.batch_size,
             self.max_inflight_batches,
         )
@@ -163,7 +186,7 @@ class RequestGroup:
 
         async def producer() -> None:
             async with anyio.create_task_group() as batch_group:
-                for batch in batches:
+                for batch in self._iter_batches(grouped):
                     batch_group.start_soon(self._run_batch_stream, batch, send_stream, batch_limiter, batch_timeout)
             await send_stream.aclose()
 
@@ -270,9 +293,6 @@ class RequestGroup:
         code = getattr(exc, "code", None)
         if isinstance(code, int):
             return code
-        error_code = getattr(exc, "error_code", None)
-        if isinstance(error_code, int):
-            return error_code
         return None
 
     def _build_error_outcome(self, origin_idx: int, req: Request[Any], exc: Exception) -> RequestOutcome:

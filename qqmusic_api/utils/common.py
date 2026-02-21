@@ -3,10 +3,7 @@
 import hashlib
 import random
 import time
-import zlib
 from typing import Any
-
-from .tripledes import DECRYPT, tripledes_crypt, tripledes_key_setup
 
 
 def calc_md5(*strings: str | bytes) -> str:
@@ -68,41 +65,3 @@ def bool_to_int(data: Any) -> Any:
     if isinstance(data, list):
         return [bool_to_int(v) for v in data]
     return data
-
-
-def qrc_decrypt(encrypted_qrc: str | bytearray | bytes) -> str:
-    """QRC 解码
-
-    Args:
-        encrypted_qrc: 加密的 QRC 数据
-
-    Returns:
-        解密后的 QRC 数据
-
-    Raises:
-        ValueError: 解密失败
-    """
-    if not encrypted_qrc:
-        return ""
-
-    # 将输入转为 bytearray 格式
-    if isinstance(encrypted_qrc, str):
-        encrypted_qrc = bytearray.fromhex(encrypted_qrc)
-    elif isinstance(encrypted_qrc, bytearray | bytes):
-        encrypted_qrc = bytearray(encrypted_qrc)
-    else:
-        raise ValueError("无效的加密数据类型")
-
-    try:
-        data = bytearray()
-        schedule = tripledes_key_setup(b"!@#)(*$%123ZXC!@!@#)(NHL", DECRYPT)
-
-        # 分块解密数据
-        # 以 8 字节为单位迭代 encrypted_qrc
-        for i in range(0, len(encrypted_qrc), 8):
-            data += tripledes_crypt(encrypted_qrc[i : i + 8], schedule)
-
-        return zlib.decompress(data).decode("utf-8")
-
-    except Exception as e:
-        raise ValueError(f"解密失败: {e}")
