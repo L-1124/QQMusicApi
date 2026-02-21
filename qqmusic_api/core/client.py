@@ -27,6 +27,7 @@ from ..utils.qimei import QimeiResult, get_qimei
 from .exceptions import ApiError, NetworkError, build_api_error, extract_api_error_code
 
 if TYPE_CHECKING:
+    from ..modules._base import ApiModule
     from .request import Request, RequestGroup
 
 R = TypeVar("R", bound=BaseModel | Struct | dict)
@@ -85,6 +86,41 @@ class Client:
         new_client.credential = credential
         new_client._owns_session = False
         return new_client
+
+    @property
+    def comment(self) -> "ApiModule":
+        """评论模块。"""
+        from ..modules._base import ApiModule
+
+        return ApiModule(self)
+
+    @property
+    def recommend(self) -> "ApiModule":
+        """推荐模块。"""
+        from ..modules._base import ApiModule
+
+        return ApiModule(self)
+
+    @property
+    def top(self) -> "ApiModule":
+        """排行榜模块。"""
+        from ..modules._base import ApiModule
+
+        return ApiModule(self)
+
+    @property
+    def album(self) -> "ApiModule":
+        """专辑模块。"""
+        from ..modules._base import ApiModule
+
+        return ApiModule(self)
+
+    @property
+    def mv(self) -> "ApiModule":
+        """MV 模块。"""
+        from ..modules._base import ApiModule
+
+        return ApiModule(self)
 
     async def _request_raw(self, method: str, url: str, **kwargs: Any) -> httpx.Response:
         """发送原始 HTTP 请求。"""
@@ -304,8 +340,13 @@ class Client:
         """构建响应对象。"""
         if response_model is None:
             return raw
-        if isinstance(response_model, type) and issubclass(response_model, BaseModel):
-            return response_model.model_validate(raw)
+        if isinstance(response_model, type):
+            if issubclass(response_model, BaseModel):
+                return response_model.model_validate(raw)
+            if issubclass(response_model, Struct):
+                from tarsio import encode
+
+                return response_model.decode(encode(raw))  # type: ignore[return-value]
         return raw
 
     @staticmethod
