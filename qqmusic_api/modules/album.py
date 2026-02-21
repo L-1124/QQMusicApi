@@ -1,0 +1,69 @@
+"""专辑相关 API"""
+
+from typing import TYPE_CHECKING, Any, Literal
+
+from ..models.album import AlbumSongResponse
+from ._base import ApiModule
+
+if TYPE_CHECKING:
+    from ..core.request import Request
+
+
+class AlbumApi(ApiModule):
+    """专辑相关 API"""
+
+    def get_cover(self, mid: str, size: Literal[150, 300, 500, 800] = 300) -> str:
+        """获取专辑封面链接
+
+        Args:
+            mid: 专辑 mid
+            size: 封面大小
+
+        Returns:
+            封面链接
+        """
+        if size not in [150, 300, 500, 800]:
+            raise ValueError("not supported size")
+        return f"https://y.gtimg.cn/music/photo_new/T002R{size}x{size}M000{mid}.jpg"
+
+    def get_detail(self, value: str | int) -> "Request[dict[str, Any]]":
+        """获取专辑详细信息
+
+        Args:
+            value: 专辑 id 或 mid
+        """
+        param: dict[str, Any] = {}
+        if isinstance(value, int):
+            param["albumId"] = value
+        else:
+            param["albumMId"] = value
+
+        return self._client.build_request(
+            module="music.musichallAlbum.AlbumInfoServer",
+            method="GetAlbumDetail",
+            param=param,
+        )
+
+    def get_song(self, value: str | int, num: int = 10, page: int = 1) -> "Request[AlbumSongResponse]":
+        """获取专辑歌曲
+
+        Args:
+            value: 专辑 id 或 mid
+            num: 返回数量
+            page: 页码
+        """
+        param: dict[str, Any] = {
+            "begin": num * (page - 1),
+            "num": num,
+        }
+        if isinstance(value, int):
+            param["albumId"] = value
+        else:
+            param["albumMid"] = value
+
+        return self._client.build_request(
+            module="music.musichallAlbum.AlbumSongList",
+            method="GetAlbumSongList",
+            param=param,
+            response_model=AlbumSongResponse,
+        )
