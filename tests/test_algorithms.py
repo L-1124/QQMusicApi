@@ -70,5 +70,5 @@ def test_sign_fallback_when_c_backend_unavailable(monkeypatch: pytest.MonkeyPatc
     digest = sha1(json.dumps(request)).hexdigest().upper()
     expected = _sign_from_digest_python(digest)
 
-    monkeypatch.setattr("qqmusic_api.algorithms._sign_c._load_backend", lambda: None)
+    monkeypatch.setattr("qqmusic_api.algorithms.sign.sign_from_digest_c", lambda _digest: None)
     assert sign_request(request) == expected

@@ -44,6 +44,7 @@ repository = "https://github.com/l-1124/QQMusicApi"
 dev = [
   { include-group = "linting" },
   { include-group = "testing" },
+  "setuptools>=82.0.0",
 ]
 linting = [
   "basedpyright>=1.37.2",
@@ -71,29 +72,25 @@ web = [
 ]
 
 [build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+requires = ["setuptools>=80.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
 
 [tool.commitizen]
 name = "cz_gitmoji"
 
-[tool.hatch.version]
-path = "qqmusic_api/__init__.py"
+[tool.setuptools.dynamic]
+version = { attr = "qqmusic_api.__version__" }
 
-[tool.hatch.metadata]
-allow-direct-references = true
+[tool.setuptools.packages.find]
+include = ["qqmusic_api*"]
 
-[tool.hatch.build.targets.wheel]
-packages = ["qqmusic_api"]
-
-[tool.hatch.build.targets.sdist]
-include = ["/qqmusic_api", "/tests", "LICENSE", "README.md"]
+[tool.setuptools.package-data]
+qqmusic_api = [ "*.pyi", "algorithms/*.pyi"]
 
 [tool.pyright]
 venvPath = "."
 venv = ".venv"
 include = ["qqmusic_api"]
-exclude = ["tests", "examples", "**/node_modules", "**/__pycache__", "**/.*", ".venv"]
 pythonVersion = "3.10"
 typeCheckingMode = "standard"
 
@@ -121,12 +118,6 @@ extend-select = [
 ]
 ignore = ["D105", "D107", "D205", "D415", "RUF029"]
 pydocstyle = { convention = "google" }
-
-[tool.ruff.lint.per-file-ignores]
-"tests/*" = ["D"]
-"examples/*" = ["D", "T"]
-"qqmusic_api/__init__.py" = ["F405", "D"]
-"qqmusic_api/**/__init__.py" = ["F405", "D"]
 
 [tool.uv]
 package = true

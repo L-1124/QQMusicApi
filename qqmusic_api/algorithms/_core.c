@@ -1,22 +1,120 @@
-"""QRC TripleDES C 加速后端."""
+#include <Python.h>
 
-import os
-from functools import lru_cache
-from typing import Any
-
-try:
-    from cffi import FFI
-except Exception:  # pragma: no cover
-    FFI = None  # type: ignore[assignment]
-
-
-_CDEF = """
-int qrc_triple_des_decrypt(const unsigned char *input, size_t len, const unsigned char key[24], unsigned char *output);
-"""
-
-_C_SOURCE = r"""
 #include <stddef.h>
 #include <stdint.h>
+#include <string.h>
+
+/* ---------------- sign ---------------- */
+
+static const int PART1_INDEXES[7] = {23, 14, 6, 36, 16, 7, 19};
+static const int PART2_INDEXES[8] = {16, 1, 32, 12, 19, 27, 8, 5};
+static const uint8_t SCRAMBLE_VALUES[20] = {
+    89, 39, 179, 150, 218, 82, 58, 252, 177, 52,
+    186, 123, 120, 64, 242, 133, 143, 161, 121, 179
+};
+static const char B64_TABLE[64] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+static int sign_hex_value(char c) {
+    if (c >= '0' && c <= '9') {
+        return c - '0';
+    }
+    if (c >= 'A' && c <= 'F') {
+        return c - 'A' + 10;
+    }
+    if (c >= 'a' && c <= 'f') {
+        return c - 'a' + 10;
+    }
+    return -1;
+}
+
+static size_t sign_base64_encode_20(const uint8_t in[20], char out[28]) {
+    size_t i = 0;
+    size_t j = 0;
+
+    while (i + 3 <= 20) {
+        uint32_t n = ((uint32_t)in[i] << 16) | ((uint32_t)in[i + 1] << 8) | in[i + 2];
+        out[j++] = B64_TABLE[(n >> 18) & 0x3F];
+        out[j++] = B64_TABLE[(n >> 12) & 0x3F];
+        out[j++] = B64_TABLE[(n >> 6) & 0x3F];
+        out[j++] = B64_TABLE[n & 0x3F];
+        i += 3;
+    }
+
+    if (i < 20) {
+        uint32_t n = ((uint32_t)in[i] << 16);
+        out[j++] = B64_TABLE[(n >> 18) & 0x3F];
+        if (i + 1 < 20) {
+            n |= ((uint32_t)in[i + 1] << 8);
+            out[j++] = B64_TABLE[(n >> 12) & 0x3F];
+            out[j++] = B64_TABLE[(n >> 6) & 0x3F];
+            out[j++] = '=';
+        } else {
+            out[j++] = B64_TABLE[(n >> 12) & 0x3F];
+            out[j++] = '=';
+            out[j++] = '=';
+        }
+    }
+
+    return j;
+}
+
+static int qqmusic_sign_from_digest(const char *digest40, char *out, size_t out_size) {
+    size_t pos = 0;
+    int i;
+    uint8_t part3[20];
+    char b64[28];
+    size_t b64_len;
+
+    if (!digest40 || !out || out_size < 48) {
+        return -1;
+    }
+
+    for (i = 0; i < 40; ++i) {
+        if (sign_hex_value(digest40[i]) < 0) {
+            return -2;
+        }
+    }
+
+    out[pos++] = 'z';
+    out[pos++] = 'z';
+    out[pos++] = 'c';
+
+    for (i = 0; i < 7; ++i) {
+        out[pos++] = digest40[PART1_INDEXES[i]];
+    }
+
+    for (i = 0; i < 20; ++i) {
+        int hi = sign_hex_value(digest40[i * 2]);
+        int lo = sign_hex_value(digest40[i * 2 + 1]);
+        part3[i] = (uint8_t)(SCRAMBLE_VALUES[i] ^ ((hi << 4) | lo));
+    }
+
+    b64_len = sign_base64_encode_20(part3, b64);
+    for (i = 0; i < (int)b64_len; ++i) {
+        char c = b64[i];
+        if (c != '/' && c != '+' && c != '=') {
+            out[pos++] = c;
+        }
+    }
+
+    for (i = 0; i < 8; ++i) {
+        out[pos++] = digest40[PART2_INDEXES[i]];
+    }
+
+    for (i = 0; i < (int)pos; ++i) {
+        if (out[i] >= 'A' && out[i] <= 'Z') {
+            out[i] = (char)(out[i] - 'A' + 'a');
+        }
+    }
+
+    if (pos + 1 > out_size) {
+        return -3;
+    }
+    out[pos] = '\0';
+    return 0;
+}
+
+/* ---------------- 3DES ---------------- */
 
 #define ENCRYPT 1
 #define DECRYPT 0
@@ -72,7 +170,7 @@ static const uint8_t sbox[8][64] = {
     }
 };
 
-static inline uint32_t BITNUM(const uint8_t* a, int b, int c) {
+static inline uint32_t BITNUM(const uint8_t *a, int b, int c) {
     return ((uint32_t)((a[(b / 32) * 4 + 3 - (b % 32) / 8] >> (7 - (b % 8))) & 0x01)) << c;
 }
 
@@ -88,7 +186,7 @@ static inline uint32_t SBOXBIT(uint8_t a) {
     return (uint32_t)((a & 0x20U) | ((a & 0x1FU) >> 1) | ((a & 0x01U) << 4));
 }
 
-static void KeySchedule(const uint8_t* key, uint8_t schedule[16][6], uint32_t mode) {
+static void KeySchedule(const uint8_t *key, uint8_t schedule[16][6], uint32_t mode) {
     uint32_t i, j, to_gen, c, d;
     static const uint32_t key_rnd_shift[16] = {1, 1, 2, 2, 2, 2, 2, 2, 1, 2, 2, 2, 2, 2, 2, 1};
     static const uint32_t key_perm_c[28] = {
@@ -179,7 +277,8 @@ static void InvIP(const uint32_t state[2], uint8_t input[8]) {
 
 static uint32_t F(uint32_t state, const uint8_t key[6]) {
     uint8_t lrgstate[6];
-    uint32_t t1, t2;
+    uint32_t t1;
+    uint32_t t2;
 
     t1 = BITNUMINTL(state, 31, 0) | ((state & 0xF0000000U) >> 1) | BITNUMINTL(state, 4, 5) |
          BITNUMINTL(state, 3, 6) | ((state & 0x0F000000U) >> 3) | BITNUMINTL(state, 8, 11) |
@@ -231,7 +330,8 @@ static uint32_t F(uint32_t state, const uint8_t key[6]) {
 
 static void Crypt(const uint8_t input[8], uint8_t output[8], const uint8_t key[16][6]) {
     uint32_t state[2];
-    uint32_t idx, t;
+    uint32_t idx;
+    uint32_t t;
 
     IP(state, input);
     for (idx = 0; idx < 15; ++idx) {
@@ -263,7 +363,7 @@ static void TripleDESCrypt(const uint8_t input[8], uint8_t output[8], const uint
     Crypt(tmp2, output, key[2]);
 }
 
-int qrc_triple_des_decrypt(const uint8_t *input, size_t len, const uint8_t key[24], uint8_t *output) {
+static int qrc_triple_des_decrypt(const uint8_t *input, size_t len, const uint8_t key[24], uint8_t *output) {
     size_t i;
     uint8_t schedule[3][16][6];
     if ((len % 8) != 0) {
@@ -275,47 +375,96 @@ int qrc_triple_des_decrypt(const uint8_t *input, size_t len, const uint8_t key[2
     }
     return 0;
 }
-"""
 
+/* ---------------- Python module wrappers ---------------- */
 
-@lru_cache(maxsize=1)
-def _load_backend() -> tuple[Any, Any] | None:
-    """加载并缓存 C 加速后端."""
-    if FFI is None:
-        return None
+static PyObject *py_sign_from_digest(PyObject *self, PyObject *args) {
+    PyObject *digest_obj;
+    const char *digest40;
+    Py_ssize_t digest_len;
+    char out_buf[64];
+    int status;
 
-    ffi = FFI()
-    ffi.cdef(_CDEF)
-    compile_args = ["/O2"] if os.name == "nt" else ["-O3"]
-    try:
-        lib = ffi.verify(_C_SOURCE, extra_compile_args=compile_args)
-    except Exception:  # pragma: no cover
-        return None
-    return ffi, lib
+    (void)self;
 
+    if (!PyArg_ParseTuple(args, "U", &digest_obj)) {
+        return NULL;
+    }
 
-def tripledes_decrypt_blocks(data: bytes, key: bytes) -> bytes | None:
-    """使用 C 后端解密 3DES-ECB 块数据.
+    digest40 = PyUnicode_AsUTF8AndSize(digest_obj, &digest_len);
+    if (digest40 == NULL) {
+        return NULL;
+    }
 
-    Args:
-        data: 待解密数据,长度必须是 8 的倍数。
-        key: 24 字节密钥。
+    if (digest_len != 40) {
+        Py_RETURN_NONE;
+    }
 
-    Returns:
-        解密后字节串:若 C 后端不可用或参数非法,返回 `None`。
-    """
-    if len(key) != 24 or (len(data) % 8) != 0:
-        return None
+    status = qqmusic_sign_from_digest(digest40, out_buf, sizeof(out_buf));
+    if (status != 0) {
+        Py_RETURN_NONE;
+    }
 
-    backend = _load_backend()
-    if backend is None:
-        return None
+    return PyUnicode_FromString(out_buf);
+}
 
-    ffi, lib = backend
-    in_buf = ffi.new(f"unsigned char[{len(data)}]", data)
-    key_buf = ffi.new("unsigned char[24]", key)
-    out_buf = ffi.new(f"unsigned char[{len(data)}]")
-    status = lib.qrc_triple_des_decrypt(in_buf, len(data), key_buf, out_buf)
-    if status != 0:
-        return None
-    return bytes(ffi.buffer(out_buf, len(data)))
+static PyObject *py_tripledes_decrypt_blocks(PyObject *self, PyObject *args) {
+    Py_buffer data_buf;
+    Py_buffer key_buf;
+    PyObject *output;
+    int status;
+
+    (void)self;
+
+    if (!PyArg_ParseTuple(args, "y*y*", &data_buf, &key_buf)) {
+        return NULL;
+    }
+
+    if (key_buf.len != 24 || (data_buf.len % 8) != 0) {
+        PyBuffer_Release(&data_buf);
+        PyBuffer_Release(&key_buf);
+        Py_RETURN_NONE;
+    }
+
+    output = PyBytes_FromStringAndSize(NULL, data_buf.len);
+    if (output == NULL) {
+        PyBuffer_Release(&data_buf);
+        PyBuffer_Release(&key_buf);
+        return NULL;
+    }
+
+    status = qrc_triple_des_decrypt(
+        (const uint8_t *)data_buf.buf,
+        (size_t)data_buf.len,
+        (const uint8_t *)key_buf.buf,
+        (uint8_t *)PyBytes_AS_STRING(output)
+    );
+
+    PyBuffer_Release(&data_buf);
+    PyBuffer_Release(&key_buf);
+
+    if (status != 0) {
+        Py_DECREF(output);
+        Py_RETURN_NONE;
+    }
+
+    return output;
+}
+
+static PyMethodDef CoreMethods[] = {
+    {"sign_from_digest", py_sign_from_digest, METH_VARARGS, "Compute QQMusic sign from SHA1 hex digest."},
+    {"tripledes_decrypt_blocks", py_tripledes_decrypt_blocks, METH_VARARGS, "Decrypt 3DES-ECB blocks for QRC."},
+    {NULL, NULL, 0, NULL}
+};
+
+static struct PyModuleDef coremodule = {
+    PyModuleDef_HEAD_INIT,
+    "_core",
+    NULL,
+    -1,
+    CoreMethods
+};
+
+PyMODINIT_FUNC PyInit__core(void) {
+    return PyModule_Create(&coremodule);
+}

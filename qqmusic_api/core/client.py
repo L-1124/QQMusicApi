@@ -2,7 +2,7 @@
 
 import logging
 import uuid
-from typing import TYPE_CHECKING, Any, TypedDict, TypeVar
+from typing import TYPE_CHECKING, Any, TypedDict, TypeVar, cast
 
 import anyio
 import httpx
@@ -317,6 +317,15 @@ class Client:
             return response_model.model_validate(raw)
         return raw
 
+    @staticmethod
+    def _ensure_jce_param_dict(param: dict[str, Any] | dict[int, Any]) -> dict[int, Any]:
+        """校验并返回 JCE 所需的整型键参数字典。"""
+        if not isinstance(param, dict):
+            raise TypeError("JCE param 必须是 dict[int, Any]")
+        if not all(isinstance(key, int) for key in param):
+            raise TypeError("JCE param 必须是 dict[int, Any]")
+        return cast(dict[int, Any], param)
+
     async def close(self) -> None:
         """关闭底层会话。"""
         if self._owns_session:
@@ -437,7 +446,7 @@ class Client:
                 f"req_{idx}": JceRequestItem(
                     module=req["module"],
                     method=req["method"],
-                    param=TarsDict(bool_to_int(req["param"])),
+                    param=TarsDict(self._ensure_jce_param_dict(req["param"])),
                 )
                 for idx, req in enumerate(requests)
             },

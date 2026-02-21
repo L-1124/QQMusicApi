@@ -1,3 +1,5 @@
+"""requests 模块测试."""
+
 import logging
 
 import anyio
@@ -138,4 +140,19 @@ async def test_request_group_execute_iter_completeness() -> None:
     outcomes = [outcome async for outcome in group.execute_iter()]
     assert len(outcomes) == 7
     assert sorted(outcome.index for outcome in outcomes) == list(range(7))
+    await client.close()
+
+
+@pytest.mark.asyncio
+async def test_request_jce_rejects_non_int_param_keys() -> None:
+    """验证 request_jce 会拒绝非 int 键的 param."""
+    client = Client(platform="desktop")
+    with pytest.raises(TypeError, match=r"dict\[int, Any\]"):
+        await client.request_jce(
+            data={
+                "module": "music.test.Module",
+                "method": "TestMethod",
+                "param": {"bad_key": 1},
+            }
+        )
     await client.close()

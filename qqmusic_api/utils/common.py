@@ -61,7 +61,7 @@ def bool_to_int(data: Any) -> Any:
     if isinstance(data, bool):
         return int(data)
     if isinstance(data, dict):
-        return type(data)({k: bool_to_int(v) for k, v in data.items()})
+        return {k: bool_to_int(v) for k, v in data.items()}
     if isinstance(data, list):
         return [bool_to_int(v) for v in data]
     return data

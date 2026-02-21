@@ -2,7 +2,7 @@
 
 import zlib
 
-from ._tripledes_c import tripledes_decrypt_blocks
+from ._core import tripledes_decrypt_blocks
 from .sign import sign_request
 from .tripledes import DECRYPT, tripledes_crypt, tripledes_key_setup
 
