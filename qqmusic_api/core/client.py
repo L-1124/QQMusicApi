@@ -27,8 +27,13 @@ from ..utils.qimei import QimeiResult, get_qimei
 from .exceptions import ApiError, NetworkError, build_api_error, extract_api_error_code
 
 if TYPE_CHECKING:
-    from ..modules._base import ApiModule
+    from ..modules.album import AlbumApi
+    from ..modules.comment import CommentApi
+    from ..modules.mv import MvApi
+    from ..modules.recommend import RecommendApi
+    from ..modules.top import TopApi
     from .request import Request, RequestGroup
+
 
 R = TypeVar("R", bound=BaseModel | Struct | dict)
 
@@ -88,39 +93,39 @@ class Client:
         return new_client
 
     @property
-    def comment(self) -> "ApiModule":
+    def comment(self) -> "CommentApi":
         """评论模块。"""
-        from ..modules._base import ApiModule
+        from ..modules.comment import CommentApi
 
-        return ApiModule(self)
+        return CommentApi(self)
 
     @property
-    def recommend(self) -> "ApiModule":
+    def recommend(self) -> "RecommendApi":
         """推荐模块。"""
-        from ..modules._base import ApiModule
+        from ..modules.recommend import RecommendApi
 
-        return ApiModule(self)
+        return RecommendApi(self)
 
     @property
-    def top(self) -> "ApiModule":
+    def top(self) -> "TopApi":
         """排行榜模块。"""
-        from ..modules._base import ApiModule
+        from ..modules.top import TopApi
 
-        return ApiModule(self)
+        return TopApi(self)
 
     @property
-    def album(self) -> "ApiModule":
+    def album(self) -> "AlbumApi":
         """专辑模块。"""
-        from ..modules._base import ApiModule
+        from ..modules.album import AlbumApi
 
-        return ApiModule(self)
+        return AlbumApi(self)
 
     @property
-    def mv(self) -> "ApiModule":
+    def mv(self) -> "MvApi":
         """MV 模块。"""
-        from ..modules._base import ApiModule
+        from ..modules.mv import MvApi
 
-        return ApiModule(self)
+        return MvApi(self)
 
     async def _request_raw(self, method: str, url: str, **kwargs: Any) -> httpx.Response:
         """发送原始 HTTP 请求。"""
