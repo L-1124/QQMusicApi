@@ -6,7 +6,7 @@ import anyio
 import httpx
 import pytest
 
-from qqmusic_api import Client
+from qqmusic_api import Client, Credential
 from qqmusic_api.models import JsonResponse
 
 
@@ -156,3 +156,61 @@ async def test_request_jce_rejects_non_int_param_keys() -> None:
             }
         )
     await client.close()
+
+
+@pytest.mark.asyncio
+async def test_using_shares_session_and_limiter() -> None:
+    """验证 using 创建的新 Client 共享 session 和 limiter."""
+    client = Client(platform="desktop")
+    new_credential = Credential(musicid=123456)
+    new_client = client.using(new_credential)
+
+    assert new_client._session is client._session
+    assert new_client._limiter is client._limiter
+
+    await client.close()
+    await new_client.close()
+
+
+@pytest.mark.asyncio
+async def test_using_has_independent_credential() -> None:
+    """验证 using 创建的新 Client 拥有独立的凭据."""
+    old_credential = Credential(musicid=111)
+    client = Client(credential=old_credential)
+    new_credential = Credential(musicid=222)
+    new_client = client.using(new_credential)
+
+    assert new_client.credential is new_credential
+    assert client.credential is old_credential
+    assert new_client.credential.musicid == 222
+    assert client.credential.musicid == 111
+
+    await client.close()
+    await new_client.close()
+
+
+@pytest.mark.asyncio
+async def test_using_does_not_own_session() -> None:
+    """验证 using 创建的新 Client 不拥有 session 所有的所有权."""
+    client = Client(platform="desktop")
+    new_client = client.using(Credential())
+
+    assert client._owns_session is True
+    assert new_client._owns_session is False
+
+    await client.close()
+    await new_client.close()
+
+
+@pytest.mark.asyncio
+async def test_using_shares_qimei_state() -> None:
+    """验证 using 创建的新 Client 共享 QIMEI 相关的状态."""
+    client = Client(platform="android")
+    new_client = client.using(Credential())
+
+    assert new_client._qimei_lock is client._qimei_lock
+    assert new_client._qimei_loaded is client._qimei_loaded
+    assert new_client._qimei_cache is client._qimei_cache
+
+    await client.close()
+    await new_client.close()

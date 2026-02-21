@@ -1,5 +1,6 @@
 """Client"""
 
+import copy
 import logging
 import uuid
 from typing import TYPE_CHECKING, Any, TypedDict, TypeVar, cast
@@ -80,19 +81,9 @@ class Client:
 
     def using(self, credential: Credential) -> "Client":
         """创建共享连接配置的新 Client。"""
-        new_client = object.__new__(Client)
+        new_client = copy.copy(self)
         new_client.credential = credential
-        new_client.device = self.device
-        new_client.enable_sign = self.enable_sign
-        new_client.platform = self.platform
-        new_client.qimei_timeout = self.qimei_timeout
-        new_client._guid = self._guid
-        new_client._limiter = self._limiter
         new_client._owns_session = False
-        new_client._session = self._session
-        new_client._qimei_lock = self._qimei_lock
-        new_client._qimei_loaded = self._qimei_loaded
-        new_client._qimei_cache = self._qimei_cache
         return new_client
 
     async def _request_raw(self, method: str, url: str, **kwargs: Any) -> httpx.Response:
