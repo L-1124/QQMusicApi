@@ -7,6 +7,7 @@ import httpx
 import pytest
 
 from qqmusic_api import Client, Credential
+from qqmusic_api.core.exceptions import HTTPError
 from qqmusic_api.models import JsonResponse
 
 
@@ -42,6 +43,54 @@ async def test_request_musicu_payload_uses_song_api_params() -> None:
     assert "music.trackInfo.UniformRuleCtrl" in payload_text
     assert "CgiGetTrackInfo" in payload_text
     assert "573221672" in payload_text
+
+
+@pytest.mark.asyncio
+async def test_request_musicu_raises_http_error_on_non_200() -> None:
+    """验证 request_musicu 在 HTTP 非 200 时抛出 HTTPError."""
+
+    async def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(500, text="musicu-failed")
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport) as session:
+        client = Client(session=session, platform="desktop")
+        with pytest.raises(HTTPError) as exc_info:
+            await client.request_musicu(
+                data={
+                    "module": "music.test.Module",
+                    "method": "TestMethod",
+                    "param": {},
+                }
+            )
+
+    assert exc_info.value.status_code == 500
+    assert "musicu-failed" in str(exc_info.value)
+
+
+@pytest.mark.asyncio
+async def test_request_jce_raises_http_error_on_non_200() -> None:
+    """验证 request_jce 在 HTTP 非 200 时抛出 HTTPError."""
+
+    async def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(500, text="jce-failed")
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport) as session:
+        client = Client(session=session, platform="android")
+        client._qimei_loaded = True
+        client._qimei_cache = {"q16": "q16-default", "q36": "q36-default"}
+        with pytest.raises(HTTPError) as exc_info:
+            await client.request_jce(
+                data={
+                    "module": "music.test.Module",
+                    "method": "TestMethod",
+                    "param": {0: "ok"},
+                }
+            )
+
+    assert exc_info.value.status_code == 500
+    assert "jce-failed" in str(exc_info.value)
 
 
 @pytest.mark.asyncio

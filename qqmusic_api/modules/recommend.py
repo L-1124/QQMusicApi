@@ -5,13 +5,13 @@ from typing import TYPE_CHECKING
 from ._base import ApiModule
 
 if TYPE_CHECKING:
-    from ..core.request import Request
+    pass
 
 
 class RecommendApi(ApiModule):
     """推荐 API。"""
 
-    def get_home_feed(self) -> "Request[dict]":
+    def get_home_feed(self):
         """获取主页推荐。"""
         data = {
             "direction": 0,
@@ -20,7 +20,7 @@ class RecommendApi(ApiModule):
         }
         return self._client.build_request("music.recommend.RecommendFeed", "get_recommend_feed", data)
 
-    def get_guess_recommend(self) -> "Request[dict]":
+    def get_guess_recommend(self):
         """获取猜你喜欢。"""
         data = {
             "id": 99,
@@ -33,7 +33,7 @@ class RecommendApi(ApiModule):
         }
         return self._client.build_request("music.radioProxy.MbTrackRadioSvr", "get_radio_track", data)
 
-    def get_radar_recommend(self) -> "Request[dict]":
+    def get_radar_recommend(self):
         """获取雷达推荐。"""
         data = {
             "Page": 1,
@@ -43,12 +43,12 @@ class RecommendApi(ApiModule):
         }
         return self._client.build_request("music.recommend.TrackRelationServer", "GetRadarSong", data)
 
-    def get_recommend_songlist(self) -> "Request[dict]":
+    def get_recommend_songlist(self):
         """获取推荐歌单。"""
         data = {"From": 0, "Size": 25}
         return self._client.build_request("music.playlist.PlaylistSquare", "GetRecommendFeed", data)
 
-    def get_recommend_newsong(self) -> "Request[dict]":
+    def get_recommend_newsong(self):
         """获取推荐新歌。"""
         data = {"type": 5}
         return self._client.build_request("newsong.NewSongServer", "get_new_song_info", data)

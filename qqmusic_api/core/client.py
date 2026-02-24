@@ -3,7 +3,7 @@
 import copy
 import logging
 import uuid
-from typing import TYPE_CHECKING, Any, TypedDict, TypeVar, cast
+from typing import TYPE_CHECKING, Any, TypedDict, TypeVar, cast, overload
 
 import anyio
 import httpx
@@ -24,14 +24,20 @@ from ..models import (
 from ..utils.common import bool_to_int, hash33
 from ..utils.device import Device
 from ..utils.qimei import QimeiResult, get_qimei
-from .exceptions import ApiError, NetworkError, build_api_error, extract_api_error_code
+from .exceptions import ApiError, HTTPError, NetworkError, build_api_error, extract_api_error_code
 
 if TYPE_CHECKING:
     from ..modules.album import AlbumApi
     from ..modules.comment import CommentApi
+    from ..modules.lyric import LyricApi
     from ..modules.mv import MvApi
     from ..modules.recommend import RecommendApi
+    from ..modules.search import SearchApi
+    from ..modules.singer import SingerApi
+    from ..modules.song import SongApi
+    from ..modules.songlist import SonglistApi
     from ..modules.top import TopApi
+    from ..modules.user import UserApi
     from .request import Request, RequestGroup
 
 
@@ -127,6 +133,48 @@ class Client:
 
         return MvApi(self)
 
+    @property
+    def search(self) -> "SearchApi":
+        """搜索模块。"""
+        from ..modules.search import SearchApi
+
+        return SearchApi(self)
+
+    @property
+    def lyric(self) -> "LyricApi":
+        """歌词模块。"""
+        from ..modules.lyric import LyricApi
+
+        return LyricApi(self)
+
+    @property
+    def singer(self) -> "SingerApi":
+        """歌手模块。"""
+        from ..modules.singer import SingerApi
+
+        return SingerApi(self)
+
+    @property
+    def song(self) -> "SongApi":
+        """歌曲模块。"""
+        from ..modules.song import SongApi
+
+        return SongApi(self)
+
+    @property
+    def songlist(self) -> "SonglistApi":
+        """歌单模块。"""
+        from ..modules.songlist import SonglistApi
+
+        return SonglistApi(self)
+
+    @property
+    def user(self) -> "UserApi":
+        """用户模块。"""
+        from ..modules.user import UserApi
+
+        return UserApi(self)
+
     async def _request_raw(self, method: str, url: str, **kwargs: Any) -> httpx.Response:
         """发送原始 HTTP 请求。"""
         logger.debug("HTTP 请求开始: %s %s", method, url)
@@ -143,9 +191,13 @@ class Client:
 
     @staticmethod
     def _ensure_http_ok(resp: httpx.Response) -> None:
-        """校验 HTTP 状态码。"""
+        """校验 HTTP 状态码.
+
+        Raises:
+            HTTPError: HTTP 状态码不是 200。
+        """
         if resp.status_code != 200:
-            raise ApiError("HTTP 请求失败", code=resp.status_code, data=resp.text[:500])
+            raise HTTPError(f"请求失败: {resp.text[:500]}", status_code=resp.status_code)
 
     @staticmethod
     def _parse_json_response(resp: httpx.Response) -> JsonResponse:
@@ -252,6 +304,32 @@ class Client:
             comm = {k: str(v) for k, v in comm.items()}
         return comm
 
+    @overload
+    def build_request(
+        self,
+        module: str,
+        method: str,
+        param: dict[str, Any] | dict[int, Any],
+        response_model: None = None,
+        comm: dict[str, Any] | None = None,
+        is_jce: bool = False,
+        credential: Credential | None = None,
+        platform: str | None = None,
+    ) -> "Request[dict[str, Any]]": ...
+
+    @overload
+    def build_request(
+        self,
+        module: str,
+        method: str,
+        param: dict[str, Any] | dict[int, Any],
+        response_model: type[R],
+        comm: dict[str, Any] | None = None,
+        is_jce: bool = False,
+        credential: Credential | None = None,
+        platform: str | None = None,
+    ) -> "Request[R]": ...
+
     def build_request(
         self,
         module: str,
@@ -262,7 +340,7 @@ class Client:
         is_jce: bool = False,
         credential: Credential | None = None,
         platform: str | None = None,
-    ) -> "Request[R]":
+    ) -> "Request[Any]":
         """构建可 await 的请求描述符。"""
         from .request import Request
 
@@ -282,7 +360,7 @@ class Client:
         """创建批量请求容器。"""
         from .request import RequestGroup
 
-        return RequestGroup(self, batch_size=batch_size, max_inflight_batches=max_inflight_batches)
+        return RequestGroup(cast("Client", self), batch_size=batch_size, max_inflight_batches=max_inflight_batches)
 
     async def execute(self, request: "Request[R]") -> R:
         """执行单个请求描述符。"""

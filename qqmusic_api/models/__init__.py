@@ -4,7 +4,6 @@ from .album import AlbumSongItem, AlbumSongResponse
 from .base import (
     CommonParams,
     Credential,
-    DataT,
     JceRequest,
     JceRequestItem,
     JceResponse,
@@ -21,7 +20,6 @@ __all__ = [
     "AlbumSongResponse",
     "CommonParams",
     "Credential",
-    "DataT",
     "JceRequest",
     "JceRequestItem",
     "JceResponse",

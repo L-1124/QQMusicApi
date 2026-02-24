@@ -1,11 +1,9 @@
 """基础数据模型模块"""
 
-from typing import Any, Generic, TypeVar
+from typing import Any
 
 from pydantic import BaseModel, Field, model_serializer, model_validator
 from tarsio import Struct, TarsDict, field
-
-DataT = TypeVar("DataT")
 
 
 class CommonParams(BaseModel):
@@ -116,12 +114,12 @@ class JceRequest(Struct):
     data: dict[str, JceRequestItem] = field(tag=1)
 
 
-class JsonResponseItem(BaseModel, Generic[DataT]):
+class JsonResponseItem(BaseModel):
     """JSON 格式响应项"""
 
     code: int = Field(default=0)
     subcode: int = Field(default=0)
-    data: DataT | dict[str, Any] = Field(default_factory=dict)
+    data: dict[str, Any] = Field(default_factory=dict)
 
 
 class JceResponseItem(Struct):

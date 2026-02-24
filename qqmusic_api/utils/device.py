@@ -17,24 +17,23 @@ DEFAULT_DEVICE_PATH = Path(__file__).parent.parent / ".cache" / "device.json"
 
 
 def random_imei() -> str:
-    """生成随机 IMEI 号码.
+    """生成满足标准 Luhn 校验的随机 IMEI 号码.
 
     Returns:
         随机生成的 IMEI 号码。
     """
-    imei = []
+    digits = [random.randint(0, 9) for _ in range(14)]
     sum_ = 0
-    for i in range(14):
-        num = random.randint(0, 9)
-        if (i + 2) % 2 == 0:
-            num *= 2
-            if num >= 10:
-                num = (num % 10) + 1
-        sum_ += num
-        imei.append(str(num))
-    ctrl_digit = (sum_ * 9) % 10
-    imei.append(str(ctrl_digit))
-    return "".join(imei)
+    for idx, digit in enumerate(digits):
+        checksum_digit = digit
+        if idx % 2 == 1:
+            checksum_digit *= 2
+            if checksum_digit > 9:
+                checksum_digit -= 9
+        sum_ += checksum_digit
+    ctrl_digit = (10 - (sum_ % 10)) % 10
+    digits.append(ctrl_digit)
+    return "".join(str(digit) for digit in digits)
 
 
 @dataclass

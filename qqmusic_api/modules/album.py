@@ -6,7 +6,7 @@ from ..models.album import AlbumSongResponse
 from ._base import ApiModule
 
 if TYPE_CHECKING:
-    from ..core.request import Request
+    pass
 
 
 class AlbumApi(ApiModule):
@@ -26,7 +26,7 @@ class AlbumApi(ApiModule):
             raise ValueError("not supported size")
         return f"https://y.gtimg.cn/music/photo_new/T002R{size}x{size}M000{mid}.jpg"
 
-    def get_detail(self, value: str | int) -> "Request[dict[str, Any]]":
+    def get_detail(self, value: str | int):
         """获取专辑详细信息
 
         Args:
@@ -42,9 +42,10 @@ class AlbumApi(ApiModule):
             module="music.musichallAlbum.AlbumInfoServer",
             method="GetAlbumDetail",
             param=param,
+            response_model=dict[str, Any],
         )
 
-    def get_song(self, value: str | int, num: int = 10, page: int = 1) -> "Request[AlbumSongResponse]":
+    def get_song(self, value: str | int, num: int = 10, page: int = 1):
         """获取专辑歌曲
 
         Args:

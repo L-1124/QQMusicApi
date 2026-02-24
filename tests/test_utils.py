@@ -6,7 +6,7 @@ import pytest
 
 from qqmusic_api import Client
 from qqmusic_api.utils import qimei as qimei_module
-from qqmusic_api.utils.device import Device
+from qqmusic_api.utils.device import Device, random_imei
 from qqmusic_api.utils.qimei import DEFAULT_QIMEI, get_qimei
 
 
@@ -34,7 +34,7 @@ async def test_get_qimei_timeout_fallback_without_retry(monkeypatch: pytest.Monk
     async with httpx.AsyncClient(transport=transport) as session:
         result = await get_qimei("14.9.0.8", session=session, request_timeout=0.01)
 
-    assert result["q16"] == ""
+    assert result["q16"] == DEFAULT_QIMEI
     assert result["q36"] == DEFAULT_QIMEI
     assert attempts["count"] == 1
     assert saved["count"] == 0
@@ -77,7 +77,7 @@ async def test_client_qimei_timeout_passed_to_get_qimei(monkeypatch: pytest.Monk
 
     async def fake_get_qimei(version: str, session=None, request_timeout: float = 1.5):
         captured["timeout"] = request_timeout
-        return {"q16": "", "q36": DEFAULT_QIMEI}
+        return {"q16": DEFAULT_QIMEI, "q36": DEFAULT_QIMEI}
 
     monkeypatch.setattr("qqmusic_api.core.client.get_qimei", fake_get_qimei)
 
@@ -86,3 +86,24 @@ async def test_client_qimei_timeout_passed_to_get_qimei(monkeypatch: pytest.Monk
 
     assert captured["timeout"] == 1.25
     await client.close()
+
+
+def _is_valid_luhn_imei(imei: str) -> bool:
+    digits = [int(d) for d in imei]
+    check_digit = digits[-1]
+    total = 0
+    for idx, digit in enumerate(digits[:-1]):
+        checksum_digit = digit
+        if idx % 2 == 1:
+            checksum_digit *= 2
+            if checksum_digit > 9:
+                checksum_digit -= 9
+        total += checksum_digit
+    return (10 - (total % 10)) % 10 == check_digit
+
+
+def test_random_imei_is_luhn_valid() -> None:
+    """验证 random_imei 生成值满足 Luhn 校验."""
+    imeis = [random_imei() for _ in range(1000)]
+    assert all(len(imei) == 15 and imei.isdigit() for imei in imeis)
+    assert all(_is_valid_luhn_imei(imei) for imei in imeis)

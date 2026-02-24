@@ -1,18 +1,18 @@
 """排行榜相关 API"""
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from ..models.top import TopCategoryResponse
 from ._base import ApiModule
 
 if TYPE_CHECKING:
-    from ..core.request import Request
+    pass
 
 
 class TopApi(ApiModule):
     """排行榜相关 API"""
 
-    def get_category(self) -> "Request[TopCategoryResponse]":
+    def get_category(self):
         """获取所有排行榜"""
         return self._client.build_request(
             module="music.musicToplist.Toplist",
@@ -27,7 +27,7 @@ class TopApi(ApiModule):
         num: int = 10,
         page: int = 1,
         tag: bool = True,
-    ) -> "Request[dict[str, Any]]":
+    ):
         """获取排行榜详细信息
 
         Args:

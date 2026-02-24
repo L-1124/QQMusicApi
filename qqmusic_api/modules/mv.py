@@ -1,18 +1,18 @@
 """MV 相关 API"""
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from ..utils.common import get_guid
 from ._base import ApiModule
 
 if TYPE_CHECKING:
-    from ..core.request import Request
+    pass
 
 
 class MvApi(ApiModule):
     """MV 相关 API"""
 
-    def get_detail(self, vids: list[str]) -> "Request[dict[str, Any]]":
+    def get_detail(self, vids: list[str]):
         """获取 MV 详细信息
 
         Args:
@@ -50,7 +50,7 @@ class MvApi(ApiModule):
             },
         )
 
-    def get_mv_urls(self, vids: list[str]) -> "Request[dict[str, Any]]":
+    def get_mv_urls(self, vids: list[str]):
         """获取 MV 播放链接
 
         Args:

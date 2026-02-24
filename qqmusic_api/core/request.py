@@ -54,7 +54,7 @@ class RequestOutcome:
     error: RequestErrorInfo | None = None
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass
 class Request(Generic[R]):
     """请求描述符 (Awaitable Object)."""
 
@@ -69,7 +69,7 @@ class Request(Generic[R]):
     platform: str | None = None
 
     def __await__(self) -> Generator[Any, None, R]:
-        return self._client.execute(self).__await__()  # type: ignore[return-value]
+        return self._client.execute(self).__await__()
 
 
 @dataclass(slots=True)

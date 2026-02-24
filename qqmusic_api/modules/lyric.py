@@ -1,0 +1,44 @@
+"""歌词相关 API。"""
+
+from typing import TYPE_CHECKING, Any
+
+from ._base import ApiModule
+
+if TYPE_CHECKING:
+    pass
+
+
+class LyricApi(ApiModule):
+    """歌词相关 API。"""
+
+    def get_lyric(
+        self,
+        value: str | int,
+        qrc: bool = False,
+        trans: bool = False,
+        roma: bool = False,
+    ):
+        """获取歌词原始数据。"""
+        params: dict[str, Any] = {
+            "crypt": 1,
+            "ct": 11,
+            "cv": 13020508,
+            "lrc_t": 0,
+            "qrc": qrc,
+            "qrc_t": 0,
+            "roma": roma,
+            "roma_t": 0,
+            "trans": trans,
+            "trans_t": 0,
+            "type": 1,
+        }
+        if isinstance(value, int):
+            params["songId"] = value
+        else:
+            params["songMid"] = value
+
+        return self._client.build_request(
+            module="music.musichallSong.PlayLyricInfo",
+            method="GetPlayLyricInfo",
+            param=params,
+        )

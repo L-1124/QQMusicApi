@@ -5,13 +5,13 @@ from typing import TYPE_CHECKING
 from ._base import ApiModule
 
 if TYPE_CHECKING:
-    from ..core.request import Request
+    pass
 
 
 class CommentApi(ApiModule):
     """评论 API。"""
 
-    def get_comment_count(self, biz_id: str) -> "Request[dict]":
+    def get_comment_count(self, biz_id: str):
         """获取歌曲评论数量。
 
         Args:
@@ -32,7 +32,7 @@ class CommentApi(ApiModule):
         page_num: int = 1,
         page_size: int = 15,
         last_comment_seq_no: str = "",
-    ) -> "Request[dict]":
+    ):
         """获取歌曲热评。
 
         Args:
@@ -59,7 +59,7 @@ class CommentApi(ApiModule):
         page_num: int = 1,
         page_size: int = 15,
         last_comment_seq_no: str = "",
-    ) -> "Request[dict]":
+    ):
         """获取歌曲最新评论。
 
         Args:
@@ -87,7 +87,7 @@ class CommentApi(ApiModule):
         page_num: int = 1,
         page_size: int = 15,
         last_comment_seq_no: str = "",
-    ) -> "Request[dict]":
+    ):
         """获取歌曲推荐评论。
 
         Args:
@@ -114,7 +114,7 @@ class CommentApi(ApiModule):
         biz_id: str,
         page_size: int = 15,
         last_comment_seq_no: str = "",
-    ) -> "Request[dict]":
+    ):
         """获取时刻评论。
 
         Args:
