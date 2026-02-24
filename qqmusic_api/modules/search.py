@@ -1,13 +1,10 @@
 """搜索相关 API"""
 
 from enum import Enum
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from ..utils.common import get_searchID
 from ._base import ApiModule
-
-if TYPE_CHECKING:
-    pass
 
 
 class SearchType(Enum):

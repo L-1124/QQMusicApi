@@ -1,7 +1,7 @@
 """数据模型导出入口。"""
 
 from .album import AlbumSongItem, AlbumSongResponse
-from .base import (
+from .request import (
     CommonParams,
     Credential,
     JceRequest,

@@ -1,11 +1,8 @@
 """歌词相关 API。"""
 
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from ._base import ApiModule
-
-if TYPE_CHECKING:
-    pass
 
 
 class LyricApi(ApiModule):

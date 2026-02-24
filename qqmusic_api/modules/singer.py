@@ -1,12 +1,9 @@
 """歌手相关 API。"""
 
 from enum import Enum
-from typing import TYPE_CHECKING, cast
+from typing import cast
 
 from ._base import ApiModule
-
-if TYPE_CHECKING:
-    pass
 
 
 class AreaType(Enum):

@@ -1,12 +1,9 @@
 """专辑相关 API"""
 
-from typing import TYPE_CHECKING, Any, Literal
+from typing import Any, Literal
 
 from ..models.album import AlbumSongResponse
 from ._base import ApiModule
-
-if TYPE_CHECKING:
-    pass
 
 
 class AlbumApi(ApiModule):

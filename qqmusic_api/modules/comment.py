@@ -1,11 +1,6 @@
 """评论模块。"""
 
-from typing import TYPE_CHECKING
-
 from ._base import ApiModule
-
-if TYPE_CHECKING:
-    pass
 
 
 class CommentApi(ApiModule):

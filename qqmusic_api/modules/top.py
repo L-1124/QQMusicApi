@@ -1,12 +1,7 @@
 """排行榜相关 API"""
 
-from typing import TYPE_CHECKING
-
 from ..models.top import TopCategoryResponse
 from ._base import ApiModule
-
-if TYPE_CHECKING:
-    pass
 
 
 class TopApi(ApiModule):

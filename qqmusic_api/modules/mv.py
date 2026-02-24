@@ -1,12 +1,7 @@
 """MV 相关 API"""
 
-from typing import TYPE_CHECKING
-
 from ..utils.common import get_guid
 from ._base import ApiModule
-
-if TYPE_CHECKING:
-    pass
 
 
 class MvApi(ApiModule):

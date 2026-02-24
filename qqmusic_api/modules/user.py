@@ -1,12 +1,7 @@
 """用户相关 API。"""
 
-from typing import TYPE_CHECKING
-
 from ..models import Credential
 from ._base import ApiModule
-
-if TYPE_CHECKING:
-    pass
 
 
 class UserApi(ApiModule):
