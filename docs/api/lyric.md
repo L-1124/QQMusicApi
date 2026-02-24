@@ -1,1 +1,1 @@
-::: lyric
+::: modules.lyric

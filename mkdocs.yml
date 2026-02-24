@@ -4,7 +4,21 @@ site_description: 使用 Python 编写的用于调用 QQ音乐 各种 API 的库
 theme:
   name: "material"
   language: zh
-  font: false
+  palette:
+  - media: "(prefers-color-scheme)"
+    toggle:
+      icon: lucide/sun-moon
+      name: Switch to light mode
+  - media: "(prefers-color-scheme: light)"
+    scheme: default
+    toggle:
+      icon: material/weather-night
+      name: 切换到深色模式
+  - media: "(prefers-color-scheme: dark)"
+    scheme: slate
+    toggle:
+      icon: material/weather-sunny
+      name: 切换到浅色模式
   icon:
     repo: fontawesome/brands/github
   features:
@@ -20,21 +34,6 @@ theme:
     - navigation.indexes
     - search.suggest
     - toc.follow
-  palette:
-    - media: "(prefers-color-scheme)"
-      toggle:
-        icon: material/theme-light-dark
-        name: Automatically Switch ui mode
-    - media: "(prefers-color-scheme: light)"
-      scheme: latte
-      toggle:
-        icon: material/weather-sunny
-        name: Switch to dark mode
-    - media: "(prefers-color-scheme: dark)"
-      scheme: macchiato
-      toggle:
-        icon: material/weather-night
-        name: Switch to light mode
 
 repo_name: l-1124/QQMusicApi
 repo_url: https://github.com/l-1124/QQMusicApi
@@ -42,11 +41,6 @@ extra:
   social:
     - icon: fontawesome/brands/github
       link: https://github.com/l-1124/QQMusicApi
-
-extra_css:
-  - css/font.css
-  - css/scheme.css
-  - https://fonts.loli.net/css2?family=Noto+Serif+SC&display=swap
 
 markdown_extensions:
   - nl2br
@@ -57,10 +51,7 @@ markdown_extensions:
   - footnotes
   - md_in_html
   - markdown_callouts.github_callouts
-  - toc:
-      slugify:
-        !!python/object/apply:pymdownx.slugs.slugify { kwds: { case: lower } }
-      permalink: ""
+  - toc
   - pymdownx.arithmatex:
       generic: true
   - pymdownx.betterem:
@@ -76,11 +67,7 @@ markdown_extensions:
   - pymdownx.blocks.tab:
       alternate_style: True
       combine_header_slug: True
-      slugify:
-        !!python/object/apply:pymdownx.slugs.slugify { kwds: { case: lower } }
-  - pymdownx.emoji:
-      emoji_index: !!python/name:material.extensions.emoji.twemoji
-      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.emoji
   - pymdownx.highlight:
       anchor_linenums: true
       line_spans: __span
@@ -97,10 +84,6 @@ markdown_extensions:
       custom_checkbox: true
   - pymdownx.tilde
   - pymdownx.superfences:
-      custom_fences:
-        - name: mermaid
-          class: mermaid
-          format: !!python/name:pymdownx.superfences.fence_code_format
 
 plugins:
   - search:
@@ -122,10 +105,6 @@ plugins:
             signature_crossrefs: true
             merge_init_into_class: true
             docstring_section_style: spacy
-            extensions:
-              - griffe_inherited_docstrings
-              - docstring_inheritance.griffe
-              - griffe_modernized_annotations
           inventories:
             - https://docs.python.org/3/objects.inv
 
@@ -136,36 +115,35 @@ nav:
     - Session: session.md
     - 凭证（Cookie）: credential.md
   - API 示例:
-      - 登录: examples/login.md
-      - 搜索: examples/search.md
-      - 歌曲: examples/song.md
-      - 用户: examples/user.md
+    - 搜索: examples/search.md
+    - 歌曲: examples/song.md
+    - 用户: examples/user.md
   - API 文档:
+    - 核心(Core):
+      - client: api/core/client.md
+      - request: api/core/request.md
+      - exceptions: api/exceptions.md
+      - versioning: api/core/versioning.md
+    - 模块(Modules):
       - album: api/album.md
       - comment: api/comment.md
-      - login: api/login.md
+      - lyric: api/lyric.md
       - mv: api/mv.md
       - search: api/search.md
       - singer: api/singer.md
       - song: api/song.md
       - songlist: api/songlist.md
       - top: api/top.md
-      - lyric: api/lyric.md
       - user: api/user.md
-      - exceptions: api/exceptions.md
-      - utils:
-          - common: api/utils/common.md
-          - qimei: api/utils/qimei.md
-          - network: api/utils/network.md
-          - credential: api/utils/credential.md
-          - session: api/utils/session.md
-          - tripledes: api/utils/tripledes.md
+    - 模型(Models):
+      - credential: api/models/credential.md
+    - 算法(Algorithms):
+      - sign: api/algorithms/sign.md
+      - tripledes: api/algorithms/tripledes.md
+    - 工具(Utils):
+      - common: api/utils/common.md
+      - qimei: api/utils/qimei.md
   - 帮助:
     - 贡献指南: contributing.md
     - 编写指南: coding.md
   - Release Notes: release-notes.md
-
-watch:
-  - qqmusic_api
-  - README.md
-  - examples

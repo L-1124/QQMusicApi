@@ -59,8 +59,7 @@ repos:
 
       - id: docs-build
         name: docs build
-        entry: uv run --group docs mkdocs build
+        entry: uv run zensical build
         files: ^docs/
         pass_filenames: false
         language: system
-        args: ["--strict"]

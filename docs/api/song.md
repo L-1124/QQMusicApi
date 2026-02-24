@@ -1,1 +1,1 @@
-::: song
+::: modules.song

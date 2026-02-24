@@ -1,1 +1,1 @@
-::: singer
+::: modules.singer

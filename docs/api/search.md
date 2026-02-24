@@ -1,1 +1,1 @@
-::: search
+::: modules.search

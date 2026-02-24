@@ -38,8 +38,8 @@ jobs:
         uses: orhun/git-cliff-action@v4
         env:
           OUTPUT: docs/release-notes.md
-      - name: Build with mkdocs
-        run: uv run mkdocs build
+      - name: Build with zensical
+        run: uv run zensical build
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v4
         with:

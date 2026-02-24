@@ -1,7 +1,8 @@
 # 用户
 
 ```python
-from qqmusic_api import Credential, sync, user
+import asyncio
+from qqmusic_api import Client, Credential
 
 musicid = 0
 musickey = ""
@@ -12,39 +13,37 @@ credential = Credential(musicid=musicid, musickey=musickey)
 ## 示例：获取 musicid
 
 ```python
-sync(user.get_musicid("owCFoecFNeoA7z**"))
+async def get_musicid_example():
+    async with Client() as client:
+        result = await client.user.get_musicid("owCFoecFNeoA7z**")
+        print(result)
 ```
 
 ## 示例：获取 euin
 
 ```python
-sync(user.get_euin(2680888327))
+async def get_euin_example():
+    async with Client() as client:
+        result = await client.user.get_euin(2680888327)
+        print(result)
 ```
 
 ## 示例：获取用户信息
 
 ```python
-u = user.User("owCFoecFNeoA7z**")
+async def get_user_info_example():
+    # 带有 credential 的 Client
+    async with Client(credential=credential) as client:
+        # 获取主页信息
+        homepage = await client.user.get_homepage("owCFoecFNeoA7z**")
+        print(homepage)
 
-# 部分 API 需要有效 `credential`,否则报错
-u = user.User("owCFoecFNeoA7z**", credential)
+        # 获取收藏歌单
+        fav_list = await client.user.get_fav_songlist("owCFoecFNeoA7z**")
+        print(fav_list)
 
-# 获取主页信息
-sync(u.get_homepage())
-
-# 获取收藏歌单
-sync(u.get_fav_songlist())
-
-# 获取用户歌单
-sync(u.get_created_songlist())
-
-# 获取自己账号信息
-my = user.User(sync(user.get_euin(credential.musicid)), credential)
-
-# 或者 credential.encrypt_uin 不为空
-# my = user.User(credential.encrypt_uin, credential)
-
-# 获取好友
-# 只根据传入的 credential 获取
-sync(my.get_friend())
+        # 获取自己账号信息
+        my_euin = await client.user.get_euin(credential.musicid)
+        my_friend = await client.user.get_friend()
+        print(my_friend)
 ```

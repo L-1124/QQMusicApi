@@ -1,1 +1,1 @@
-::: user
+::: modules.user

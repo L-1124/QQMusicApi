@@ -1,1 +1,1 @@
-::: songlist
+::: modules.songlist

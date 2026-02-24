@@ -60,20 +60,17 @@ pip install qqmusic-api-python
 ```python
 import asyncio
 
-from qqmusic_api import search
+from qqmusic_api import Client
 
 async def main():
-    # 搜索歌曲
-    result = await search.search_by_type(keyword="周杰伦", num=20)
-    # 打印结果
-    print(result)
+    async with Client() as client:
+        # 搜索歌曲
+        result = await client.search.search_by_type(keyword="周杰伦", num=20)
+        # 打印结果
+        print(result)
 
 asyncio.run(main())
 ```
-
-## 🌐 Web API
-
-详见 [Web API 说明](./web/README.md)
 
 ## 📄 许可证
 

@@ -1,1 +1,1 @@
-::: album
+::: modules.album
