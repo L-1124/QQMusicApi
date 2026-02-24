@@ -4,10 +4,12 @@ import logging
 
 import anyio
 import httpx
+import orjson as json
 import pytest
 
 from qqmusic_api import Client, Credential
 from qqmusic_api.core.exceptions import HTTPError
+from qqmusic_api.core.versioning import DEFAULT_VERSION_POLICY
 from qqmusic_api.models import JsonResponse
 
 
@@ -43,6 +45,61 @@ async def test_request_musicu_payload_uses_song_api_params() -> None:
     assert "music.trackInfo.UniformRuleCtrl" in payload_text
     assert "CgiGetTrackInfo" in payload_text
     assert "573221672" in payload_text
+
+
+@pytest.mark.asyncio
+async def test_request_musicu_uses_version_policy_comm() -> None:
+    """验证 request_musicu 的 comm 使用中心版本策略."""
+    captured: dict[str, object] = {}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        captured["json"] = json.loads(request.content)
+        return httpx.Response(200, json={"code": 0, "req_0": {"code": 0, "data": {}}})
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport) as session:
+        client = Client(session=session, platform="desktop")
+        await client.request_musicu(
+            data={
+                "module": "music.test.Module",
+                "method": "TestMethod",
+                "param": {},
+            }
+        )
+
+    payload = captured["json"]
+    assert isinstance(payload, dict)
+    comm = payload["comm"]
+    assert comm["ct"] == DEFAULT_VERSION_POLICY.desktop.ct
+    assert comm["cv"] == DEFAULT_VERSION_POLICY.desktop.cv
+
+
+@pytest.mark.asyncio
+async def test_request_musicu_comm_override_takes_priority() -> None:
+    """验证 request_musicu 传入 comm 会覆盖中心策略字段."""
+    captured: dict[str, object] = {}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        captured["json"] = json.loads(request.content)
+        return httpx.Response(200, json={"code": 0, "req_0": {"code": 0, "data": {}}})
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport) as session:
+        client = Client(session=session, platform="desktop")
+        await client.request_musicu(
+            data={
+                "module": "music.test.Module",
+                "method": "TestMethod",
+                "param": {},
+            },
+            comm={"cv": 999001},
+        )
+
+    payload = captured["json"]
+    assert isinstance(payload, dict)
+    comm = payload["comm"]
+    assert comm["cv"] == 999001
+    assert comm["ct"] == DEFAULT_VERSION_POLICY.desktop.ct
 
 
 @pytest.mark.asyncio
@@ -91,6 +148,19 @@ async def test_request_jce_raises_http_error_on_non_200() -> None:
 
     assert exc_info.value.status_code == 500
     assert "jce-failed" in str(exc_info.value)
+
+
+@pytest.mark.asyncio
+async def test_build_common_params_for_android_jce_stringifies_values() -> None:
+    """验证 android_jce 的 comm 字段值会被字符串化."""
+    client = Client(platform="android")
+    client._qimei_loaded = True
+    client._qimei_cache = {"q16": "q16-default", "q36": "q36-default"}
+
+    comm = await client._build_common_params("android_jce", client.credential)
+
+    assert all(isinstance(value, str) for value in comm.values())
+    await client.close()
 
 
 @pytest.mark.asyncio

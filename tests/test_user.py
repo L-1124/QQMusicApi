@@ -6,6 +6,7 @@ import pytest
 
 from qqmusic_api import Credential
 from qqmusic_api.core.exceptions import NotLoginError
+from qqmusic_api.core.versioning import DEFAULT_VERSION_POLICY
 from qqmusic_api.modules.user import UserApi
 
 
@@ -23,6 +24,8 @@ async def test_get_euin_uses_http_request(mock_client):
     call_args, call_kwargs = mock_client.request.call_args
     assert call_args[0] == "GET"
     assert "fcg_get_profile_homepage.fcg" in call_args[1]
+    assert call_kwargs["params"]["ct"] == DEFAULT_VERSION_POLICY.desktop.ct
+    assert call_kwargs["params"]["cv"] == DEFAULT_VERSION_POLICY.desktop.cv
     assert call_kwargs["params"]["userid"] == 10001
     assert result == "abc123"
 

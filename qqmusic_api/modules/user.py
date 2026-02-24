@@ -14,10 +14,12 @@ class UserApi(ApiModule):
 
     async def get_euin(self, musicid: int) -> str:
         """通过 musicid 获取 encrypt_uin。"""
+        params = self._client._build_query_common_params("desktop")
+        params.update({"cid": 205360838, "userid": musicid})
         response = await self._client.request(
             "GET",
             "https://c6.y.qq.com/rsc/fcgi-bin/fcg_get_profile_homepage.fcg",
-            params={"ct": 20, "cv": 4747474, "cid": 205360838, "userid": musicid},
+            params=params,
         )
         data = response.json().get("data", {})
         return data.get("creator", {}).get("encrypt_uin", "")

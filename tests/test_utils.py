@@ -5,6 +5,7 @@ import orjson as json
 import pytest
 
 from qqmusic_api import Client
+from qqmusic_api.core.versioning import DEFAULT_VERSION_POLICY
 from qqmusic_api.utils import qimei as qimei_module
 from qqmusic_api.utils.device import Device, random_imei
 from qqmusic_api.utils.qimei import DEFAULT_QIMEI, get_qimei
@@ -72,11 +73,13 @@ async def test_get_qimei_success_updates_device_cache(monkeypatch: pytest.Monkey
 
 @pytest.mark.asyncio
 async def test_client_qimei_timeout_passed_to_get_qimei(monkeypatch: pytest.MonkeyPatch) -> None:
-    """验证 Client 会将 qimei_timeout 透传到 QIMEI 获取函数."""
-    captured: dict[str, float] = {"timeout": 0.0}
+    """验证 Client 会透传 QIMEI 版本与超时参数."""
+    captured: dict[str, float | str | None] = {"timeout": 0.0, "version": None, "sdk_version": None}
 
-    async def fake_get_qimei(version: str, session=None, request_timeout: float = 1.5):
+    async def fake_get_qimei(version: str, session=None, request_timeout: float = 1.5, sdk_version: str | None = None):
+        captured["version"] = version
         captured["timeout"] = request_timeout
+        captured["sdk_version"] = sdk_version
         return {"q16": DEFAULT_QIMEI, "q36": DEFAULT_QIMEI}
 
     monkeypatch.setattr("qqmusic_api.core.client.get_qimei", fake_get_qimei)
@@ -85,6 +88,8 @@ async def test_client_qimei_timeout_passed_to_get_qimei(monkeypatch: pytest.Monk
     await client._build_common_params("android", client.credential)
 
     assert captured["timeout"] == 1.25
+    assert captured["version"] == DEFAULT_VERSION_POLICY.get_qimei_app_version("android")
+    assert captured["sdk_version"] == DEFAULT_VERSION_POLICY.get_qimei_sdk_version("android")
     await client.close()
 
 

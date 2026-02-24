@@ -12,7 +12,6 @@ from pydantic import BaseModel
 from tarsio import Struct, TarsDict
 
 from ..models import (
-    CommonParams,
     Credential,
     JceRequest,
     JceRequestItem,
@@ -25,6 +24,7 @@ from ..utils.common import bool_to_int, hash33
 from ..utils.device import Device
 from ..utils.qimei import QimeiResult, get_qimei
 from .exceptions import ApiError, HTTPError, NetworkError, build_api_error, extract_api_error_code
+from .versioning import DEFAULT_VERSION_POLICY, VersionPolicy
 
 if TYPE_CHECKING:
     from ..modules.album import AlbumApi
@@ -73,6 +73,7 @@ class Client:
         self.enable_sign = enable_sign
         self.platform = platform
         self.qimei_timeout = qimei_timeout
+        self._version_policy: VersionPolicy = DEFAULT_VERSION_POLICY
         self._guid = uuid.uuid4().hex
 
         self._limiter = anyio.CapacityLimiter(max_concurrency)
@@ -235,8 +236,13 @@ class Client:
             if self._qimei_loaded:
                 return self._qimei_cache
             try:
+                qimei_app_version = self._version_policy.get_qimei_app_version(self.platform)
+                qimei_sdk_version = self._version_policy.get_qimei_sdk_version(self.platform)
                 self._qimei_cache = await get_qimei(
-                    "14.9.0.8", session=self._session, request_timeout=self.qimei_timeout
+                    qimei_app_version,
+                    session=self._session,
+                    request_timeout=self.qimei_timeout,
+                    sdk_version=qimei_sdk_version,
                 )
             except Exception as exc:
                 logger.warning("获取 QIMEI 失败: %s", exc)
@@ -254,55 +260,21 @@ class Client:
     async def _build_common_params(self, platform: str | None, credential: Credential) -> dict[str, Any]:
         """构建通用 comm 参数。"""
         target_platform = platform or self.platform
+        qimei = await self._get_qimei_cached() if target_platform in {"android", "android_jce"} else None
+        qimei_data: dict[str, str] | None = None
+        if qimei is not None:
+            qimei_data = {"q16": qimei["q16"], "q36": qimei["q36"]}
+        return self._version_policy.build_comm(
+            platform=target_platform,
+            credential=credential,
+            device=self.device,
+            qimei=qimei_data,
+            guid=self._guid,
+        )
 
-        if target_platform in {"android", "android_jce"}:
-            qimei = await self._get_qimei_cached() or {}
-            params = CommonParams(
-                ct=11,
-                cv=14090008,
-                v=14090008,
-                chid="2005000982",
-                qq=str(credential.musicid) if credential.musicid else None,
-                authst=credential.musickey or None,
-                tmeLoginType=credential.login_type,
-                QIMEI=qimei.get("q16", ""),
-                QIMEI36=qimei.get("q36", ""),
-                OpenUDID=self._guid,
-                udid=self._guid,
-                OpenUDID2=self._guid,
-                aid=self.device.android_id,
-                os_ver=self.device.version.release,
-                phonetype=self.device.model,
-                devicelevel=str(self.device.version.sdk),
-                newdevicelevel=str(self.device.version.sdk),
-                rom=self.device.fingerprint,
-            )
-        elif target_platform == "desktop":
-            params = CommonParams(
-                ct=20,
-                cv=2201,
-                platform="wk_v17",
-                chid="0",
-                uin=credential.musicid or None,
-                g_tk=self._get_g_tk(credential),
-                guid=self._guid.upper(),
-            )
-        else:
-            g_tk = self._get_g_tk(credential)
-            params = CommonParams(
-                ct=24,
-                cv=4747474,
-                platform="yqq.json",
-                chid="0",
-                uin=credential.musicid,
-                g_tk=g_tk,
-                g_tk_new_20200303=g_tk,
-            )
-
-        comm = params.model_dump(by_alias=True, exclude_none=True)
-        if target_platform == "android_jce":
-            comm = {k: str(v) for k, v in comm.items()}
-        return comm
+    def _build_query_common_params(self, platform: str | None = None) -> dict[str, int]:
+        """构建查询接口使用的通用版本参数。"""
+        return self._version_policy.build_query_params(platform or self.platform)
 
     @overload
     def build_request(
@@ -455,12 +427,7 @@ class Client:
     def _get_user_agent(self, platform: str | None = None) -> str:
         """根据模式生成 UA。"""
         target_platform = platform or self.platform
-        if target_platform == "android":
-            return f"QQMusic/14090008 (Android {self.device.version.release}; {self.device.model})"
-        return (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-            "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-        )
+        return self._version_policy.get_user_agent(target_platform, self.device)
 
     def _get_cookies(self, credential: Credential | None = None) -> dict[str, str]:
         """从 Credential 提取 Cookies。"""

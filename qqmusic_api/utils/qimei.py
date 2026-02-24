@@ -15,6 +15,7 @@ from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.primitives.asymmetric.rsa import RSAPublicKey
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
+from ..core.versioning import DEFAULT_VERSION_POLICY
 from .common import calc_md5
 from .device import Device, get_cached_device, save_device
 
@@ -28,7 +29,6 @@ APP_KEY = "0AND0HD6FE4HY80F"
 DEFAULT_QIMEI = "6c9d3cd110abca9b16311cee10001e717614"
 CHANNEL_ID = "10003505"
 PACKAGE_ID = "com.tencent.qqmusic"
-SDK_VERSION = "1.2.13.6"
 HEX_CHARS = "0123456789abcdef"
 
 
@@ -73,7 +73,7 @@ def random_beacon_id() -> str:
     return beacon_id
 
 
-def random_payload_by_device(device: Device, version: str) -> dict:
+def random_payload_by_device(device: Device, version: str, sdk_version: str) -> dict:
     """随机 payload"""
     fixed_rand = random.randint(0, 14400)
     reserved = {
@@ -111,7 +111,7 @@ def random_payload_by_device(device: Device, version: str) -> dict:
         "osVersion": f"Android {device.version.release},level {device.version.sdk}",
         "qimei": "",
         "qimei36": "",
-        "sdkVersion": SDK_VERSION,
+        "sdkVersion": sdk_version,
         "targetSdkVersion": "33",
         "audit": "",
         "userId": "{}",
@@ -122,9 +122,9 @@ def random_payload_by_device(device: Device, version: str) -> dict:
     }
 
 
-def _build_qimei_request(device: Device, version: str) -> tuple[int, dict[str, str], dict[str, Any]]:
+def _build_qimei_request(device: Device, version: str, sdk_version: str) -> tuple[int, dict[str, str], dict[str, Any]]:
     """构建 QIMEI 请求头和请求体."""
-    payload = random_payload_by_device(device, version)
+    payload = random_payload_by_device(device, version, sdk_version)
     crypt_key = "".join(random.choices(HEX_CHARS, k=16))
     nonce = "".join(random.choices(HEX_CHARS, k=16))
     ts = int(time())
@@ -169,7 +169,10 @@ def _parse_qimei_payload(response_content: bytes) -> dict[str, str]:
 
 
 async def get_qimei(
-    version: str, session: httpx.AsyncClient | None = None, request_timeout: float = 1.5
+    version: str,
+    session: httpx.AsyncClient | None = None,
+    request_timeout: float = 1.5,
+    sdk_version: str | None = None,
 ) -> QimeiResult:
     """获取 QIMEI (异步).
 
@@ -177,6 +180,7 @@ async def get_qimei(
         version: 客户端版本。
         session: 可选外部复用的异步会话。
         request_timeout: QIMEI 请求超时时间(秒)。
+        sdk_version: QIMEI SDK 版本。
     """
     device = await get_cached_device()
 
@@ -184,7 +188,8 @@ async def get_qimei(
         return QimeiResult(q16=device.qimei, q36=device.qimei36)
 
     try:
-        _, headers, request_json = await to_thread.run_sync(_build_qimei_request, device, version)
+        target_sdk_version = sdk_version or DEFAULT_VERSION_POLICY.get_qimei_sdk_version("android")
+        _, headers, request_json = await to_thread.run_sync(_build_qimei_request, device, version, target_sdk_version)
 
         async def _do_request(client: httpx.AsyncClient) -> dict[str, str]:
             res = await client.post(
