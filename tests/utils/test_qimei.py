@@ -1,4 +1,4 @@
-"""utils 模块测试."""
+"""QIMEI 工具测试."""
 
 import httpx
 import orjson as json
@@ -7,7 +7,7 @@ import pytest
 from qqmusic_api import Client
 from qqmusic_api.core.versioning import DEFAULT_VERSION_POLICY
 from qqmusic_api.utils import qimei as qimei_module
-from qqmusic_api.utils.device import Device, random_imei
+from qqmusic_api.utils.device import Device
 from qqmusic_api.utils.qimei import DEFAULT_QIMEI, get_qimei
 
 
@@ -91,24 +91,3 @@ async def test_client_qimei_timeout_passed_to_get_qimei(monkeypatch: pytest.Monk
     assert captured["version"] == DEFAULT_VERSION_POLICY.get_qimei_app_version("android")
     assert captured["sdk_version"] == DEFAULT_VERSION_POLICY.get_qimei_sdk_version("android")
     await client.close()
-
-
-def _is_valid_luhn_imei(imei: str) -> bool:
-    digits = [int(d) for d in imei]
-    check_digit = digits[-1]
-    total = 0
-    for idx, digit in enumerate(digits[:-1]):
-        checksum_digit = digit
-        if idx % 2 == 1:
-            checksum_digit *= 2
-            if checksum_digit > 9:
-                checksum_digit -= 9
-        total += checksum_digit
-    return (10 - (total % 10)) % 10 == check_digit
-
-
-def test_random_imei_is_luhn_valid() -> None:
-    """验证 random_imei 生成值满足 Luhn 校验."""
-    imeis = [random_imei() for _ in range(1000)]
-    assert all(len(imei) == 15 and imei.isdigit() for imei in imeis)
-    assert all(_is_valid_luhn_imei(imei) for imei in imeis)
