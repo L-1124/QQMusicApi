@@ -76,6 +76,11 @@ class Credential(BaseModel):
     unionid: str = ""
     str_musicid: str = ""
     refresh_key: str = ""
+    musickey_create_time: int = Field(default=0, alias="musickeyCreateTime")
+    key_expires_in: int = Field(default=0, alias="keyExpiresIn")
+    first_login: int = Field(default=0)
+    bind_account_type: int = Field(default=0, alias="bindAccountType")
+    need_refresh_key_in: int = Field(default=0, alias="needRefreshKeyIn")
     encrypt_uin: str = Field(default="", alias="encryptUin")
     login_type: int = Field(default=0, alias="loginType")
 

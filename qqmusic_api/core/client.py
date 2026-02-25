@@ -29,6 +29,7 @@ from .versioning import DEFAULT_VERSION_POLICY, VersionPolicy
 if TYPE_CHECKING:
     from ..modules.album import AlbumApi
     from ..modules.comment import CommentApi
+    from ..modules.login import LoginApi
     from ..modules.lyric import LyricApi
     from ..modules.mv import MvApi
     from ..modules.recommend import RecommendApi
@@ -135,6 +136,13 @@ class Client:
         return MvApi(self)
 
     @property
+    def login(self) -> "LoginApi":
+        """登录模块。"""
+        from ..modules.login import LoginApi
+
+        return LoginApi(self)
+
+    @property
     def search(self) -> "SearchApi":
         """搜索模块。"""
         from ..modules.search import SearchApi
@@ -184,9 +192,8 @@ class Client:
             resp = await self._session.request(method, url, **kwargs)
             logger.debug("HTTP 请求完成: %s %s -> %s", method, url, resp.status_code)
             return resp
-        except httpx.RequestError as exc:
-            logger.warning("HTTP 请求失败: %s %s, error=%s", method, url, exc)
-            raise NetworkError(f"Network error: {exc}", original_exc=exc) from exc
+        except:
+            raise
         finally:
             self._limiter.release()
 
@@ -443,7 +450,11 @@ class Client:
 
     async def fetch(self, method: str, url: str, **kwargs: Any) -> httpx.Response:
         """发送 HTTP 请求。"""
-        return await self._request_raw(method, url, **kwargs)
+        try:
+            return await self._request_raw(method, url, **kwargs)
+        except httpx.RequestError as exc:
+            logger.warning("HTTP 请求失败: %s %s, error=%s", method, url, exc)
+            raise NetworkError(f"Network error: {exc}", original_exc=exc) from exc
 
     async def request(
         self,

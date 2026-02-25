@@ -15,7 +15,6 @@ classifiers = [
   "Development Status :: 4 - Beta",
   "Framework :: Pytest",
   "Framework :: aiohttp",
-  "License :: OSI Approved :: MIT License",
   "Natural Language :: Chinese (Simplified)",
   "Programming Language :: Python",
   "Programming Language :: Python :: 3 :: Only",
@@ -30,7 +29,7 @@ dependencies = [
   "httpx[http2]>=0.27.0",
   "orjson>=3.10.15",
   "pydantic>=2.0.0",
-  "tarsio>=0.5.0",
+  "tarsio>=0.5.1",
   "typing-extensions>=4.12.2",
 ]
 dynamic = ["version"]
@@ -44,6 +43,10 @@ repository = "https://github.com/l-1124/QQMusicApi"
 dev = [
   { include-group = "linting" },
   { include-group = "testing" },
+  { include-group = "docs" },
+  "pillow>=12.1.1",
+  "pyzbar>=0.1.9",
+  "qrcode>=8.2",
   "setuptools>=82.0.0",
 ]
 linting = [

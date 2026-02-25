@@ -352,6 +352,7 @@ def test_client_properties() -> None:
     assert isinstance(client.top, ApiModule)
     assert isinstance(client.album, ApiModule)
     assert isinstance(client.mv, ApiModule)
+    assert isinstance(client.login, ApiModule)
 
     assert client.comment is not client.comment
 

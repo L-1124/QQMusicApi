@@ -115,6 +115,7 @@ nav:
     - Session: session.md
     - 凭证（Cookie）: credential.md
   - API 示例:
+    - 登录: examples/login.md
     - 搜索: examples/search.md
     - 歌曲: examples/song.md
     - 用户: examples/user.md
@@ -127,6 +128,7 @@ nav:
     - 模块(Modules):
       - album: api/album.md
       - comment: api/comment.md
+      - login: api/login.md
       - lyric: api/lyric.md
       - mv: api/mv.md
       - search: api/search.md

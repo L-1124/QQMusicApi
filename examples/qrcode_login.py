@@ -1,24 +1,24 @@
+"""二维码登录示例。"""
+
 import asyncio
+from pathlib import Path
 
-from qqmusic_api.login import (
-    QR,
-    LoginError,
-    QRCodeLoginEvents,
-    QRLoginType,
-    check_mobile_qr,  # [新增] 导入 check_mobile_qr
-    check_qrcode,
-    get_qrcode,
-)
+from httpx import AsyncClient
+
+from qqmusic_api import Client
+from qqmusic_api.core.exceptions import LoginError
+from qqmusic_api.modules.login import QR, QRCodeLoginEvents, QRLoginType
 
 
-def show_qrcode(qr: QR):
-    """显示二维码"""
+def show_qrcode(qr: QR) -> None:
+    """显示二维码。"""
     try:
         from io import BytesIO
 
         from PIL import Image
         from pyzbar.pyzbar import decode
-        from qrcode import QRCode  # type: ignore
+
+        from qrcode import QRCode
 
         img = Image.open(BytesIO(qr.data))
         decoded = decode(img)
@@ -32,61 +32,42 @@ def show_qrcode(qr: QR):
         qr_console.print_ascii()
     except ImportError:
         # 保存二维码到当前目录
-        save_path = qr.save()
+        save_path = qr.save(Path("./qrcode"))
         print(f"二维码已保存至: {save_path}")
 
 
-async def qrcode_login_example(login_type: QRLoginType):  # noqa: C901
-    """二维码登录示例"""
-
+async def qrcode_login_example(login_type: QRLoginType) -> None:
+    """二维码登录示例。"""
     try:
-        # 1. 获取二维码
-        print(f"正在获取 {login_type.name} 二维码...")
-        qr = await get_qrcode(login_type)
-        print(f"获取 {login_type.name} 二维码成功")
+        async with Client(session=AsyncClient(verify=False)) as client:
+            print(f"正在获取 {login_type.name} 二维码...")
+            qr = await client.login.get_qrcode(login_type)
+            print(f"获取 {login_type.name} 二维码成功")
 
-        show_qrcode(qr)
+            show_qrcode(qr)
+            print(">>> 请使用对应客户端扫码")
 
-        # 2. 监听扫码状态
-        # 注意: MOBILE (QQ音乐APP) 使用 MQTT 协议 (推送流), 其他使用 HTTP 协议 (轮询)
+            from contextlib import aclosing
 
-        if login_type == QRLoginType.MOBILE:
-            print(">>> 请使用 [QQ音乐APP] 扫码 (MQTT监听中)")
-            async for event, credential in check_mobile_qr(qr):
-                print(f"当前状态: {event.name}")
+            async with aclosing(
+                client.login.iter_qrcode_login(
+                    qr,
+                    interval=1.5,
+                    timeout_seconds=180.0,
+                )
+            ) as qrcode_stream:
+                async for event, credential in qrcode_stream:
+                    print(f"当前状态: {event.name}")
 
-                if event == QRCodeLoginEvents.DONE:
-                    print(f"登录成功! MusicID: {credential.musicid}")
-                    return credential
-
-                elif event == QRCodeLoginEvents.TIMEOUT:
-                    print("二维码已过期,请重新获取")
-                    break
-
-                elif event == QRCodeLoginEvents.REFUSE:
-                    print("用户拒绝了登录请求")
-                    break
-
-                # MQTT 不需要 sleep,因为是服务器推送消息
-
-        else:
-            print(f">>> 请使用 [{login_type.name}] 扫码 (HTTP轮询中)")
-            while True:
-                event, credential = await check_qrcode(qr)
-                print(f"当前状态: {event.name}")
-
-                if event == QRCodeLoginEvents.DONE:
-                    print(f"登录成功! MusicID: {credential.musicid}")
-                    return credential
-
-                if event == QRCodeLoginEvents.TIMEOUT:
-                    print("二维码已过期,请重新获取")
-                    break
-
-                if event == QRCodeLoginEvents.SCAN:
-                    await asyncio.sleep(3)  # 3秒轮询一次
-                else:
-                    await asyncio.sleep(2)
+                    if event == QRCodeLoginEvents.DONE and credential is not None:
+                        print(f"登录成功! MusicID: {credential.musicid}")
+                        return
+                    if event == QRCodeLoginEvents.TIMEOUT:
+                        print("二维码已过期,请重新获取")
+                        return
+                    if event == QRCodeLoginEvents.REFUSE:
+                        print("用户拒绝了登录请求")
+                        return
 
     except LoginError as e:
         print(f"登录失败: {e!s}")
@@ -94,13 +75,15 @@ async def qrcode_login_example(login_type: QRLoginType):  # noqa: C901
         raise
 
 
-async def main():
+async def main() -> None:
+    """运行二维码登录示例。"""
     print("请选择登录方式:")
     print("1. QQ   (使用手机QQ扫码)")
     print("2. WX   (使用微信扫码)")
     print("3. MOBILE (使用QQ音乐APP扫码)")
 
-    choice = input("请输入选项 (1/2/3): ").strip()
+    choice = (await asyncio.to_thread(input, "请输入选项 (1/2/3): ")).strip()
+    # choice = input("请输入选项 (1/2/3): ").strip()
 
     if choice == "1":
         await qrcode_login_example(QRLoginType.QQ)

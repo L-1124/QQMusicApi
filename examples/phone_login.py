@@ -1,38 +1,35 @@
+"""手机验证码登录示例。"""
+
 import asyncio
 
-from qqmusic_api.login import (
-    LoginError,
-    PhoneLoginEvents,
-    phone_authorize,
-    send_authcode,
-)
+from qqmusic_api import Client
+from qqmusic_api.core.exceptions import LoginError
+from qqmusic_api.modules.login import PhoneLoginEvents
 
 
-async def phone_login_example():
-    """手机验证码登录示例"""
-    phone = 17385716325
+async def phone_login_example() -> None:
+    """手机验证码登录示例。"""
+    phone = 13000000000
     country_code = 86
 
     try:
-        # 1. 发送验证码
-        event, info = await send_authcode(phone, country_code)
+        async with Client() as client:
+            event, info = await client.login.send_authcode(phone, country_code)
 
-        if event == PhoneLoginEvents.CAPTCHA:
-            print(f"需要验证,访问链接: {info}")
-            return None
-        if event == PhoneLoginEvents.FREQUENCY:
-            print("操作过于频繁,请稍后再试")
-            return None
+            if event == PhoneLoginEvents.CAPTCHA:
+                print(f"需要验证,访问链接: {info}")
+                return
+            if event == PhoneLoginEvents.FREQUENCY:
+                print("操作过于频繁,请稍后再试")
+                return
 
-        print("验证码已发送")
+            print("验证码已发送")
 
-        # 2. 获取用户输入
-        auth_code = input("请输入验证码: ").strip()
+            auth_code = (await asyncio.to_thread(input, "请输入验证码: ")).strip()
+            # auth_code = input("请输入验证码: ").strip()
 
-        # 3. 执行登录
-        credential = await phone_authorize(phone, int(auth_code), country_code)
-        print(f"登录成功! MusicID: {credential.musicid}")
-        return credential
+            credential = await client.login.phone_authorize(phone, int(auth_code), country_code)
+            print(f"登录成功! MusicID: {credential.musicid}")
 
     except LoginError as e:
         print(f"登录失败: {e!s}")

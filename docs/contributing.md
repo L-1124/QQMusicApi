@@ -66,14 +66,18 @@ uv run mkdocs serve
 
 ## 文档规范
 
+文档构建工具使用 [zensical](https://github.com/zensical/zensical)
+
 文档使用 [Material for MkDocs](https://squidfunk.github.io/mkdocs-material/) 构建
 
 API 文档使用 [mkdocstrings](https://mkdocstrings.github.io/) 构建
 
 ### Markdown 拓展语法
 
-- [PyMdown Extensions](https://facelessuser.github.io/pymdown-extensions/extensions)([Material for MkDocs](https://squidfunk.github.io/mkdocs-material/reference/))
+- [PyMdown Extensions](https://facelessuser.github.io/pymdown-extensions/extensions)
+  ([Material for MkDocs](https://squidfunk.github.io/mkdocs-material/reference/))
 
 ## 提交规范
 
-本项目采用 [Conventional Commits](https://www.conventionalcommits.org/zh-hans/v1.0.0/) 规范
+本项目采用 [Conventional Commits](https://www.conventionalcommits.org/zh-hans/v1.0.0/)
+规范
