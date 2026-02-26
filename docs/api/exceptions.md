@@ -4,12 +4,12 @@
 
 ## The Exception Hierarchy
 
-- ApiException
-  - ResponseCodeError
-    - CredentialExpiredError
-    - SignInvalidError
-  - CredentialInvalidError
-  - LoginError
+* ApiException
+    * ResponseCodeError
+        * CredentialExpiredError
+        * SignInvalidError
+    * CredentialInvalidError
+    * LoginError
 
 ______________________________________________________________________
 

@@ -1,4 +1,4 @@
-"""手机验证码登录示例。"""
+"""手机验证码登录示例."""
 
 import asyncio
 
@@ -8,7 +8,7 @@ from qqmusic_api.modules.login import PhoneLoginEvents
 
 
 async def phone_login_example() -> None:
-    """手机验证码登录示例。"""
+    """手机验证码登录示例."""
     phone = 13000000000
     country_code = 86
 

@@ -27,8 +27,8 @@
 
 ## 📚 快速链接
 
-- **[📖 完整文档](https://l-1124.github.io/QQMusicApi)**
-- **[💻 源代码仓库](https://github.com/l-1124/QQMusicApi)**
+* **[📖 完整文档](https://l-1124.github.io/QQMusicApi)**
+* **[💻 源代码仓库](https://github.com/l-1124/QQMusicApi)**
 
 ## 📖 介绍
 
@@ -36,16 +36,16 @@
 
 ## ✨ 项目特色
 
-- 🎵 涵盖常见 API
-- 🚀 调用简便，函数命名易懂，代码注释详细
-- ⚡ 完全异步操作
+* 🎵 涵盖常见 API
+* 🚀 调用简便，函数命名易懂，代码注释详细
+* ⚡ 完全异步操作
 
 ## 📦 依赖
 
-- Cryptography
-- Httpx
-- Httpx-ws
-- Orjson
+* Cryptography
+* Httpx
+* Httpx-ws
+* Orjson
 
 ## 🚀 快速上手
 

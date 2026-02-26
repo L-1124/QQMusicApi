@@ -4,10 +4,10 @@
 
 ## 先决条件
 
-- **Python 3.10+**
-- **git**
-- [**uv**](https://docs.astral.sh/uv/)
-- [**pre-commit**](https://pre-commit.com/)
+* **Python 3.10+**
+* **git**
+* [**uv**](https://docs.astral.sh/uv/)
+* [**pre-commit**](https://pre-commit.com/)
 
 ## 开发流程
 
@@ -56,13 +56,13 @@ uv run mkdocs serve
 
 ## 代码规范
 
-- 代码风格遵循 [Google Python Style](https://google.github.io/styleguide/pyguide.html)
-- 代码格式遵循 [PEP8](https://www.python.org/dev/peps/pep-0008/)
+* 代码风格遵循 [Google Python Style](https://google.github.io/styleguide/pyguide.html)
+* 代码格式遵循 [PEP8](https://www.python.org/dev/peps/pep-0008/)
 
 ## 代码注释
 
-- 注释内容包括：模块注释、类注释、函数注释、参数类型注释、返回值注释
-- 注释风格遵循 [Google-style docstrings](https://google.github.io/styleguide/pyguide.html#38-comments-and-docstrings)
+* 注释内容包括：模块注释、类注释、函数注释、参数类型注释、返回值注释
+* 注释风格遵循 [Google-style docstrings](https://google.github.io/styleguide/pyguide.html#38-comments-and-docstrings)
 
 ## 文档规范
 
@@ -74,7 +74,7 @@ API 文档使用 [mkdocstrings](https://mkdocstrings.github.io/) 构建
 
 ### Markdown 拓展语法
 
-- [PyMdown Extensions](https://facelessuser.github.io/pymdown-extensions/extensions)
+* [PyMdown Extensions](https://facelessuser.github.io/pymdown-extensions/extensions)
   ([Material for MkDocs](https://squidfunk.github.io/mkdocs-material/reference/))
 
 ## 提交规范

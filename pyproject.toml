@@ -112,4 +112,3 @@ default = true
 [tool.pyrefly]
 project-includes = ["qqmusic_api"]
 python-version = "3.10.0"
-infer-with-first-use = false

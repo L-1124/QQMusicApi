@@ -1,4 +1,4 @@
-"""二维码登录示例。"""
+"""二维码登录示例."""
 
 import asyncio
 from pathlib import Path
@@ -9,7 +9,7 @@ from qqmusic_api.modules.login import QR, QRCodeLoginEvents, QRLoginType
 
 
 def show_qrcode(qr: QR) -> None:
-    """显示二维码。"""
+    """显示二维码."""
     try:
         from io import BytesIO
 
@@ -35,7 +35,7 @@ def show_qrcode(qr: QR) -> None:
 
 
 async def qrcode_login_example(login_type: QRLoginType) -> None:
-    """二维码登录示例。"""
+    """二维码登录示例."""
     try:
         async with Client(verify=False) as client:
             print(f"正在获取 {login_type.name} 二维码...")
@@ -74,7 +74,7 @@ async def qrcode_login_example(login_type: QRLoginType) -> None:
 
 
 async def main() -> None:
-    """运行二维码登录示例。"""
+    """运行二维码登录示例."""
     print("请选择登录方式:")
     print("1. QQ   (使用手机QQ扫码)")
     print("2. WX   (使用微信扫码)")

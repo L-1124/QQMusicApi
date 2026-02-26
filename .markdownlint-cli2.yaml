@@ -1,0 +1,37 @@
+# See rule aliases: https://github.com/DavidAnson/markdownlint#rules--aliases
+
+config:
+  line-length: false
+
+  ul-style:
+    style: "asterisk"
+
+  emphasis-style:
+    style: "asterisk"
+
+  # 需要缩进 4 个空格以正确渲染
+  ul-indent:
+    indent: 4
+
+  # H1 标题由 mkdocs 自动插入
+  first-line-h1: false
+
+  # 如果父级不同，允许相同的标题名称
+  no-duplicate-heading:
+    siblings_only: true
+
+  # 允许内联 HTML 以支持换行符等
+  no-inline-html: false
+
+  # 禁用以支持 PyMdown Tabbed 扩展和 admonitions
+  code-block-style: false
+
+  # 禁用以支持 API 引用
+  reference-links-images: false
+
+  # 锚点通过属性列表定义时无法被检测，交给 mkdocs 处理
+  link-fragments: false
+
+ignores:
+  - "docs/release-notes.md"
+  - ".claude/"
