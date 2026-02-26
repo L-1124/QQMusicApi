@@ -37,7 +37,7 @@ class SearchApi(ApiModule):
 
     def get_hotkey(self):
         """获取热搜词。"""
-        return self._client.build_request(
+        return self.build_request(
             "music.musicsearch.HotkeyService",
             "GetHotkeyForQQMusicMobile",
             {"search_id": get_searchID()},
@@ -49,7 +49,7 @@ class SearchApi(ApiModule):
         Args:
             keyword: 关键词。
         """
-        return self._client.build_request(
+        return self.build_request(
             "music.smartboxCgi.SmartBoxCgi",
             "GetSmartBoxResult",
             {
@@ -87,7 +87,7 @@ class SearchApi(ApiModule):
             page: 页码。
             highlight: 是否高亮关键词。
         """
-        return self._client.build_request(
+        return self.build_request(
             "music.adaptor.SearchAdaptor",
             "do_search_v2",
             {
@@ -118,7 +118,7 @@ class SearchApi(ApiModule):
             page: 页码。
             highlight: 是否高亮关键词。
         """
-        return self._client.build_request(
+        return self.build_request(
             "music.search.SearchCgiService",
             "DoSearchForQQMusicMobile",
             {

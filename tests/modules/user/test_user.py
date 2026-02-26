@@ -16,12 +16,12 @@ async def test_get_euin_uses_http_request(mock_client):
     api = UserApi(mock_client)
     response = MagicMock()
     response.json.return_value = {"data": {"creator": {"encrypt_uin": "abc123"}}}
-    mock_client.request = AsyncMock(return_value=response)
+    mock_client.fetch = AsyncMock(return_value=response)
 
     result = await api.get_euin(10001)
 
-    mock_client.request.assert_called_once()
-    call_args, call_kwargs = mock_client.request.call_args
+    mock_client.fetch.assert_called_once()
+    call_args, call_kwargs = mock_client.fetch.call_args
     assert call_args[0] == "GET"
     assert "fcg_get_profile_homepage.fcg" in call_args[1]
     assert call_kwargs["params"]["ct"] == DEFAULT_VERSION_POLICY.desktop.ct

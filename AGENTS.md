@@ -27,7 +27,6 @@
 ### docs/
 
 * 仅面向用户，描述 Usage 与 Behavior。
-* 不包含 Rust 内部实现细节或未稳定行为。
 * 新增页面必须同步更新 `mkdocs.yml` 的 `nav`。
 
 ## Agent behavior

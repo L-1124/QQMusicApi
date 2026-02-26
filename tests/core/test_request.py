@@ -7,7 +7,7 @@ import httpx
 import orjson as json
 import pytest
 
-from qqmusic_api import Client, Credential
+from qqmusic_api import Client
 from qqmusic_api.core.exceptions import HTTPError
 from qqmusic_api.core.versioning import DEFAULT_VERSION_POLICY
 from qqmusic_api.models import JsonResponse
@@ -25,21 +25,20 @@ async def test_request_musicu_payload_uses_song_api_params() -> None:
         return httpx.Response(200, json={"code": 0, "req_0": {"code": 0, "data": {"tracks": []}}})
 
     transport = httpx.MockTransport(handler)
-    async with httpx.AsyncClient(transport=transport) as session:
-        client = Client(session=session, platform="desktop")
-        await client.request_musicu(
-            data={
-                "module": "music.trackInfo.UniformRuleCtrl",
-                "method": "CgiGetTrackInfo",
-                "param": {
-                    "ids": [573221672],
-                    "types": [0],
-                    "modify_stamp": [0],
-                    "ctx": 0,
-                    "client": 1,
-                },
-            }
-        )
+    client = Client(transport=transport, platform="desktop")
+    await client.request_musicu(
+        data={
+            "module": "music.trackInfo.UniformRuleCtrl",
+            "method": "CgiGetTrackInfo",
+            "param": {
+                "ids": [573221672],
+                "types": [0],
+                "modify_stamp": [0],
+                "ctx": 0,
+                "client": 1,
+            },
+        }
+    )
 
     assert "musicu.fcg" in str(captured["url"])
     payload_text = str(captured["json"])
@@ -58,15 +57,14 @@ async def test_request_musicu_uses_version_policy_comm() -> None:
         return httpx.Response(200, json={"code": 0, "req_0": {"code": 0, "data": {}}})
 
     transport = httpx.MockTransport(handler)
-    async with httpx.AsyncClient(transport=transport) as session:
-        client = Client(session=session, platform="desktop")
-        await client.request_musicu(
-            data={
-                "module": "music.test.Module",
-                "method": "TestMethod",
-                "param": {},
-            }
-        )
+    client = Client(transport=transport, platform="desktop")
+    await client.request_musicu(
+        data={
+            "module": "music.test.Module",
+            "method": "TestMethod",
+            "param": {},
+        }
+    )
 
     payload = captured["json"]
     assert isinstance(payload, dict)
@@ -85,16 +83,15 @@ async def test_request_musicu_comm_override_takes_priority() -> None:
         return httpx.Response(200, json={"code": 0, "req_0": {"code": 0, "data": {}}})
 
     transport = httpx.MockTransport(handler)
-    async with httpx.AsyncClient(transport=transport) as session:
-        client = Client(session=session, platform="desktop")
-        await client.request_musicu(
-            data={
-                "module": "music.test.Module",
-                "method": "TestMethod",
-                "param": {},
-            },
-            comm={"cv": 999001},
-        )
+    client = Client(transport=transport, platform="desktop")
+    await client.request_musicu(
+        data={
+            "module": "music.test.Module",
+            "method": "TestMethod",
+            "param": {},
+        },
+        comm={"cv": 999001},
+    )
 
     payload = captured["json"]
     assert isinstance(payload, dict)
@@ -111,16 +108,15 @@ async def test_request_musicu_raises_http_error_on_non_200() -> None:
         return httpx.Response(500, text="musicu-failed")
 
     transport = httpx.MockTransport(handler)
-    async with httpx.AsyncClient(transport=transport) as session:
-        client = Client(session=session, platform="desktop")
-        with pytest.raises(HTTPError) as exc_info:
-            await client.request_musicu(
-                data={
-                    "module": "music.test.Module",
-                    "method": "TestMethod",
-                    "param": {},
-                }
-            )
+    client = Client(transport=transport, platform="desktop")
+    with pytest.raises(HTTPError) as exc_info:
+        await client.request_musicu(
+            data={
+                "module": "music.test.Module",
+                "method": "TestMethod",
+                "param": {},
+            }
+        )
 
     assert exc_info.value.status_code == 500
     assert "musicu-failed" in str(exc_info.value)
@@ -134,18 +130,17 @@ async def test_request_jce_raises_http_error_on_non_200() -> None:
         return httpx.Response(500, text="jce-failed")
 
     transport = httpx.MockTransport(handler)
-    async with httpx.AsyncClient(transport=transport) as session:
-        client = Client(session=session, platform="android")
-        client._qimei_loaded = True
-        client._qimei_cache = {"q16": "q16-default", "q36": "q36-default"}
-        with pytest.raises(HTTPError) as exc_info:
-            await client.request_jce(
-                data={
-                    "module": "music.test.Module",
-                    "method": "TestMethod",
-                    "param": {0: "ok"},
-                }
-            )
+    client = Client(transport=transport, platform="android")
+    client._qimei_loaded = True
+    client._qimei_cache = {"q16": "q16-default", "q36": "q36-default"}
+    with pytest.raises(HTTPError) as exc_info:
+        await client.request_jce(
+            data={
+                "module": "music.test.Module",
+                "method": "TestMethod",
+                "param": {0: "ok"},
+            }
+        )
 
     assert exc_info.value.status_code == 500
     assert "jce-failed" in str(exc_info.value)
@@ -178,8 +173,8 @@ async def test_request_group_logs_and_error_outcomes(caplog: pytest.LogCaptureFi
     client.request_musicu = fake_request_musicu  # type: ignore[method-assign]
 
     group = client.request_group(batch_size=1, max_inflight_batches=1)
-    group.add(client.build_request("ok.module", "ok", {}))
-    group.add(client.build_request("bad.module", "bad", {}))
+    group.add(client.user.build_request("ok.module", "ok", {}))
+    group.add(client.user.build_request("bad.module", "bad", {}))
 
     with caplog.at_level(logging.DEBUG, logger="qqmusicapi.request"):
         outcomes = await group.execute()
@@ -211,7 +206,7 @@ async def test_request_group_execute_for_each_stream_consumption() -> None:
     client.request_musicu = fake_request_musicu  # type: ignore[method-assign]
     group = client.request_group(batch_size=2, max_inflight_batches=2)
     for idx in range(6):
-        group.add(client.build_request(f"module.{idx}", "ok", {}))
+        group.add(client.user.build_request(f"module.{idx}", "ok", {}))
 
     consumed: list[int] = []
 
@@ -230,7 +225,7 @@ async def test_request_group_execute_respects_max_collect() -> None:
     client = Client(platform="desktop")
     group = client.request_group(batch_size=2, max_inflight_batches=1)
     for idx in range(11):
-        group.add(client.build_request(f"module.{idx}", "ok", {}))
+        group.add(client.user.build_request(f"module.{idx}", "ok", {}))
 
     with pytest.raises(ValueError, match="max_collect=10"):
         await group.execute(max_collect=10)
@@ -255,7 +250,7 @@ async def test_request_group_execute_iter_completeness() -> None:
     client.request_musicu = fake_request_musicu  # type: ignore[method-assign]
     group = client.request_group(batch_size=2, max_inflight_batches=3)
     for idx in range(7):
-        group.add(client.build_request(f"module.{idx}", "ok", {}))
+        group.add(client.user.build_request(f"module.{idx}", "ok", {}))
 
     outcomes = [outcome async for outcome in group.execute_iter()]
     assert len(outcomes) == 7
@@ -278,88 +273,11 @@ async def test_request_jce_rejects_non_int_param_keys() -> None:
     await client.close()
 
 
-@pytest.mark.asyncio
-async def test_using_shares_session_and_limiter() -> None:
-    """验证 using 创建的新 Client 共享 session 和 limiter."""
-    client = Client(platform="desktop")
-    new_credential = Credential(musicid=123456)
-    new_client = client.using(new_credential)
-
-    assert new_client._session is client._session
-    assert new_client._limiter is client._limiter
-
-    await client.close()
-    await new_client.close()
-
-
-@pytest.mark.asyncio
-async def test_using_has_independent_credential() -> None:
-    """验证 using 创建的新 Client 拥有独立的凭据."""
-    old_credential = Credential(musicid=111)
-    client = Client(credential=old_credential)
-    new_credential = Credential(musicid=222)
-    new_client = client.using(new_credential)
-
-    assert new_client.credential is new_credential
-    assert client.credential is old_credential
-    assert new_client.credential.musicid == 222
-    assert client.credential.musicid == 111
-
-    await client.close()
-    await new_client.close()
-
-
-@pytest.mark.asyncio
-async def test_using_does_not_own_session() -> None:
-    """验证 using 创建的新 Client 不拥有 session 所有的所有权."""
-    client = Client(platform="desktop")
-    new_client = client.using(Credential())
-
-    assert client._owns_session is True
-    assert new_client._owns_session is False
-
-    await client.close()
-    await new_client.close()
-
-
-@pytest.mark.asyncio
-async def test_using_shares_qimei_state() -> None:
-    """验证 using 创建的新 Client 共享 QIMEI 相关的状态."""
-    client = Client(platform="android")
-    new_client = client.using(Credential())
-
-    assert new_client._qimei_lock is client._qimei_lock
-    assert new_client._qimei_loaded is client._qimei_loaded
-    assert new_client._qimei_cache is client._qimei_cache
-
-    await client.close()
-    await new_client.close()
-
-
 def test_api_module_base() -> None:
     """测试 ApiModule 基类初始化。"""
     client = Client()
     module = ApiModule(client)
     assert module._client is client
-
-
-def test_client_properties() -> None:
-    """测试 Client 模块属性挂载及 using() 安全性。"""
-    client = Client()
-
-    assert isinstance(client.comment, ApiModule)
-    assert isinstance(client.recommend, ApiModule)
-    assert isinstance(client.top, ApiModule)
-    assert isinstance(client.album, ApiModule)
-    assert isinstance(client.mv, ApiModule)
-    assert isinstance(client.login, ApiModule)
-
-    assert client.comment is not client.comment
-
-    new_client = client.using(client.credential)
-    assert new_client is not client
-    assert new_client.comment._client is new_client
-    assert client.comment._client is client
 
 
 def test_client_build_result_struct() -> None:

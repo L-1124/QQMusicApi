@@ -19,7 +19,7 @@ class CommentApi(ApiModule):
                 "biz_sub_type": 2,
             },
         }
-        return self._client.build_request("music.globalComment.CommentCountSrv", "GetCmCount", data)
+        return self.build_request("music.globalComment.CommentCountSrv", "GetCmCount", data)
 
     def get_hot_comments(
         self,
@@ -46,7 +46,7 @@ class CommentApi(ApiModule):
             "WithAirborne": 0,
             "PicEnable": 1,
         }
-        return self._client.build_request("music.globalComment.CommentRead", "GetHotCommentList", params)
+        return self.build_request("music.globalComment.CommentRead", "GetHotCommentList", params)
 
     def get_new_comments(
         self,
@@ -74,7 +74,7 @@ class CommentApi(ApiModule):
             "BizId": biz_id,
             "AudioEnable": 1,
         }
-        return self._client.build_request("music.globalComment.CommentRead", "GetNewCommentList", params)
+        return self.build_request("music.globalComment.CommentRead", "GetNewCommentList", params)
 
     def get_recommend_comments(
         self,
@@ -102,7 +102,7 @@ class CommentApi(ApiModule):
             "BizId": biz_id,
             "AudioEnable": 1,
         }
-        return self._client.build_request("music.globalComment.CommentRead", "GetRecCommentList", params)
+        return self.build_request("music.globalComment.CommentRead", "GetRecCommentList", params)
 
     def get_moment_comments(
         self,
@@ -125,4 +125,4 @@ class CommentApi(ApiModule):
             "BizType": 1,
             "BizId": biz_id,
         }
-        return self._client.build_request("music.globalComment.SongTsComment", "GetSongTsCmList", params)
+        return self.build_request("music.globalComment.SongTsComment", "GetSongTsCmList", params)

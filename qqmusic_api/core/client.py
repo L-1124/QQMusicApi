@@ -1,9 +1,18 @@
 """Client"""
 
-import copy
 import logging
+import sys
 import uuid
-from typing import TYPE_CHECKING, Any, TypedDict, TypeVar, cast, overload
+from http.cookiejar import CookieJar
+from typing import TYPE_CHECKING, Any, TypedDict, TypeVar, cast
+
+from typing_extensions import override
+
+if sys.version_info >= (3, 11):
+    from typing import Unpack
+else:
+    from typing_extensions import Unpack
+
 
 import anyio
 import httpx
@@ -56,6 +65,37 @@ class RequestItem(TypedDict):
 logger = logging.getLogger("qqmusicapi.client")
 
 
+class ClientConfig(TypedDict, total=False):
+    """Client 的可选底层网络配置"""
+
+    proxy: Any
+    trust_env: bool
+    verify: Any
+    cert: Any
+    event_hooks: Any
+    transport: Any
+    mounts: Any
+
+
+class _NullCookieJar(CookieJar):
+    """绝对无状态的底层 Cookie 容器."""
+
+    @override
+    def set_cookie(self, cookie) -> None:
+        """拦截并丢弃单一 Cookie 的写入动作."""
+        pass
+
+    @override
+    def set_cookie_if_ok(self, cookie, request) -> None:
+        """拦截并丢弃经过安全策略校验的单一 Cookie 写入动作."""
+        pass
+
+    @override
+    def extract_cookies(self, response, request) -> None:
+        """完全阻断从 HTTP 响应头中提取并批量存储 Set-Cookie 的行为."""
+        pass
+
+
 class Client:
     """QQMusic API Client."""
 
@@ -64,10 +104,10 @@ class Client:
         credential: Credential | None = None,
         enable_sign: bool = False,
         platform: str = "android",
-        session: httpx.AsyncClient | None = None,
         max_concurrency: int = 10,
         max_connections: int = 20,
         qimei_timeout: float = 1.5,
+        **client_config: Unpack[ClientConfig],
     ):
         self.credential = credential or Credential()
         self.device = Device()
@@ -78,27 +118,27 @@ class Client:
         self._guid = uuid.uuid4().hex
 
         self._limiter = anyio.CapacityLimiter(max_concurrency)
-        self._owns_session = session is None
-        self._session = session or httpx.AsyncClient(
-            http2=True,
-            timeout=10.0,
-            follow_redirects=True,
+
+        self._session = httpx.AsyncClient(
+            follow_redirects=False,
             limits=httpx.Limits(
-                max_keepalive_connections=max_connections,
                 max_connections=max_connections,
+                max_keepalive_connections=max_connections,
             ),
+            http2=True,
+            cookies=_NullCookieJar(),
+            proxy=client_config.get("proxy"),
+            trust_env=client_config.get("trust_env", True),
+            verify=client_config.get("verify", True),
+            cert=client_config.get("cert"),
+            event_hooks=client_config.get("event_hooks"),
+            transport=client_config.get("transport"),
+            mounts=client_config.get("mounts"),
         )
 
         self._qimei_lock = anyio.Lock()
         self._qimei_loaded = False
         self._qimei_cache: QimeiResult | None = None
-
-    def using(self, credential: Credential) -> "Client":
-        """创建共享连接配置的新 Client。"""
-        new_client = copy.copy(self)
-        new_client.credential = credential
-        new_client._owns_session = False
-        return new_client
 
     @property
     def comment(self) -> "CommentApi":
@@ -279,62 +319,6 @@ class Client:
             guid=self._guid,
         )
 
-    def _build_query_common_params(self, platform: str | None = None) -> dict[str, int]:
-        """构建查询接口使用的通用版本参数。"""
-        return self._version_policy.build_query_params(platform or self.platform)
-
-    @overload
-    def build_request(
-        self,
-        module: str,
-        method: str,
-        param: dict[str, Any] | dict[int, Any],
-        response_model: None = None,
-        comm: dict[str, Any] | None = None,
-        is_jce: bool = False,
-        credential: Credential | None = None,
-        platform: str | None = None,
-    ) -> "Request[dict[str, Any]]": ...
-
-    @overload
-    def build_request(
-        self,
-        module: str,
-        method: str,
-        param: dict[str, Any] | dict[int, Any],
-        response_model: type[R],
-        comm: dict[str, Any] | None = None,
-        is_jce: bool = False,
-        credential: Credential | None = None,
-        platform: str | None = None,
-    ) -> "Request[R]": ...
-
-    def build_request(
-        self,
-        module: str,
-        method: str,
-        param: dict[str, Any] | dict[int, Any],
-        response_model: type[R] | None = None,
-        comm: dict[str, Any] | None = None,
-        is_jce: bool = False,
-        credential: Credential | None = None,
-        platform: str | None = None,
-    ) -> "Request[Any]":
-        """构建可 await 的请求描述符。"""
-        from .request import Request
-
-        return Request(
-            _client=self,
-            module=module,
-            method=method,
-            param=param,
-            response_model=response_model,
-            comm=comm,
-            is_jce=is_jce,
-            credential=credential,
-            platform=platform,
-        )
-
     def request_group(self, batch_size: int = 20, max_inflight_batches: int = 5) -> "RequestGroup":
         """创建批量请求容器。"""
         from .request import RequestGroup
@@ -422,8 +406,7 @@ class Client:
 
     async def close(self) -> None:
         """关闭底层会话。"""
-        if self._owns_session:
-            await self._session.aclose()
+        await self._session.aclose()
 
     async def __aenter__(self) -> "Client":
         return self

@@ -100,7 +100,7 @@ async def test_check_qq_qr_done_parses_credential(mock_client):
     response.text = (
         "ptuiCB('0','0','https://graph.qq.com/oauth2.0/login_jump?ptsigx=abc&s_url=x&uin=10001&service=y','0','0','0');"
     )
-    mock_client.request = AsyncMock(return_value=response)
+    mock_client.fetch = AsyncMock(return_value=response)
     expected_credential = Credential(musicid=10001, musickey="Q_H_L_test")
     api._authorize_qq_qr = AsyncMock(return_value=expected_credential)  # type: ignore[method-assign]
 

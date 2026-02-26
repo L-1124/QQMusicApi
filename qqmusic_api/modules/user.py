@@ -9,9 +9,9 @@ class UserApi(ApiModule):
 
     async def get_euin(self, musicid: int) -> str:
         """通过 musicid 获取 encrypt_uin。"""
-        params = self._client._build_query_common_params("desktop")
+        params = self._build_query_common_params("desktop")
         params.update({"cid": 205360838, "userid": musicid})
-        response = await self._client.request(
+        response = await self._request(
             "GET",
             "https://c6.y.qq.com/rsc/fcgi-bin/fcg_get_profile_homepage.fcg",
             params=params,
@@ -21,7 +21,7 @@ class UserApi(ApiModule):
 
     def get_musicid(self, euin: str):
         """通过 encrypt_uin 反查 musicid。"""
-        return self._client.build_request(
+        return self.build_request(
             module="music.srfDissInfo.DissInfo",
             method="CgiGetDiss",
             param={"disstid": 0, "dirid": 201, "song_num": 1, "enc_host_uin": euin, "onlysonglist": 1},
@@ -29,7 +29,7 @@ class UserApi(ApiModule):
 
     def get_homepage(self, euin: str, *, credential: Credential | None = None):
         """获取用户主页信息。"""
-        return self._client.build_request(
+        return self.build_request(
             module="music.UnifiedHomepage.UnifiedHomepageSrv",
             method="GetHomepageHeader",
             param={"uin": euin, "IsQueryTabDetail": 1},
@@ -39,7 +39,7 @@ class UserApi(ApiModule):
     def get_vip_info(self, *, credential: Credential | None = None):
         """获取当前登录账号的 VIP 信息。"""
         target_credential = self._require_login(credential)
-        return self._client.build_request(
+        return self.build_request(
             module="VipLogin.VipLoginInter",
             method="vip_login_base",
             param={},
@@ -56,7 +56,7 @@ class UserApi(ApiModule):
     ):
         """获取关注歌手列表。"""
         target_credential = self._require_login(credential)
-        return self._client.build_request(
+        return self.build_request(
             module="music.concern.RelationList",
             method="GetFollowSingerList",
             param={"HostUin": euin, "From": (page - 1) * num, "Size": num},
@@ -73,7 +73,7 @@ class UserApi(ApiModule):
     ):
         """获取粉丝列表。"""
         target_credential = self._require_login(credential)
-        return self._client.build_request(
+        return self.build_request(
             module="music.concern.RelationList",
             method="GetFansList",
             param={"HostUin": euin, "From": (page - 1) * num, "Size": num},
@@ -89,7 +89,7 @@ class UserApi(ApiModule):
     ):
         """获取好友列表。"""
         target_credential = self._require_login(credential)
-        return self._client.build_request(
+        return self.build_request(
             module="music.homepage.Friendship",
             method="GetFriendList",
             param={"PageSize": num, "Page": page - 1},
@@ -106,7 +106,7 @@ class UserApi(ApiModule):
     ):
         """获取关注用户列表。"""
         target_credential = self._require_login(credential)
-        return self._client.build_request(
+        return self.build_request(
             module="music.concern.RelationList",
             method="GetFollowUserList",
             param={"HostUin": euin, "From": (page - 1) * num, "Size": num},
@@ -115,7 +115,7 @@ class UserApi(ApiModule):
 
     def get_created_songlist(self, uin: str, *, credential: Credential | None = None):
         """获取创建的歌单。"""
-        return self._client.build_request(
+        return self.build_request(
             module="music.musicasset.PlaylistBaseRead",
             method="GetPlaylistByUin",
             param={"uin": uin},
@@ -131,7 +131,7 @@ class UserApi(ApiModule):
         credential: Credential | None = None,
     ):
         """获取收藏歌曲。"""
-        return self._client.build_request(
+        return self.build_request(
             module="music.srfDissInfo.DissInfo",
             method="CgiGetDiss",
             param={
@@ -156,7 +156,7 @@ class UserApi(ApiModule):
         credential: Credential | None = None,
     ):
         """获取收藏歌单。"""
-        return self._client.build_request(
+        return self.build_request(
             module="music.musicasset.PlaylistFavRead",
             method="CgiGetPlaylistFavInfo",
             param={"uin": euin, "offset": (page - 1) * num, "size": num},
@@ -172,7 +172,7 @@ class UserApi(ApiModule):
         credential: Credential | None = None,
     ):
         """获取收藏专辑。"""
-        return self._client.build_request(
+        return self.build_request(
             module="music.musicasset.AlbumFavRead",
             method="CgiGetAlbumFavInfo",
             param={"euin": euin, "offset": (page - 1) * num, "size": num},
@@ -189,7 +189,7 @@ class UserApi(ApiModule):
     ):
         """获取收藏 MV。"""
         target_credential = self._require_login(credential)
-        return self._client.build_request(
+        return self.build_request(
             module="music.musicasset.MVFavRead",
             method="getMyFavMV_v2",
             param={"encuin": euin, "pagesize": num, "num": page - 1},
@@ -198,7 +198,7 @@ class UserApi(ApiModule):
 
     def get_music_gene(self, euin: str, *, credential: Credential | None = None):
         """获取音乐基因数据。"""
-        return self._client.build_request(
+        return self.build_request(
             module="music.recommend.UserProfileSettingSvr",
             method="GetProfileReport",
             param={"VisitAccount": euin},

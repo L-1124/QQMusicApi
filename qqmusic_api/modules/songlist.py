@@ -18,7 +18,7 @@ class SonglistApi(ApiModule):
         userinfo: bool = True,
     ):
         """获取歌单详细信息和歌曲原始数据。"""
-        return self._client.build_request(
+        return self.build_request(
             module="music.srfDissInfo.DissInfo",
             method="CgiGetDiss",
             param={
@@ -36,7 +36,7 @@ class SonglistApi(ApiModule):
     def create(self, dirname: str, *, credential: Credential | None = None):
         """创建歌单。"""
         target_credential = self._require_login(credential)
-        return self._client.build_request(
+        return self.build_request(
             module="music.musicasset.PlaylistBaseWrite",
             method="AddPlaylist",
             param={"dirName": dirname},
@@ -46,7 +46,7 @@ class SonglistApi(ApiModule):
     def delete(self, dirid: int, *, credential: Credential | None = None):
         """删除歌单。"""
         target_credential = self._require_login(credential)
-        return self._client.build_request(
+        return self.build_request(
             module="music.musicasset.PlaylistBaseWrite",
             method="DelPlaylist",
             param={"dirId": dirid},
@@ -63,7 +63,7 @@ class SonglistApi(ApiModule):
         """添加歌曲到歌单。"""
         target_credential = self._require_login(credential)
         songs = song_ids or []
-        return self._client.build_request(
+        return self.build_request(
             module="music.musicasset.PlaylistDetailWrite",
             method="AddSonglist",
             param={
@@ -83,7 +83,7 @@ class SonglistApi(ApiModule):
         """删除歌单中的歌曲。"""
         target_credential = self._require_login(credential)
         songs = song_ids or []
-        return self._client.build_request(
+        return self.build_request(
             module="music.musicasset.PlaylistDetailWrite",
             method="DelSonglist",
             param={

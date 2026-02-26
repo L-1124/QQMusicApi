@@ -3,8 +3,6 @@
 import asyncio
 from pathlib import Path
 
-from httpx import AsyncClient
-
 from qqmusic_api import Client
 from qqmusic_api.core.exceptions import LoginError
 from qqmusic_api.modules.login import QR, QRCodeLoginEvents, QRLoginType
@@ -39,7 +37,7 @@ def show_qrcode(qr: QR) -> None:
 async def qrcode_login_example(login_type: QRLoginType) -> None:
     """二维码登录示例。"""
     try:
-        async with Client(session=AsyncClient(verify=False)) as client:
+        async with Client(verify=False) as client:
             print(f"正在获取 {login_type.name} 二维码...")
             qr = await client.login.get_qrcode(login_type)
             print(f"获取 {login_type.name} 二维码成功")

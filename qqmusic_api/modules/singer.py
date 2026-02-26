@@ -115,7 +115,7 @@ class SingerApi(ApiModule):
         genre: int | GenreType = GenreType.ALL,
     ):
         """获取歌手列表原始数据。"""
-        return self._client.build_request(
+        return self.build_request(
             module="music.musichallSinger.SingerList",
             method="GetSingerList",
             param={
@@ -136,7 +136,7 @@ class SingerApi(ApiModule):
         cur_page: int = 1,
     ):
         """获取按索引分页的歌手列表原始数据。"""
-        return self._client.build_request(
+        return self.build_request(
             module="music.musichallSinger.SingerList",
             method="GetSingerListIndex",
             param={
@@ -151,7 +151,7 @@ class SingerApi(ApiModule):
 
     def get_info(self, mid: str):
         """获取歌手主页基本信息。"""
-        return self._client.build_request(
+        return self.build_request(
             module="music.UnifiedHomepage.UnifiedHomepageSrv",
             method="GetHomepageHeader",
             param={"SingerMid": mid},
@@ -165,7 +165,7 @@ class SingerApi(ApiModule):
         num: int = 10,
     ):
         """获取歌手主页 Tab 详情原始数据。"""
-        return self._client.build_request(
+        return self.build_request(
             module="music.UnifiedHomepage.UnifiedHomepageSrv",
             method="GetHomepageTabDetail",
             param={
@@ -180,7 +180,7 @@ class SingerApi(ApiModule):
 
     def get_desc(self, mids: list[str]):
         """获取歌手简介。"""
-        return self._client.build_request(
+        return self.build_request(
             module="music.musichallSinger.SingerInfoInter",
             method="GetSingerDetail",
             param={"singer_mids": mids, "groups": 1, "wikis": 1},
@@ -188,7 +188,7 @@ class SingerApi(ApiModule):
 
     def get_similar(self, mid: str, number: int = 10):
         """获取相似歌手。"""
-        return self._client.build_request(
+        return self.build_request(
             module="music.SimilarSingerSvr",
             method="GetSimilarSingerList",
             param={"singerMid": mid, "number": number},
@@ -196,7 +196,7 @@ class SingerApi(ApiModule):
 
     def get_songs_list(self, mid: str, number: int = 10, begin: int = 0):
         """获取歌手歌曲列表原始数据。"""
-        return self._client.build_request(
+        return self.build_request(
             module="musichall.song_list_server",
             method="GetSingerSongList",
             param={"singerMid": mid, "order": 1, "number": number, "begin": begin},
@@ -204,7 +204,7 @@ class SingerApi(ApiModule):
 
     def get_album_list(self, mid: str, number: int = 10, begin: int = 0):
         """获取歌手专辑列表原始数据。"""
-        return self._client.build_request(
+        return self.build_request(
             module="music.musichallAlbum.AlbumListServer",
             method="GetAlbumList",
             param={"singerMid": mid, "order": 1, "number": number, "begin": begin},
@@ -212,7 +212,7 @@ class SingerApi(ApiModule):
 
     def get_mv_list(self, mid: str, number: int = 10, begin: int = 0):
         """获取歌手 MV 列表原始数据。"""
-        return self._client.build_request(
+        return self.build_request(
             module="MvService.MvInfoProServer",
             method="GetSingerMvList",
             param={"singermid": mid, "order": 1, "count": number, "start": begin},

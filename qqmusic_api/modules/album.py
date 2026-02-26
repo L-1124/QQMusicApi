@@ -35,7 +35,7 @@ class AlbumApi(ApiModule):
         else:
             param["albumMId"] = value
 
-        return self._client.build_request(
+        return self.build_request(
             module="music.musichallAlbum.AlbumInfoServer",
             method="GetAlbumDetail",
             param=param,
@@ -59,7 +59,7 @@ class AlbumApi(ApiModule):
         else:
             param["albumMid"] = value
 
-        return self._client.build_request(
+        return self.build_request(
             module="music.musichallAlbum.AlbumSongList",
             method="GetAlbumSongList",
             param=param,

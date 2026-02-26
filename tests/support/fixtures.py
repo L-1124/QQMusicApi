@@ -12,9 +12,7 @@ def mock_client():
     """提供一个 execute 被 mock 的 Client 实例."""
     client = Client(platform="desktop")
 
-    original_build_request = client.build_request
     client.execute = AsyncMock()
-    client.build_request = original_build_request
     client.execute.return_value = {}
 
     yield client

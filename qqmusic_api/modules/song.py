@@ -73,7 +73,7 @@ class SongApi(ApiModule):
             params["ids"] = value
         else:
             params["mids"] = value
-        return self._client.build_request(
+        return self.build_request(
             module="music.trackInfo.UniformRuleCtrl",
             method="CgiGetTrackInfo",
             param=params,
@@ -81,7 +81,7 @@ class SongApi(ApiModule):
 
     def get_try_url(self, mid: str, vs: str):
         """获取试听文件链接原始数据。"""
-        return self._client.build_request(
+        return self.build_request(
             module="music.vkey.GetVkey",
             method="UrlGetVkey",
             param={
@@ -98,7 +98,7 @@ class SongApi(ApiModule):
             param = {"song_id": value}
         else:
             param = {"song_mid": value}
-        return self._client.build_request(
+        return self.build_request(
             module="music.pf_song_detail_svr",
             method="get_song_detail_yqq",
             param=param,
@@ -106,7 +106,7 @@ class SongApi(ApiModule):
 
     def get_similar_song(self, songid: int):
         """获取相似歌曲。"""
-        return self._client.build_request(
+        return self.build_request(
             module="music.recommend.TrackRelationServer",
             method="GetSimilarSongs",
             param={"songid": songid},
@@ -114,7 +114,7 @@ class SongApi(ApiModule):
 
     def get_lables(self, songid: int):
         """获取歌曲标签。"""
-        return self._client.build_request(
+        return self.build_request(
             module="music.recommend.TrackRelationServer",
             method="GetSongLabels",
             param={"songid": songid},
@@ -122,7 +122,7 @@ class SongApi(ApiModule):
 
     def get_related_songlist(self, songid: int):
         """获取歌曲相关歌单。"""
-        return self._client.build_request(
+        return self.build_request(
             module="music.recommend.TrackRelationServer",
             method="GetRelatedPlaylist",
             param={"songid": songid},
@@ -133,7 +133,7 @@ class SongApi(ApiModule):
         params: dict[str, Any] = {"songid": songid, "songtype": 1}
         if last_mvid:
             params["lastmvid"] = last_mvid
-        return self._client.build_request(
+        return self.build_request(
             module="MvService.MvInfoProServer",
             method="GetSongRelatedMv",
             param=params,
@@ -145,7 +145,7 @@ class SongApi(ApiModule):
             param = {"songid": value}
         else:
             param = {"songmid": value}
-        return self._client.build_request(
+        return self.build_request(
             module="music.musichallSong.OtherVersionServer",
             method="GetOtherVersionSongs",
             param=param,
@@ -157,7 +157,7 @@ class SongApi(ApiModule):
             param = {"songid": value}
         else:
             param = {"songmid": value}
-        return self._client.build_request(
+        return self.build_request(
             module="music.sociality.KolWorksTag",
             method="SongProducer",
             param=param,
@@ -165,7 +165,7 @@ class SongApi(ApiModule):
 
     def get_sheet(self, mid: str):
         """获取歌曲相关曲谱。"""
-        return self._client.build_request(
+        return self.build_request(
             module="music.mir.SheetMusicSvr",
             method="GetMoreSheetMusic",
             param={"songmid": mid, "scoreType": -1},
@@ -173,7 +173,7 @@ class SongApi(ApiModule):
 
     def get_fav_num(self, songid: list[int]):
         """获取歌曲收藏数量原始数据。"""
-        return self._client.build_request(
+        return self.build_request(
             module="music.musicasset.SongFavRead",
             method="GetSongFansNumberById",
             param={"v_songId": songid},

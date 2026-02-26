@@ -34,7 +34,7 @@ class LyricApi(ApiModule):
         else:
             params["songMid"] = value
 
-        return self._client.build_request(
+        return self.build_request(
             module="music.musichallSong.PlayLyricInfo",
             method="GetPlayLyricInfo",
             param=params,
