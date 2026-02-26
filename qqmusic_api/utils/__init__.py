@@ -1,4 +1,4 @@
-"""工具函数导出入口。"""
+"""工具函数."""
 
 from .common import get_guid, get_searchID, hash33
 from .qimei import QimeiResult, get_qimei

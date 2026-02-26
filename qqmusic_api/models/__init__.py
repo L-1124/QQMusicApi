@@ -1,4 +1,4 @@
-"""数据模型导出入口。"""
+"""数据模型包."""
 
 from .album import AlbumSongItem, AlbumSongResponse
 from .request import (

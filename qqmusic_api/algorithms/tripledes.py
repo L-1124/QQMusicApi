@@ -1,4 +1,4 @@
-"""QRC 解密模块
+"""QRC 解密模块.
 
 代码来源: https://github.com/chenmozhijin/LDDC
 """
@@ -65,7 +65,7 @@ sbox = (
 
 
 def bitnum(a: bytearray | bytes, b: int, c: int) -> int:
-    """从字节串中提取指定位置的位,并左移指定偏移量
+    """从字节串中提取指定位置的位,并左移指定偏移量.
 
     Args:
         a: 字节串
@@ -79,8 +79,7 @@ def bitnum(a: bytearray | bytes, b: int, c: int) -> int:
 
 
 def bitnum_intr(a: int, b: int, c: int) -> int:
-    """从整数中提取指定位置的位,并左移指定偏移量
-
+    """从整数中提取指定位置的位,并左移指定偏移量.
 
     Args:
         a: 整数
@@ -94,7 +93,7 @@ def bitnum_intr(a: int, b: int, c: int) -> int:
 
 
 def bitnum_intl(a: int, b: int, c: int) -> int:
-    """从整数中提取指定位置的位,并右移指定偏移量
+    """从整数中提取指定位置的位,并右移指定偏移量.
 
     Args:
         a: 整数
@@ -108,7 +107,7 @@ def bitnum_intl(a: int, b: int, c: int) -> int:
 
 
 def sbox_bit(a: int) -> int:
-    """对输入整数进行位运算,重新组合位
+    """对输入整数进行位运算, 重新组合位.
 
     Args:
         a: 整数
@@ -120,7 +119,7 @@ def sbox_bit(a: int) -> int:
 
 
 def initial_permutation(input_data: bytearray) -> tuple[int, int]:
-    """初始置换
+    """初始置换.
 
     Args:
         input_data: 输入字节串
@@ -201,7 +200,7 @@ def initial_permutation(input_data: bytearray) -> tuple[int, int]:
 
 
 def inverse_permutation(s0: int, s1: int) -> bytearray:
-    """逆初始置换
+    """逆初始置换.
 
     Args:
         s0: 初始置换后的字节串
@@ -302,7 +301,7 @@ def inverse_permutation(s0: int, s1: int) -> bytearray:
 
 
 def f(state: int, key: list[int]) -> int:
-    """Triple-DES F函数
+    """Triple-DES F函数.
 
     Args:
         state: 输入
@@ -405,14 +404,14 @@ def f(state: int, key: list[int]) -> int:
 
 
 def crypt(input_data: bytearray, key: list) -> bytearray:
-    """TripleDES加密算法
+    """TripleDES加密算法.
 
     Args:
-        input_data: 输入字节串
-        key: 密钥
+        input_data: 输入字节串.
+        key: 密钥.
 
     Returns:
-        TripleDES加密后的字节串
+        TripleDES加密后的字节串.
     """
     s0, s1 = initial_permutation(input_data)  # 初始置换
 
@@ -426,7 +425,7 @@ def crypt(input_data: bytearray, key: list) -> bytearray:
 
 
 def key_schedule(key: bytes, mode: int) -> list[list[int]]:
-    """TripleDES密钥扩展算法
+    """TripleDES密钥扩展算法.
 
     Args:
         key: 密钥
@@ -570,7 +569,7 @@ def key_schedule(key: bytes, mode: int) -> list[list[int]]:
 
 
 def tripledes_key_setup(key: bytes, mode: int) -> list[list[list[int]]]:
-    """TripleDES密钥设置
+    """TripleDES密钥设置.
 
     Args:
         key: 密钥
@@ -585,14 +584,14 @@ def tripledes_key_setup(key: bytes, mode: int) -> list[list[list[int]]]:
 
 
 def tripledes_crypt(data: bytearray, key: list) -> bytearray:
-    """TripleDES加密算法
+    """TripleDES加密算法.
 
     Args:
-        data: 输入字节串
-        key: 密钥
+        data: 输入字节串.
+        key: 密钥.
 
     Returns:
-        TripleDES加密后的字节串
+        TripleDES加密后的字节串.
     """
     for i in range(3):
         data = crypt(data, key[i])

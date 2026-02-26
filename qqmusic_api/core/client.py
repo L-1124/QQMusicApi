@@ -1,10 +1,10 @@
-"""Client"""
+"""API 客户端核心实现. 整合网络传输、鉴权与业务模块访问."""
 
 import logging
 import sys
 import uuid
 from http.cookiejar import CookieJar
-from typing import TYPE_CHECKING, Any, TypedDict, TypeVar, cast
+from typing import TYPE_CHECKING, Any, TypedDict, cast
 
 from typing_extensions import override
 
@@ -48,14 +48,11 @@ if TYPE_CHECKING:
     from ..modules.songlist import SonglistApi
     from ..modules.top import TopApi
     from ..modules.user import UserApi
-    from .request import Request, RequestGroup
-
-
-R = TypeVar("R", bound=BaseModel | Struct | dict)
+    from .request import Request, RequestGroup, ResponseModel
 
 
 class RequestItem(TypedDict):
-    """请求项"""
+    """请求项."""
 
     module: str
     method: str
@@ -66,7 +63,7 @@ logger = logging.getLogger("qqmusicapi.client")
 
 
 class ClientConfig(TypedDict, total=False):
-    """Client 的可选底层网络配置"""
+    """Client 的可选底层网络配置."""
 
     proxy: Any
     trust_env: bool
@@ -99,8 +96,8 @@ class _NullCookieJar(CookieJar):
 class Client:
     """QQMusic API Client.
 
-    管理底层 HTTP 请求、全局设备信息、QIMEI 以及鉴权凭据,并提供对各个业务 API 模块的访问入口。
-    支持自动携带签名字段、防并发积压限制及批量请求的打包调度。
+    管理底层 HTTP 请求、全局设备信息、QIMEI 以及鉴权凭证, 并提供对各个业务 API 模块的访问入口.
+    支持自动携带签名字段、防并发积压限制及批量请求的打包调度.
     """
 
     def __init__(
@@ -114,17 +111,17 @@ class Client:
         qimei_timeout: float = 1.5,
         **client_config: Unpack[ClientConfig],
     ):
-        """初始化 Client 实例。
+        """初始化 Client 实例.
 
         Args:
-            credential: 用户鉴权凭证,若不提供则创建空凭证。
-            device_path: 设备信息持久化路径,默认保存至内存。
-            enable_sign: 是否开启全局请求参数签名。
-            platform: 默认请求使用的平台标识,默认为 "android"。
-            max_concurrency: 单个 Client 实例最大并发请求数。
-            max_connections: HTTP 连接池大小。
-            qimei_timeout: 内部获取 QIMEI 接口的超时时间。
-            **client_config: 传递给 httpx.AsyncClient 的底层选项。
+            credential: 用户鉴权凭证, 若不提供则创建空凭证.
+            device_path: 设备信息持久化路径, 默认保存至内存.
+            enable_sign: 是否开启全局请求参数签名.
+            platform: 默认请求使用的平台标识, 默认为 "android".
+            max_concurrency: 单个 Client 实例最大并发请求数.
+            max_connections: HTTP 连接池大小.
+            qimei_timeout: 内部获取 QIMEI 接口的超时时间.
+            **client_config: 传递给 httpx.AsyncClient 的底层选项.
         """
         self.credential = credential or Credential()
         self._guid = uuid.uuid4().hex
@@ -171,103 +168,103 @@ class Client:
 
     @property
     def comment(self) -> "CommentApi":
-        """评论模块。"""
+        """评论模块."""
         from ..modules.comment import CommentApi
 
         return CommentApi(self)
 
     @property
     def recommend(self) -> "RecommendApi":
-        """推荐模块。"""
+        """推荐模块."""
         from ..modules.recommend import RecommendApi
 
         return RecommendApi(self)
 
     @property
     def top(self) -> "TopApi":
-        """排行榜模块。"""
+        """排行榜模块."""
         from ..modules.top import TopApi
 
         return TopApi(self)
 
     @property
     def album(self) -> "AlbumApi":
-        """专辑模块。"""
+        """专辑模块."""
         from ..modules.album import AlbumApi
 
         return AlbumApi(self)
 
     @property
     def mv(self) -> "MvApi":
-        """MV 模块。"""
+        """MV 模块."""
         from ..modules.mv import MvApi
 
         return MvApi(self)
 
     @property
     def login(self) -> "LoginApi":
-        """登录模块。"""
+        """登录模块."""
         from ..modules.login import LoginApi
 
         return LoginApi(self)
 
     @property
     def search(self) -> "SearchApi":
-        """搜索模块。"""
+        """搜索模块."""
         from ..modules.search import SearchApi
 
         return SearchApi(self)
 
     @property
     def lyric(self) -> "LyricApi":
-        """歌词模块。"""
+        """歌词模块."""
         from ..modules.lyric import LyricApi
 
         return LyricApi(self)
 
     @property
     def singer(self) -> "SingerApi":
-        """歌手模块。"""
+        """歌手模块."""
         from ..modules.singer import SingerApi
 
         return SingerApi(self)
 
     @property
     def song(self) -> "SongApi":
-        """歌曲模块。"""
+        """歌曲模块."""
         from ..modules.song import SongApi
 
         return SongApi(self)
 
     @property
     def songlist(self) -> "SonglistApi":
-        """歌单模块。"""
+        """歌单模块."""
         from ..modules.songlist import SonglistApi
 
         return SonglistApi(self)
 
     @property
     def user(self) -> "UserApi":
-        """用户模块。"""
+        """用户模块."""
         from ..modules.user import UserApi
 
         return UserApi(self)
 
     async def fetch(self, method: str, url: str, **kwargs: Any) -> httpx.Response:
-        """发送底层 HTTP 请求。
+        """发送底层 HTTP 请求.
 
-        该方法提供并发控制及网络异常转换。
+        该方法提供并发控制及网络异常转换.
 
         Args:
-            method: HTTP 方法,如 "GET" 或 "POST"。
-            url: 请求的 URL 地址。
-            **kwargs: 传递给 httpx.AsyncClient.request 的附加参数。
+            method: HTTP 方法, 如 "GET" 或 "POST".
+            url: 请求的 URL 地址.
+            **kwargs: 传递给 httpx.AsyncClient.request 的附加参数.
 
         Returns:
-            httpx.Response: HTTP 响应对象。
+            httpx.Response: HTTP 响应对象.
 
         Raises:
-            NetworkError: 网络请求过程中发生异常。
+            NetworkError: 网络请求过程中发生异常.
         """
         logger.debug("HTTP 请求开始: %s %s", method, url)
         await self._limiter.acquire()
@@ -285,26 +282,26 @@ class Client:
         """同步设备暂存工作区 (UID Drift 处理).
 
         当 Client 的凭据被赋予真实 QQ 时 (例如从游离到登录),
-        自动将属于本实例先前的临时指纹挂载或舍弃, 改为转移到实名用户专有指纹文件中。
+        自动将属于本实例先前的临时指纹挂载或舍弃, 改为转移到实名用户专有指纹文件中.
         """
         await self.device_store.sync_workspace(getattr(self.credential, "musicid", None))
 
     async def _ensure_device(self) -> "Device":
-        """获取与当前凭证关联的设备信息(状态防漂移)。
+        """获取与当前凭证关联的设备信息 (状态防漂移).
 
         Returns:
-            Device: 当前活动的设备对象。
+            Device: 当前活动的设备对象.
         """
         return await self.device_store.get_device(getattr(self.credential, "musicid", None))
 
     async def _get_qimei_cached(self) -> QimeiResult | None:
-        """获取并缓存 QIMEI 信息。
+        """获取并缓存 QIMEI 信息.
 
-        如果设备对象中已有缓存则直接返回,否则向服务器请求新的 QIMEI,
-        并将其持久化到设备存储中。该方法保证并发请求时的安全性(Lock)。
+        如果设备对象中已有缓存则直接返回, 否则向服务器请求新的 QIMEI,
+        并将其持久化到设备存储中. 该方法保证并发请求时的安全性 (Lock).
 
         Returns:
-            QimeiResult | None: 成功则返回 QIMEI 字典数据,失败则返回 None。
+            QimeiResult | None: 成功则返回 QIMEI 字典数据, 失败则返回 None.
         """
         if self._qimei_loaded:
             return self._qimei_cache
@@ -345,16 +342,16 @@ class Client:
             return self._qimei_cache
 
     async def _build_common_params(self, platform: str | None, credential: Credential) -> dict[str, Any]:
-        """构建 QQ 音乐接口的通用 comm 字典参数。
+        """构建 QQ 音乐接口的通用 comm 字典参数.
 
-        提取对应的设备、QIMEI 信息、用户 UID 等,依据当前客户端平台装配到 comm 字典中。
+        提取对应的设备、QIMEI 信息、用户 UID 等, 依据当前客户端平台装配到 comm 字典中.
 
         Args:
-            platform: 目标平台名称。
-            credential: 用户凭证。
+            platform: 目标平台名称.
+            credential: 用户凭证.
 
         Returns:
-            dict[str, Any]: 组装好的 comm 参数字典。
+            dict[str, Any]: 组装好的 comm 参数字典.
         """
         target_platform = platform or self.platform
         qimei = await self._get_qimei_cached() if target_platform in {"android", "android_jce"} else None
@@ -370,35 +367,35 @@ class Client:
         )
 
     def request_group(self, batch_size: int = 20, max_inflight_batches: int = 5) -> "RequestGroup":
-        """创建并返回一个批量请求(RequestGroup)容器。
+        """创建并返回一个批量请求 (RequestGroup) 容器.
 
-        适用于需合并多个相同协议(JSON 或 JCE)请求的场景。
+        适用于需合并多个相同协议 (JSON 或 JCE) 请求的场景.
 
         Args:
-            batch_size: 单个批次的最大请求数量。
-            max_inflight_batches: 允许同时发送的最多批次数量。
+            batch_size: 单个批次的最大请求数量.
+            max_inflight_batches: 允许同时发送的最多批次数量.
 
         Returns:
-            RequestGroup: 批量请求对象。
+            RequestGroup: 批量请求对象.
         """
         from .request import RequestGroup
 
         return RequestGroup(self, batch_size=batch_size, max_inflight_batches=max_inflight_batches)
 
-    async def execute(self, request: "Request[R]") -> R:
-        """执行单个请求描述符并解析返回结果。
+    async def execute(self, request: "Request[ResponseModel]") -> "ResponseModel":
+        """执行单个请求描述符并解析返回结果.
 
-        调用中间件进行请求预处理,随后根据请求格式(JCE/JSON)分发调用底层发包方法,
-        解析响应后自动组装成预期的 `response_model` 类型。
+        调用中间件进行请求预处理, 随后根据请求格式 (JCE/JSON) 分发调用底层发包方法,
+        解析响应后自动组装成预期的 `response_model` 类型.
 
         Args:
-            request: 请求描述符对象。
+            request: 请求描述符对象.
 
         Returns:
-            R: 解析后对应的响应对象模型。
+            R: 解析后对应的响应对象模型.
 
         Raises:
-            ApiError: 接口返回状态码异常或缺少预期字段。
+            ApiError: 接口返回状态码异常或缺少预期字段.
         """
         for mw in self._middlewares:
             request = await mw.process_request(request, self)
@@ -458,15 +455,15 @@ class Client:
         return self._build_result(item.data, request.response_model)
 
     @staticmethod
-    def _build_result(raw: Any, response_model: type[R] | None) -> R:
-        """构建响应对象。
+    def _build_result(raw: Any, response_model: type["ResponseModel"] | None) -> "ResponseModel":
+        """构建响应对象.
 
         Args:
-            raw: 原始响应数据。
-            response_model: 期望的响应模型类型,支持 Pydantic BaseModel 或 Tarsio Struct。
+            raw: 原始响应数据.
+            response_model: 期望的响应模型类型, 支持 Pydantic BaseModel 或 Tarsio Struct.
 
         Returns:
-            R: 构建好的响应模型实例,或原样返回(如果无需转换)。
+            R: 构建好的响应模型实例, 或原样返回 (如果无需转换).
         """
         if response_model is None:
             return raw
@@ -480,37 +477,45 @@ class Client:
         return raw
 
     async def close(self) -> None:
-        """关闭底层会话。"""
+        """关闭底层会话."""
         await self._session.aclose()
 
     async def __aenter__(self) -> "Client":
+        """获取 Client 实例."""
         return self
 
     async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        """自动关闭 Client.
+
+        Args:
+            exc_type: 异常类型.
+            exc_val: 异常值.
+            exc_tb: 异常回溯.
+        """
         await self.close()
 
     async def _get_user_agent(self, platform: str | None = None) -> str:
-        """根据指定或默认平台生成请求所需的 User-Agent。
+        """根据指定或默认平台生成请求所需的 User-Agent.
 
         Args:
-            platform: 平台标识。若为 None,使用当前 Client 默认平台。
+            platform: 平台标识. 若为 None, 使用当前 Client 默认平台.
 
         Returns:
-            str: 格式化好的 User-Agent 字符串。
+            str: 格式化好的 User-Agent 字符串.
         """
         target_platform = platform or self.platform
         return self._version_policy.get_user_agent(target_platform, await self._ensure_device())
 
     def _get_cookies(self, credential: Credential | None = None) -> dict[str, str]:
-        """从鉴权凭证中提取请求需附带的 Cookies。
+        """从鉴权凭证中提取请求需附带的 Cookies.
 
-        转换并映射 uin、qm_keyst 等鉴权字段为标准字典形式。
+        转换并映射 uin、qm_keyst 等鉴权字段为标准字典形式.
 
         Args:
-            credential: 提供凭证对象。若为 None 则使用 Client 当前实例的全局凭证。
+            credential: 提供凭证对象. 若为 None 则使用 Client 当前实例的全局凭证.
 
         Returns:
-            dict[str, str]: 包含 Cookie 键值对的字典。
+            dict[str, str]: 包含 Cookie 键值对的字典.
         """
         auth: dict[str, str] = {}
         cred = credential or self.credential
@@ -530,19 +535,19 @@ class Client:
         platform: str | None = None,
         **kwargs: Any,
     ) -> httpx.Response:
-        """发送带有凭证和 User-Agent 的 HTTP 请求。
+        """发送带有凭证和 User-Agent 的 HTTP 请求.
 
-        自动装配指定的客户端平台 User-Agent 及对应凭证的 Cookies。
+        自动装配指定的客户端平台 User-Agent 及对应凭证的 Cookies.
 
         Args:
-            method: HTTP 方法,如 "GET" 或 "POST"。
-            url: 请求的 URL 地址。
-            credential: 覆盖默认凭证,可选。
-            platform: 覆盖默认平台,可选。
-            **kwargs: 传递给 httpx 的其他参数。
+            method: HTTP 方法, 如 "GET" 或 "POST".
+            url: 请求的 URL 地址.
+            credential: 覆盖默认凭证, 可选.
+            platform: 覆盖默认平台, 可选.
+            **kwargs: 传递给 httpx 的其他参数.
 
         Returns:
-            httpx.Response: HTTP 响应对象。
+            httpx.Response: HTTP 响应对象.
         """
         auth_cookies = self._get_cookies(credential)
         if "cookies" in kwargs:
@@ -568,23 +573,23 @@ class Client:
         http_params_extra: dict[str, str] | None = None,
         http_headers_extra: dict[str, str] | None = None,
     ) -> JsonResponse:
-        """发送标准 QQ 音乐请求 (Musicu/JSON) 并解析响应。
+        """发送标准 QQ 音乐请求 (Musicu/JSON) 并解析响应.
 
         Args:
-            data: 请求项,支持单个或批量。
-            comm: 请求公共参数。
-            credential: 请求凭证(该方法底层未直接使用凭证参数,供扩展)。
-            url: 请求的网关 URL,默认为 musicu.fcg。
-            platform: 请求发起的平台名称。
-            http_params_extra: 额外的 URL 参数。
-            http_headers_extra: 额外的 HTTP 头信息。
+            data: 请求项, 支持单个或批量.
+            comm: 请求公共参数.
+            credential: 请求凭证 (该方法底层未直接使用凭证参数, 供扩展).
+            url: 请求的网关 URL, 默认为 musicu.fcg.
+            platform: 请求发起的平台名称.
+            http_params_extra: 额外的 URL 参数.
+            http_headers_extra: 额外的 HTTP 头信息.
 
         Returns:
-            JsonResponse: 解析后的 JSON 响应对象。
+            JsonResponse: 解析后的 JSON 响应对象.
 
         Raises:
-            HTTPError: HTTP 状态码不是 200。
-            ApiError: JSON 解析错误或缺少关键字段。
+            HTTPError: HTTP 状态码不是 200.
+            ApiError: JSON 解析错误或缺少关键字段.
         """
         requests = data if isinstance(data, list) else [data]
         logger.debug("构建 JSON 批量请求: count=%s platform=%s", len(requests), platform or self.platform)
@@ -629,22 +634,22 @@ class Client:
         http_params_extra: dict[str, str] | None = None,
         http_headers_extra: dict[str, str] | None = None,
     ) -> JceResponse:
-        """发送 JCE 格式的请求并解析响应。
+        """发送 JCE 格式的请求并解析响应.
 
         Args:
-            data: JCE 请求项,支持单个或批量。
-            comm: 请求公共参数。
-            credential: 请求凭证。
-            url: JCE 网关 URL。
-            http_params_extra: 额外的 URL 参数。
-            http_headers_extra: 额外的 HTTP 头信息。
+            data: JCE 请求项, 支持单个或批量.
+            comm: 请求公共参数.
+            credential: 请求凭证.
+            url: JCE 网关 URL.
+            http_params_extra: 额外的 URL 参数.
+            http_headers_extra: 额外的 HTTP 头信息.
 
         Returns:
-            JceResponse: 解析后的 JCE 响应对象。
+            JceResponse: 解析后的 JCE 响应对象.
 
         Raises:
-            HTTPError: HTTP 状态码不是 200。
-            ApiError: JCE 解析失败。
+            HTTPError: HTTP 状态码不是 200.
+            ApiError: JCE 解析失败.
         """
         requests = data if isinstance(data, list) else [data]
         logger.debug("构建 JCE 批量请求: count=%s", len(requests))

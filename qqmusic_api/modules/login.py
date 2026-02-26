@@ -1,4 +1,4 @@
-"""登录模块。"""
+"""登录与鉴权相关业务接口. 包含扫码登录流程实现."""
 
 import base64
 import logging
@@ -38,31 +38,31 @@ QRLoginItem = tuple["QRCodeLoginEvents", Credential | None]
 class PollInterval:
     """二维码登录轮询间隔控制策略 (单位: 秒).
 
-    用于灵活配置不同登录状态和环境下的刷新频率, 防止因频率过高导致的被封禁风险。
+    用于灵活配置不同登录状态和环境下的刷新频率, 防止因频率过高导致的被封禁风险.
     """
 
     default: float = 1.5
-    """默认轮询间隔, 适用于普通等待状态。"""
+    """默认轮询间隔, 适用于普通等待状态."""
 
     scanned: float | None = None
-    """已扫码待确认状态下的轮询间隔。若为 None 则默认采用 default / 2。"""
+    """已扫码待确认状态下的轮询间隔.若为 None 则默认采用 default / 2."""
 
     error: float | None = None
-    """网络请求异常时的退避间隔。若为 None 则默认采用 default * 2。"""
+    """网络请求异常时的退避间隔.若为 None 则默认采用 default * 2."""
 
     @property
     def scanned_interval(self) -> float:
-        """获取已扫码状态下的轮询间隔 (计算值)。"""
+        """获取已扫码状态下的轮询间隔 (计算值)."""
         return self.scanned if self.scanned is not None else self.default / 2
 
     @property
     def error_interval(self) -> float:
-        """获取异常退避、网络错误时的最大退避间隔。"""
+        """获取异常退避、网络错误时的最大退避间隔."""
         return self.error if self.error is not None else self.default * 2
 
 
 class QRCodeLoginEvents(Enum):
-    """二维码登录状态。"""
+    """手机登录事件枚举."""
 
     DONE = (0, 405)
     SCAN = (66, 408)
@@ -73,13 +73,13 @@ class QRCodeLoginEvents(Enum):
 
     @classmethod
     def get_by_value(cls, value: int) -> "QRCodeLoginEvents":
-        """根据状态码获取二维码登录事件。
+        """根据状态码获取二维码登录事件.
 
         Args:
-            value: 二维码状态码。
+            value: 二维码状态码.
 
         Returns:
-            QRCodeLoginEvents: 对应的登录事件成员。若无法识别则返回 OTHER。
+            QRCodeLoginEvents: 对应的登录事件成员. 若无法识别则返回 OTHER.
         """
         for member in cls:
             if value in member.value:
@@ -88,7 +88,7 @@ class QRCodeLoginEvents(Enum):
 
 
 class PhoneLoginEvents(Enum):
-    """手机验证码登录状态。"""
+    """手机验证码登录状态."""
 
     SEND = 0
     CAPTCHA = 20276
@@ -97,7 +97,7 @@ class PhoneLoginEvents(Enum):
 
 
 class QRLoginType(Enum):
-    """二维码登录类型。"""
+    """二维码登录类型枚举."""
 
     QQ = "qq"
     WX = "wx"
@@ -106,7 +106,7 @@ class QRLoginType(Enum):
 
 @dataclass
 class QR:
-    """二维码信息。"""
+    """二维码信息."""
 
     data: bytes
     qr_type: QRLoginType
@@ -114,13 +114,13 @@ class QR:
     identifier: str
 
     def save(self, path: Path | str = ".") -> Path | None:
-        """将二维码保存到本地目录。
+        """将二维码保存到本地目录.
 
         Args:
-            path: 保存目录路径。默认为当前目录。
+            path: 保存目录路径. 默认为当前目录.
 
         Returns:
-            Path | None: 成功保存后的文件路径。若无数据则返回 None。
+            Path | None: 成功保存后的文件路径. 若无数据则返回 None.
         """
         if not self.data:
             return None
@@ -134,7 +134,7 @@ class QR:
 
 
 class LoginApi(ApiModule):
-    """登录相关 API。"""
+    """登录相关的 API."""
 
     @staticmethod
     def _raise_login_error(
@@ -144,18 +144,28 @@ class LoginApi(ApiModule):
         code: int | None = None,
         cause: BaseException | None = None,
     ) -> LoginError:
-        """构造统一格式的登录异常。"""
+        """构造统一格式的登录异常.
+
+        Args:
+            scope: 错误范围标识.
+            message: 错误描述信息.
+            code: 错误码.
+            cause: 原始异常.
+
+        Returns:
+            LoginError: 构造好的异常对象.
+        """
         suffix = f" (code={code})" if code is not None else ""
         return LoginError(f"[{scope}] {message}{suffix}", cause=cause)
 
     async def check_expired(self, credential: Credential | None = None) -> bool:
-        """检查登录凭证是否已过期。
+        """检查登录凭证是否已过期.
 
         Args:
-            credential: 待检查的凭证。若为 None 则检查当前客户端已存储的凭证。
+            credential: 待检查的凭证. 若为 None 则检查当前客户端已存储的凭证.
 
         Returns:
-            bool: 是否已过期。
+            bool: 是否已过期.
         """
         target = credential or self._client.credential
         try:
@@ -172,13 +182,13 @@ class LoginApi(ApiModule):
             return True
 
     async def refresh_cookies(self, credential: Credential | None = None) -> Credential:
-        """尝试刷新登录凭证。
+        """尝试刷新登录凭证.
 
         Args:
-            credential: 待刷新的凭证。若为 None 则刷新当前客户端已存储的凭证。
+            credential: 待刷新的凭证. 若为 None 则刷新当前客户端已存储的凭证.
 
         Returns:
-            Credential: 刷新后的新凭证对象。
+            Credential: 刷新后的新凭证对象.
         """
         target = credential or self._client.credential
         try:
@@ -202,13 +212,13 @@ class LoginApi(ApiModule):
         return Credential.model_validate(data)
 
     async def get_qrcode(self, login_type: QRLoginType) -> QR:
-        """获取指定类型的登录二维码。
+        """获取指定类型的登录二维码.
 
         Args:
-            login_type: 登录类型 (QQ/微信/手机客户端)。
+            login_type: 登录类型 (QQ/微信/手机客户端).
 
         Returns:
-            QR: 包含二维码二进制数据及标识符的对象。
+            QR: 包含二维码二进制数据及标识符的对象.
         """
         if login_type == QRLoginType.WX:
             return await self._get_wx_qr()
@@ -217,13 +227,13 @@ class LoginApi(ApiModule):
         return await self._get_qq_qr()
 
     async def check_qrcode(self, qrcode: QR) -> tuple[QRCodeLoginEvents, Credential | None]:
-        """检查二维码登录状态。
+        """检查二维码登录状态.
 
         Args:
-            qrcode: 待检查的二维码对象。
+            qrcode: 待检查的二维码对象.
 
         Returns:
-            tuple[QRCodeLoginEvents, Credential | None]: 包含当前状态和凭证 (仅在 DONE 时包含) 的元组。
+            tuple[QRCodeLoginEvents, Credential | None]: 包含当前状态和凭证 (仅在 DONE 时包含) 的元组.
         """
         if qrcode.qr_type == QRLoginType.WX:
             return await self._check_wx_qr(qrcode)
@@ -237,19 +247,19 @@ class LoginApi(ApiModule):
         timeout_seconds: float = 180.0,
         emit_repeat: bool = False,
     ) -> AsyncGenerator[tuple[QRCodeLoginEvents, Credential | None], None]:
-        """统一产出二维码登录事件流。
+        """统一产出二维码登录事件流.
 
-        根据传入的二维码类型 (QQ/WX/Mobile), 自动路由到对应的轮询或流处理生成器。
-        使用物理截止时间 (deadline) 管理超时, 确保各协程任务局部性。
+        根据传入的二维码类型 (QQ/WX/Mobile), 自动路由到对应的轮询或流处理生成器.
+        使用物理截止时间 (deadline) 管理超时, 确保各协程任务局部性.
 
         Args:
-            qrcode: 待监听的二维码对象。
-            interval: 轮询间隔设置。可传入 float (代表 default) 或 PollInterval 对象进行精细控制。
-            timeout_seconds: 整个登录流程的最大超时时间。
-            emit_repeat: 是否产出重复的状态变更事件。
+            qrcode: 待监听的二维码对象.
+            interval: 轮询间隔设置. 可传入 float (代表 default) 或 PollInterval 对象进行精细控制.
+            timeout_seconds: 整个登录流程的最大超时时间.
+            emit_repeat: 是否产出重复的状态变更事件.
 
         Yields:
-            tuple[QRCodeLoginEvents, Credential | None]: 包含当前登录状态和凭证 (仅在 DONE 时包含) 的元组。
+            tuple[QRCodeLoginEvents, Credential | None]: 包含当前登录状态和凭证 (仅在 DONE 时包含) 的元组.
         """
         if isinstance(interval, int | float):
             interval_config = PollInterval(float(interval))
@@ -290,7 +300,7 @@ class LoginApi(ApiModule):
         deadline: float,
         emit_repeat: bool,
     ) -> AsyncGenerator[QRLoginItem, None]:
-        """产出 Web 端 (QQ/WX) 二维码事件流 (自适应轮询)。"""
+        """产出 Web 端 (QQ/WX) 二维码事件流 (自适应轮询)."""
         MIN_SAFE_INTERVAL = 1.0
         error_retries = 0
 
@@ -358,7 +368,7 @@ class LoginApi(ApiModule):
     async def _iter_mobile_qrcode_login(  # noqa: C901
         self, qrcode: QR, *, deadline: float, interval: PollInterval
     ) -> AsyncGenerator[QRLoginItem, None]:
-        """产出 手机客户端 二维码事件流 (MQTT 流式处理器)。"""
+        """产出 手机客户端 二维码事件流 (MQTT 流式处理器)."""
         MIN_SAFE_INTERVAL = 1.0
         error_retries = 0
 
@@ -446,7 +456,7 @@ class LoginApi(ApiModule):
                     await anyio.sleep(MIN_SAFE_INTERVAL - elapsed)
 
     async def _get_qq_qr(self) -> QR:
-        """获取 QQ 登录二维码。"""
+        """获取 QQ 授权二维码."""
         response = await self._request(
             "GET",
             "https://ssl.ptlogin2.qq.com/ptqrshow",
@@ -469,7 +479,7 @@ class LoginApi(ApiModule):
         return QR(response.read(), QRLoginType.QQ, "image/png", qrsig)
 
     async def _get_wx_qr(self) -> QR:
-        """获取微信登录二维码。"""
+        """获取微信登录二维码."""
         response = await self._request(
             "GET",
             "https://open.weixin.qq.com/connect/qrconnect",
@@ -496,7 +506,7 @@ class LoginApi(ApiModule):
         return QR(qrcode_data, QRLoginType.WX, "image/jpeg", uuid)
 
     async def _get_mobile_qr(self) -> QR:
-        """获取手机客户端登录二维码。"""
+        """获取手机客户端登录二维码."""
         try:
             data = await self._client.execute(
                 self.build_request(
@@ -520,7 +530,7 @@ class LoginApi(ApiModule):
         )
 
     async def _check_qq_qr(self, qrcode: QR) -> tuple[QRCodeLoginEvents, Credential | None]:
-        """检查 QQ 二维码状态。"""
+        """检查 QQ 二维码状态."""
         qrsig = qrcode.identifier
         try:
             response = await self._client.fetch(
@@ -576,7 +586,7 @@ class LoginApi(ApiModule):
         return event, await self._authorize_qq_qr(uin=uin_match[0], sigx=sigx_match[0])
 
     async def _check_wx_qr(self, qrcode: QR) -> tuple[QRCodeLoginEvents, Credential | None]:
-        """检查微信二维码状态。"""
+        """检查微信二维码状态."""
         uuid = qrcode.identifier
         try:
             response = await self._client.fetch(
@@ -608,7 +618,7 @@ class LoginApi(ApiModule):
         return event, await self._authorize_wx_qr(wx_code)
 
     async def _connect_mobile_mqtt(self, client: MqttClient, qrcode_id: str) -> None:
-        """建立手机客户端二维码 MQTT 连接。"""
+        """建立手机客户端二维码 MQTT 连接."""
         await client.connect(
             properties={
                 PropertyId.AUTH_METHOD: "pass",
@@ -637,7 +647,7 @@ class LoginApi(ApiModule):
         event_type: str | None,
         payload: Any,
     ) -> tuple[QRCodeLoginEvents, Credential | None] | None:
-        """处理手机客户端登录事件消息。"""
+        """处理手机客户端登录事件消息."""
         if event_type == "scanned":
             return QRCodeLoginEvents.CONF, None
         if event_type == "canceled":
@@ -679,7 +689,7 @@ class LoginApi(ApiModule):
         return QRCodeLoginEvents.DONE, Credential.model_validate(data)
 
     async def _authorize_qq_qr(self, uin: str, sigx: str) -> Credential:
-        """完成 QQ 二维码鉴权并返回凭证。"""
+        """完成 QQ 二维码鉴权并返回凭证."""
         response = await self._client.fetch(
             "GET",
             "https://ssl.ptlogin2.graph.qq.com/check_sig",
@@ -753,7 +763,7 @@ class LoginApi(ApiModule):
         return Credential.model_validate(data)
 
     async def _authorize_wx_qr(self, code: str) -> Credential:
-        """完成微信二维码鉴权并返回凭证。"""
+        """完成微信二维码鉴权并返回凭证."""
         try:
             data = await self._client.execute(
                 self.build_request(
@@ -768,14 +778,14 @@ class LoginApi(ApiModule):
         return Credential.model_validate(data)
 
     async def send_authcode(self, phone: int, country_code: int = 86) -> tuple[PhoneLoginEvents, str | None]:
-        """发送手机验证码。
+        """发送手机验证码.
 
         Args:
-            phone: 手机号。
-            country_code: 国家代码, 默认为 86 (中国)。
+            phone: 手机号.
+            country_code: 国家代码, 默认为 86 (中国).
 
         Returns:
-            tuple[PhoneLoginEvents, str | None]: 包含发送状态的元组。
+            tuple[PhoneLoginEvents, str | None]: 包含发送状态的元组.
         """
         try:
             await self._client.execute(
@@ -796,15 +806,15 @@ class LoginApi(ApiModule):
         return PhoneLoginEvents.SEND, None
 
     async def phone_authorize(self, phone: int, auth_code: int, country_code: int = 86) -> Credential:
-        """使用手机验证码鉴权。
+        """使用手机验证码鉴权.
 
         Args:
-            phone: 手机号。
-            auth_code: 验证码。
-            country_code: 国家代码, 默认为 86。
+            phone: 手机号.
+            auth_code: 验证码.
+            country_code: 国家代码, 默认为 86.
 
         Returns:
-            Credential: 登录成功后的凭证对象。
+            Credential: 登录成功后的凭证对象.
         """
         try:
             data = await self._client.execute(

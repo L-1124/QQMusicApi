@@ -1,4 +1,4 @@
-"""歌手相关 API。"""
+"""歌手相关 API."""
 
 from enum import Enum
 from typing import cast
@@ -7,7 +7,7 @@ from ._base import ApiModule
 
 
 class AreaType(Enum):
-    """地区类型枚举。"""
+    """地区类型枚举."""
 
     ALL = -100
     CHINA = 200
@@ -18,7 +18,7 @@ class AreaType(Enum):
 
 
 class GenreType(Enum):
-    """风格类型枚举。"""
+    """风格类型枚举."""
 
     ALL = -100
     POP = 7
@@ -37,7 +37,7 @@ class GenreType(Enum):
 
 
 class SexType(Enum):
-    """性别类型枚举。"""
+    """性别类型枚举."""
 
     ALL = -100
     MALE = 0
@@ -46,7 +46,7 @@ class SexType(Enum):
 
 
 class TabType(Enum):
-    """歌手主页 Tab 枚举。"""
+    """歌手主页 Tab 枚举."""
 
     WIKI = ("wiki", "IntroductionTab")
     ALBUM = ("album", "AlbumTab")
@@ -59,12 +59,18 @@ class TabType(Enum):
     VIDEO = ("video", "VideoTab")
 
     def __init__(self, tab_id: str, tab_name: str) -> None:
+        """初始化歌手主页 Tab 类型.
+
+        Args:
+            tab_id: Tab 标识符.
+            tab_name: Tab 名称.
+        """
         self.tab_id = tab_id
         self.tab_name = tab_name
 
 
 class IndexType(Enum):
-    """首字母索引枚举。"""
+    """首字母索引枚举."""
 
     A = 1
     B = 2
@@ -97,7 +103,18 @@ class IndexType(Enum):
 
 
 def validate_int_enum(value: int | Enum, enum_type: type[Enum]) -> int:
-    """确保输入值符合枚举定义。"""
+    """确保输入值符合枚举定义.
+
+    Args:
+        value: 待校验的值或枚举成员.
+        enum_type: 目标枚举类.
+
+    Returns:
+        int: 对应的整型数值.
+
+    Raises:
+        ValueError: 如果值不在枚举定义中.
+    """
     if isinstance(value, enum_type):
         return cast(int, value.value)
     if value in {item.value for item in enum_type}:
@@ -106,7 +123,7 @@ def validate_int_enum(value: int | Enum, enum_type: type[Enum]) -> int:
 
 
 class SingerApi(ApiModule):
-    """歌手相关 API。"""
+    """歌手相关 API."""
 
     def get_singer_list(
         self,
@@ -114,7 +131,13 @@ class SingerApi(ApiModule):
         sex: int | SexType = SexType.ALL,
         genre: int | GenreType = GenreType.ALL,
     ):
-        """获取歌手列表原始数据。"""
+        """获取歌手列表原始数据.
+
+        Args:
+            area: 地区类型.
+            sex: 性别类型.
+            genre: 风格类型.
+        """
         return self.build_request(
             module="music.musichallSinger.SingerList",
             method="GetSingerList",
@@ -135,7 +158,16 @@ class SingerApi(ApiModule):
         sin: int = 0,
         cur_page: int = 1,
     ):
-        """获取按索引分页的歌手列表原始数据。"""
+        """获取按索引分页的歌手列表原始数据.
+
+        Args:
+            area: 地区类型.
+            sex: 性别类型.
+            genre: 风格类型.
+            index: 首字母索引.
+            sin: 起始位置.
+            cur_page: 当前页码.
+        """
         return self.build_request(
             module="music.musichallSinger.SingerList",
             method="GetSingerListIndex",
@@ -150,7 +182,11 @@ class SingerApi(ApiModule):
         )
 
     def get_info(self, mid: str):
-        """获取歌手主页基本信息。"""
+        """获取歌手主页基本信息.
+
+        Args:
+            mid: 歌手 MID.
+        """
         return self.build_request(
             module="music.UnifiedHomepage.UnifiedHomepageSrv",
             method="GetHomepageHeader",
@@ -164,7 +200,14 @@ class SingerApi(ApiModule):
         page: int = 1,
         num: int = 10,
     ):
-        """获取歌手主页 Tab 详情原始数据。"""
+        """获取歌手主页特定 Tab 的详情原始数据.
+
+        Args:
+            mid: 歌手 MID.
+            tab_type: Tab 类型.
+            page: 页码.
+            num: 返回数量.
+        """
         return self.build_request(
             module="music.UnifiedHomepage.UnifiedHomepageSrv",
             method="GetHomepageTabDetail",
@@ -179,7 +222,11 @@ class SingerApi(ApiModule):
         )
 
     def get_desc(self, mids: list[str]):
-        """获取歌手简介。"""
+        """获取歌手列表的描述信息.
+
+        Args:
+            mids: 歌手 MID 列表.
+        """
         return self.build_request(
             module="music.musichallSinger.SingerInfoInter",
             method="GetSingerDetail",
@@ -187,7 +234,12 @@ class SingerApi(ApiModule):
         )
 
     def get_similar(self, mid: str, number: int = 10):
-        """获取相似歌手。"""
+        """获取相似歌手列表.
+
+        Args:
+            mid: 歌手 MID.
+            number: 返回相似歌手的数量.
+        """
         return self.build_request(
             module="music.SimilarSingerSvr",
             method="GetSimilarSingerList",
@@ -195,7 +247,13 @@ class SingerApi(ApiModule):
         )
 
     def get_songs_list(self, mid: str, number: int = 10, begin: int = 0):
-        """获取歌手歌曲列表原始数据。"""
+        """获取歌手的歌曲列表.
+
+        Args:
+            mid: 歌手 MID.
+            number: 返回歌曲数量.
+            begin: 分页起始位置.
+        """
         return self.build_request(
             module="musichall.song_list_server",
             method="GetSingerSongList",
@@ -203,7 +261,13 @@ class SingerApi(ApiModule):
         )
 
     def get_album_list(self, mid: str, number: int = 10, begin: int = 0):
-        """获取歌手专辑列表原始数据。"""
+        """获取歌手的专辑列表.
+
+        Args:
+            mid: 歌手 MID.
+            number: 返回专辑数量.
+            begin: 分页起始位置.
+        """
         return self.build_request(
             module="music.musichallAlbum.AlbumListServer",
             method="GetAlbumList",
@@ -211,7 +275,13 @@ class SingerApi(ApiModule):
         )
 
     def get_mv_list(self, mid: str, number: int = 10, begin: int = 0):
-        """获取歌手 MV 列表原始数据。"""
+        """获取歌手 MV 列表数据.
+
+        Args:
+            mid: 歌手 MID.
+            number: 返回数量.
+            begin: 起始位置.
+        """
         return self.build_request(
             module="MvService.MvInfoProServer",
             method="GetSingerMvList",

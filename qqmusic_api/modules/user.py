@@ -1,14 +1,21 @@
-"""用户相关 API。"""
+"""用户相关 API."""
 
 from ..models import Credential
 from ._base import ApiModule
 
 
 class UserApi(ApiModule):
-    """用户相关 API。"""
+    """用户相关 API."""
 
     async def get_euin(self, musicid: int) -> str:
-        """通过 musicid 获取 encrypt_uin。"""
+        """通过 musicid 获取 encrypt_uin (直接发起 HTTP 请求).
+
+        Args:
+            musicid: 用户数字 ID.
+
+        Returns:
+            str: 加密后的 UIN (encrypt_uin).
+        """
         params = self._build_query_common_params("desktop")
         params.update({"cid": 205360838, "userid": musicid})
         response = await self._request(
@@ -20,7 +27,11 @@ class UserApi(ApiModule):
         return data.get("creator", {}).get("encrypt_uin", "")
 
     def get_musicid(self, euin: str):
-        """通过 encrypt_uin 反查 musicid。"""
+        """通过 encrypt_uin 反查 musicid.
+
+        Args:
+            euin: 加密后的 UIN.
+        """
         return self.build_request(
             module="music.srfDissInfo.DissInfo",
             method="CgiGetDiss",
@@ -28,7 +39,12 @@ class UserApi(ApiModule):
         )
 
     def get_homepage(self, euin: str, *, credential: Credential | None = None):
-        """获取用户主页信息。"""
+        """获取用户主页头部及统计信息.
+
+        Args:
+            euin: 加密后的 UIN.
+            credential: 登录凭证 (可选).
+        """
         return self.build_request(
             module="music.UnifiedHomepage.UnifiedHomepageSrv",
             method="GetHomepageHeader",
@@ -37,7 +53,11 @@ class UserApi(ApiModule):
         )
 
     def get_vip_info(self, *, credential: Credential | None = None):
-        """获取当前登录账号的 VIP 信息。"""
+        """获取当前登录账号的 VIP 会员信息.
+
+        Args:
+            credential: 登录凭证.
+        """
         target_credential = self._require_login(credential)
         return self.build_request(
             module="VipLogin.VipLoginInter",
@@ -54,7 +74,14 @@ class UserApi(ApiModule):
         *,
         credential: Credential | None = None,
     ):
-        """获取关注歌手列表。"""
+        """获取用户关注的歌手列表.
+
+        Args:
+            euin: 加密后的 UIN.
+            page: 页码.
+            num: 每页返回数量.
+            credential: 登录凭证.
+        """
         target_credential = self._require_login(credential)
         return self.build_request(
             module="music.concern.RelationList",
@@ -71,7 +98,14 @@ class UserApi(ApiModule):
         *,
         credential: Credential | None = None,
     ):
-        """获取粉丝列表。"""
+        """获取用户粉丝列表.
+
+        Args:
+            euin: 加密后的 UIN.
+            page: 页码.
+            num: 每页返回数量.
+            credential: 登录凭证.
+        """
         target_credential = self._require_login(credential)
         return self.build_request(
             module="music.concern.RelationList",
@@ -87,7 +121,13 @@ class UserApi(ApiModule):
         *,
         credential: Credential | None = None,
     ):
-        """获取好友列表。"""
+        """获取好友列表.
+
+        Args:
+            page: 页码.
+            num: 每页返回数量.
+            credential: 登录凭证.
+        """
         target_credential = self._require_login(credential)
         return self.build_request(
             module="music.homepage.Friendship",
@@ -104,7 +144,14 @@ class UserApi(ApiModule):
         *,
         credential: Credential | None = None,
     ):
-        """获取关注用户列表。"""
+        """获取关注的用户列表.
+
+        Args:
+            euin: 加密后的 UIN.
+            page: 页码.
+            num: 每页返回数量.
+            credential: 登录凭证.
+        """
         target_credential = self._require_login(credential)
         return self.build_request(
             module="music.concern.RelationList",
@@ -114,7 +161,12 @@ class UserApi(ApiModule):
         )
 
     def get_created_songlist(self, uin: str, *, credential: Credential | None = None):
-        """获取创建的歌单。"""
+        """获取用户创建的歌单列表.
+
+        Args:
+            uin: 用户 UIN.
+            credential: 登录凭证 (可选).
+        """
         return self.build_request(
             module="music.musicasset.PlaylistBaseRead",
             method="GetPlaylistByUin",
@@ -130,7 +182,14 @@ class UserApi(ApiModule):
         *,
         credential: Credential | None = None,
     ):
-        """获取收藏歌曲。"""
+        """获取用户收藏的歌曲列表 (默认 dirid 为 201).
+
+        Args:
+            euin: 加密后的 UIN.
+            page: 页码.
+            num: 返回数量.
+            credential: 登录凭证 (可选).
+        """
         return self.build_request(
             module="music.srfDissInfo.DissInfo",
             method="CgiGetDiss",
@@ -155,7 +214,14 @@ class UserApi(ApiModule):
         *,
         credential: Credential | None = None,
     ):
-        """获取收藏歌单。"""
+        """获取用户收藏的外部歌单列表.
+
+        Args:
+            euin: 加密后的 UIN.
+            page: 页码.
+            num: 每页数量.
+            credential: 登录凭证 (可选).
+        """
         return self.build_request(
             module="music.musicasset.PlaylistFavRead",
             method="CgiGetPlaylistFavInfo",
@@ -171,7 +237,14 @@ class UserApi(ApiModule):
         *,
         credential: Credential | None = None,
     ):
-        """获取收藏专辑。"""
+        """获取用户收藏的专辑列表.
+
+        Args:
+            euin: 加密后的 UIN.
+            page: 页码.
+            num: 每页数量.
+            credential: 登录凭证 (可选).
+        """
         return self.build_request(
             module="music.musicasset.AlbumFavRead",
             method="CgiGetAlbumFavInfo",
@@ -187,7 +260,14 @@ class UserApi(ApiModule):
         *,
         credential: Credential | None = None,
     ):
-        """获取收藏 MV。"""
+        """获取用户收藏的 MV 列表.
+
+        Args:
+            euin: 加密后的 UIN.
+            page: 页码.
+            num: 每页数量.
+            credential: 登录凭证.
+        """
         target_credential = self._require_login(credential)
         return self.build_request(
             module="music.musicasset.MVFavRead",
@@ -197,7 +277,12 @@ class UserApi(ApiModule):
         )
 
     def get_music_gene(self, euin: str, *, credential: Credential | None = None):
-        """获取音乐基因数据。"""
+        """获取用户的音乐基因数据.
+
+        Args:
+            euin: 加密后的 UIN.
+            credential: 登录凭证 (可选).
+        """
         return self.build_request(
             module="music.recommend.UserProfileSettingSvr",
             method="GetProfileReport",

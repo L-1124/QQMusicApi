@@ -1,4 +1,4 @@
-"""QIMEI 获取"""
+"""QIMEI 获取."""
 
 import base64
 import logging
@@ -33,20 +33,35 @@ HEX_CHARS = "0123456789abcdef"
 
 
 class QimeiResult(TypedDict):
-    """获取 QIMEI 结果"""
+    """获取 QIMEI 结果."""
 
     q16: str
     q36: str
 
 
 def rsa_encrypt(content: bytes) -> bytes:
-    """RSA 加密"""
+    """RSA 加密.
+
+    Args:
+        content: 待加密原文.
+
+    Returns:
+        bytes: 加密后的字节流.
+    """
     key = cast(RSAPublicKey, serialization.load_pem_public_key(PUBLIC_KEY.encode()))
     return key.encrypt(content, padding.PKCS1v15())
 
 
 def aes_encrypt(key: bytes, content: bytes) -> bytes:
-    """AES-CBC 加密数据"""
+    """AES-CBC 加密数据.
+
+    Args:
+        key: AES 密钥.
+        content: 待加密原文.
+
+    Returns:
+        bytes: 加密后的字节流.
+    """
     cipher = Cipher(algorithms.AES(key), modes.CBC(key))
     padding_size = 16 - len(content) % 16
     encryptor = cipher.encryptor()
@@ -54,7 +69,11 @@ def aes_encrypt(key: bytes, content: bytes) -> bytes:
 
 
 def random_beacon_id() -> str:
-    """随机 BeaconID"""
+    """随机生成灯塔 ID.
+
+    Returns:
+        str: 随机生成的 BeaconID 字符串.
+    """
     beacon_id = ""
     time_month = datetime.now().strftime("%Y-%m-") + "01"
     rand1 = random.randint(100000, 999999)
@@ -74,7 +93,16 @@ def random_beacon_id() -> str:
 
 
 def random_payload_by_device(device: Device, version: str, sdk_version: str) -> dict:
-    """随机 payload"""
+    """根据设备信息随机生成 QIMEI 请求负载.
+
+    Args:
+        device: 设备对象.
+        version: 客户端版本.
+        sdk_version: QIMEI SDK 版本.
+
+    Returns:
+        dict: 构造好的负载字典.
+    """
     fixed_rand = random.randint(0, 14400)
     reserved = {
         "harmony": "0",
@@ -123,7 +151,16 @@ def random_payload_by_device(device: Device, version: str, sdk_version: str) -> 
 
 
 def _build_qimei_request(device: Device, version: str, sdk_version: str) -> tuple[int, dict[str, str], dict[str, Any]]:
-    """构建 QIMEI 请求头和请求体."""
+    """构建 QIMEI 请求头和请求体.
+
+    Args:
+        device: 设备对象.
+        version: 客户端版本.
+        sdk_version: QIMEI SDK 版本.
+
+    Returns:
+        tuple[int, dict[str, str], dict[str, Any]]: 包含时间戳、请求头及请求体的元组.
+    """
     payload = random_payload_by_device(device, version, sdk_version)
     crypt_key = "".join(random.choices(HEX_CHARS, k=16))
     nonce = "".join(random.choices(HEX_CHARS, k=16))
@@ -168,11 +205,14 @@ async def get_qimei(
     """获取 QIMEI (异步).
 
     Args:
-        device: 从由上层管理的来源提供的待挂载 Device 实例。
-        version: 客户端版本。
-        session: 可选外部复用的异步会话。
-        request_timeout: QIMEI 请求超时时间(秒)。
-        sdk_version: QIMEI SDK 版本。
+        device: 从由上层管理的来源提供的待挂载 Device 实例.
+        version: 客户端版本.
+        session: 可选外部复用的异步会话.
+        request_timeout: QIMEI 请求超时时间 (秒).
+        sdk_version: QIMEI SDK 版本.
+
+    Returns:
+        QimeiResult: 获取到的 QIMEI 结果.
     """
     if device.qimei36 and device.qimei:
         return QimeiResult(q16=device.qimei, q36=device.qimei36)

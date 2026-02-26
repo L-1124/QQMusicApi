@@ -1,4 +1,4 @@
-"""qqmusic_api 的公开包入口。"""
+"""QQMusic API 公开入口."""
 
 from .algorithms import qrc_decrypt, sign_request
 from .core.client import Client

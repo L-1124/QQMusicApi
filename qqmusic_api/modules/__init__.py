@@ -1,4 +1,4 @@
-"""业务模块包。"""
+"""业务逻辑模块包. 提供各类业务接口访问入口."""
 
 from .album import AlbumApi
 from .comment import CommentApi

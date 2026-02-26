@@ -1,4 +1,4 @@
-"""生成设备相关信息."""
+"""虚拟设备信息构造与持久化管理. 用于模拟 Android 设备指纹."""
 
 import binascii
 import hashlib
@@ -24,7 +24,7 @@ def random_imei() -> str:
     """生成满足标准 Luhn 校验的随机 IMEI 号码.
 
     Returns:
-        随机生成的 IMEI 号码。
+        str: 随机生成的 IMEI 号码.
     """
     digits = [random.randint(0, 9) for _ in range(14)]
     sum_ = 0
@@ -95,7 +95,14 @@ class Device:
 
 
 async def load_device(path: Path | anyio.Path | str) -> Device:
-    """从指定路径加载设备信息."""
+    """从指定路径加载设备信息.
+
+    Args:
+        path: 设备信息文件路径.
+
+    Returns:
+        Device: 加载好的设备对象.
+    """
     anyio_path = anyio.Path(path)
     if not await anyio_path.exists():
         return Device()
@@ -106,14 +113,29 @@ async def load_device(path: Path | anyio.Path | str) -> Device:
 
 
 async def save_device(device: Device, path: Path | anyio.Path | str | None = None) -> None:
-    """保存设备信息到指定路径."""
+    """保存设备信息到指定路径.
+
+    Args:
+        device: 待保存的设备对象.
+        path: 保存路径, 默认使用全局默认路径.
+
+    Returns:
+        None.
+    """
     save_path = anyio.Path(path or DEFAULT_DEVICE_PATH)
     await save_path.parent.mkdir(parents=True, exist_ok=True)
     await save_path.write_text(json.dumps(asdict(device)).decode())
 
 
 async def get_cached_device(path: Path | anyio.Path | str | None = None) -> Device:
-    """获取缓存的设备信息,如果不存在则创建新的."""
+    """获取缓存的设备信息,如果不存在则创建新的.
+
+    Args:
+        path: 缓存文件路径.
+
+    Returns:
+        Device: 缓存或新创建的设备对象.
+    """
     raw_path = path or DEFAULT_DEVICE_PATH
     cache_path = anyio.Path(raw_path)
 
@@ -129,11 +151,24 @@ class DeviceManager:
     """管理多租户设备指纹与状态漂移."""
 
     def __init__(self, device_path: Path | anyio.Path | str | None = None) -> None:
+        """初始化设备管理器.
+
+        Args:
+            device_path: 设备信息文件路径.
+        """
         self._guid = uuid4().hex
         self._device_path = anyio.Path(device_path) if device_path else None
         self.device: Device | None = None
 
     def _resolve_path(self, uid: int | str | None) -> anyio.Path:
+        """根据 UID 解析设备缓存路径.
+
+        Args:
+            uid: 用户唯一标识.
+
+        Returns:
+            anyio.Path: 解析后的设备文件路径.
+        """
         if self._device_path is not None:
             return self._device_path
 
@@ -143,7 +178,14 @@ class DeviceManager:
         return anyio.Path(devices_dir / "guest.json")
 
     async def get_device(self, uid: int | str | None) -> Device:
-        """获取加载好的设备对象."""
+        """获取并加载设备对象.
+
+        Args:
+            uid: 用户唯一标识,用于区分不同租户.
+
+        Returns:
+            Device: 目标设备对象.
+        """
         if self.device is not None:
             return self.device
 
@@ -152,19 +194,33 @@ class DeviceManager:
         return self.device
 
     async def save_device(self, uid: int | str | None) -> None:
-        """主动保存目前管控的设备指纹."""
+        """主动保存目前管控的设备指纹.
+
+        Args:
+            uid: 用户唯一标识.
+        """
         if self.device is not None:
             await save_device(self.device, self._resolve_path(uid))
 
     async def apply_qimei(self, q16: str, q36: str, uid: int | str | None) -> None:
-        """应用新申请的 QIMEI,并立即保存."""
+        """应用新申请的 QIMEI 并立即保存.
+
+        Args:
+            q16: QIMEI 16.
+            q36: QIMEI 36.
+            uid: 用户唯一标识.
+        """
         device = await self.get_device(uid)
         device.qimei = q16
         device.qimei36 = q36
         await self.save_device(uid)
 
     async def sync_workspace(self, uid: int | str | None) -> None:
-        """转正漂移: 当获取到实质 uid 时调用, 转移临时指纹或加载专属指纹."""
+        """转正漂移: 当获取到实质 uid 时调用, 转移临时指纹或加载专属指纹.
+
+        Args:
+            uid: 用户唯一标识.
+        """
         if not uid or self._device_path is not None:
             return
 

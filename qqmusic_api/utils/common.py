@@ -1,4 +1,4 @@
-"""实用函数"""
+"""通用工具函数模块."""
 
 import hashlib
 import random
@@ -7,7 +7,17 @@ from typing import Any
 
 
 def calc_md5(*strings: str | bytes) -> str:
-    """计算 MD5 值"""
+    """计算 MD5 值.
+
+    Args:
+        *strings: 待计算的字符串或字节串.
+
+    Returns:
+        str: 计算后的 MD5 十六进制字符串.
+
+    Raises:
+        ValueError: 如果传入了不支持的类型.
+    """
     md5 = hashlib.md5()
     for item in strings:
         if isinstance(item, bytes):
@@ -20,22 +30,23 @@ def calc_md5(*strings: str | bytes) -> str:
 
 
 def get_guid() -> str:
-    """随机 guid
+    """生成随机 GUID.
 
     Returns:
-        随机 guid
+        str: 32 位随机 GUID 字符串.
     """
     return "".join(random.choices("abcdef1234567890", k=32))
 
 
 def hash33(s: str, h: int = 0) -> int:
-    """hash33
+    """使用 Hash33 算法计算哈希值.
 
     Args:
-        s: 待计算的字符串
-        h: 前一个计算结果
+        s: 待计算的字符串.
+        h: 初始哈希值或前一个计算结果.
+
     Returns:
-        计算结果
+        int: 计算后的哈希结果.
     """
     for c in s:
         h = (h << 5) + h + ord(c)
@@ -43,10 +54,10 @@ def hash33(s: str, h: int = 0) -> int:
 
 
 def get_searchID() -> str:
-    """随机 searchID
+    """生成随机 searchID.
 
     Returns:
-        随机 searchID
+        str: 随机生成的 searchID 字符串.
     """
     e = random.randint(1, 20)
     t = e * 18014398509481984
@@ -57,7 +68,14 @@ def get_searchID() -> str:
 
 
 def bool_to_int(data: Any) -> Any:
-    """递归将 bool 转换为 int"""
+    """递归将数据结构中的 bool 值转换为 int (0 或 1).
+
+    Args:
+        data: 待转换的数据, 支持基本类型、列表及字典.
+
+    Returns:
+        Any: 转换后的数据结构.
+    """
     if isinstance(data, bool):
         return int(data)
     if isinstance(data, dict):

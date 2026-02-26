@@ -1,16 +1,16 @@
-"""评论模块。"""
+"""评论模块."""
 
 from ._base import ApiModule
 
 
 class CommentApi(ApiModule):
-    """评论 API。"""
+    """评论 API."""
 
     def get_comment_count(self, biz_id: str):
-        """获取歌曲评论数量。
+        """获取歌曲评论数量.
 
         Args:
-            biz_id: 歌曲 ID。
+            biz_id: 业务 ID (通常为歌曲 ID).
         """
         data = {
             "request": {
@@ -28,13 +28,13 @@ class CommentApi(ApiModule):
         page_size: int = 15,
         last_comment_seq_no: str = "",
     ):
-        """获取歌曲热评。
+        """获取业务热评.
 
         Args:
-            biz_id: 歌曲 ID。
-            page_num: 页码。
-            page_size: 每页数量。
-            last_comment_seq_no: 上一页最后一条评论 ID(可选)。
+            biz_id: 业务 ID.
+            page_num: 页码.
+            page_size: 每页数量.
+            last_comment_seq_no: 上一页最后一条评论 ID (可选).
         """
         params = {
             "BizType": 1,
@@ -55,13 +55,13 @@ class CommentApi(ApiModule):
         page_size: int = 15,
         last_comment_seq_no: str = "",
     ):
-        """获取歌曲最新评论。
+        """获取业务最新评论.
 
         Args:
-            biz_id: 歌曲 ID。
-            page_num: 页码。
-            page_size: 每页数量。
-            last_comment_seq_no: 上一页最后一条评论 ID(可选)。
+            biz_id: 业务 ID.
+            page_num: 页码.
+            page_size: 每页数量.
+            last_comment_seq_no: 上一页最后一条评论 ID (可选).
         """
         params = {
             "PageSize": page_size,
@@ -83,13 +83,13 @@ class CommentApi(ApiModule):
         page_size: int = 15,
         last_comment_seq_no: str = "",
     ):
-        """获取歌曲推荐评论。
+        """获取业务推荐评论.
 
         Args:
-            biz_id: 歌曲 ID。
-            page_num: 页码。
-            page_size: 每页数量。
-            last_comment_seq_no: 上一页最后一条评论 ID(可选)。
+            biz_id: 业务 ID.
+            page_num: 页码.
+            page_size: 每页数量.
+            last_comment_seq_no: 上一页最后一条评论 ID (可选).
         """
         params = {
             "PageSize": page_size,
@@ -110,12 +110,12 @@ class CommentApi(ApiModule):
         page_size: int = 15,
         last_comment_seq_no: str = "",
     ):
-        """获取时刻评论。
+        """获取业务时刻评论.
 
         Args:
-            biz_id: 歌曲 ID。
-            page_size: 每页数量。
-            last_comment_seq_no: 上一页最后一条评论 ID(可选)。
+            biz_id: 业务 ID.
+            page_size: 每页数量.
+            last_comment_seq_no: 上一页最后一条评论 ID (可选).
         """
         params = {
             "LastPos": last_comment_seq_no,

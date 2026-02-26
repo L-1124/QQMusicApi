@@ -1,4 +1,4 @@
-"""基础数据模型模块"""
+"""基础数据模型模块."""
 
 from typing import Any
 
@@ -7,7 +7,7 @@ from tarsio import Struct, TarsDict, field
 
 
 class CommonParams(BaseModel):
-    """通用请求参数"""
+    """通用请求参数."""
 
     # 客户端类型
     ct: int = Field()
@@ -52,7 +52,7 @@ class CommonParams(BaseModel):
 
 
 class Credential(BaseModel):
-    """凭据类
+    """凭据类.
 
     Attributes:
         openid:        OpenID
@@ -86,7 +86,7 @@ class Credential(BaseModel):
 
 
 class JsonRequestItem(BaseModel):
-    """Json 请求项"""
+    """Json 请求项."""
 
     module: str
     method: str
@@ -102,7 +102,7 @@ class JceRequestItem(Struct):
 
 
 class JsonRequest(BaseModel):
-    """Json 请求"""
+    """Json 请求."""
 
     comm: dict[str, Any]
     data: list[JsonRequestItem]
@@ -120,7 +120,7 @@ class JceRequest(Struct):
 
 
 class JsonResponseItem(BaseModel):
-    """JSON 格式响应项"""
+    """JSON 格式响应项."""
 
     code: int = Field(default=0)
     subcode: int = Field(default=0)
@@ -128,14 +128,14 @@ class JsonResponseItem(BaseModel):
 
 
 class JceResponseItem(Struct):
-    """JCE 格式响应项"""
+    """JCE 格式响应项."""
 
     code: int = field(tag=0, default=0)
     data: TarsDict = field(tag=3, default_factory=TarsDict, wrap_simplelist=True)
 
 
 class JsonResponse(BaseModel):
-    """JSON 格式 API 响应"""
+    """JSON 格式 API 响应."""
 
     code: int = Field(default=0)
     data: dict[str, JsonResponseItem] = Field(default_factory=dict)
@@ -143,7 +143,7 @@ class JsonResponse(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def collect_req_data(cls, data: Any) -> Any:
-        """将 req_x 字段收集到 data 字典中"""
+        """将 req_x 字段收集到 data 字典中."""
         if isinstance(data, dict) and "data" not in data:
             req_data = {k: v for k, v in data.items() if k.startswith("req_")}
             return {"code": data.get("code", 0), "data": req_data}
@@ -151,7 +151,7 @@ class JsonResponse(BaseModel):
 
 
 class JceResponse(Struct):
-    """JCE 格式 API 响应"""
+    """JCE 格式 API 响应."""
 
     code: int = field(tag=0, default=0)
     data: dict[str, JceResponseItem] = field(tag=4, default_factory=dict)

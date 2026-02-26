@@ -1,4 +1,4 @@
-"""请求描述符模块"""
+"""请求描述符与批量请求容器. 提供对 API 请求的抽象与调度."""
 
 import logging
 from collections import defaultdict
@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any, Generic, TypedDict, TypeVar
 import anyio
 from anyio.abc import ObjectSendStream
 from pydantic import BaseModel
-from tarsio import Struct
+from tarsio import Struct, TarsDict
 
 from ..models import Credential
 from .exceptions import build_api_error, extract_api_error_code
@@ -28,7 +28,7 @@ class BatchRequestItem(TypedDict):
     param: dict[str, Any] | dict[int, Any]
 
 
-R = TypeVar("R", bound=BaseModel | Struct | dict)
+ResponseModel = TypeVar("ResponseModel", bound=BaseModel | Struct | dict | TarsDict)
 BaseGroupKey = tuple[bool, str, int, Any]
 
 
@@ -55,14 +55,14 @@ class RequestOutcome:
 
 
 @dataclass
-class Request(Generic[R]):
+class Request(Generic[ResponseModel]):
     """请求描述符 (Awaitable Object)."""
 
     _client: "Client"
     module: str
     method: str
     param: dict[str, Any] | dict[int, Any]
-    response_model: type[R] | None = None
+    response_model: type[ResponseModel] | None = None
     comm: dict[str, Any] | None = None
     is_jce: bool = False
     credential: Credential | None = None
@@ -71,7 +71,8 @@ class Request(Generic[R]):
     http_params_extra: dict[str, str] = field(default_factory=dict)
     http_headers_extra: dict[str, str] = field(default_factory=dict)
 
-    def __await__(self) -> Generator[Any, None, R]:
+    def __await__(self) -> Generator[Any, Any, ResponseModel]:
+        """使 Request 对象可被 await 执行."""
         return self._client.execute(self).__await__()
 
 
@@ -80,7 +81,7 @@ class RequestGroup:
     """批量请求容器.
 
     会按请求的 `platform`、`credential`、`comm` 和 `is_jce` 自动分组,
-    并按 `batch_size` 自动分批发送。
+    并按 `batch_size` 自动分批发送.
     """
 
     _client: "Client"
@@ -99,10 +100,10 @@ class RequestGroup:
         """添加请求.
 
         Args:
-            request: 待执行的请求描述符。
+            request: 待执行的请求描述符.
 
         Returns:
-            当前 RequestGroup, 用于链式调用。
+            当前 RequestGroup, 用于链式调用.
         """
         self._requests.append(request)
         return self
@@ -111,10 +112,10 @@ class RequestGroup:
         """批量添加请求.
 
         Args:
-            requests: 待执行请求列表。
+            requests: 待执行请求列表.
 
         Returns:
-            当前 RequestGroup, 用于链式调用。
+            当前 RequestGroup, 用于链式调用.
         """
         self._requests.extend(requests)
         return self
@@ -123,14 +124,14 @@ class RequestGroup:
         """执行所有请求并返回统一结构结果列表.
 
         Args:
-            batch_timeout: 单批次超时时间(秒)。超时后该批次返回失败结果。
-            max_collect: 最大可收集结果数。超限时抛出异常,建议改用流式接口。
+            batch_timeout: 单批次超时时间(秒). 超时后该批次返回失败结果.
+            max_collect: 最大可收集结果数. 超限时抛出异常, 建议改用流式接口.
 
         Returns:
-            与添加顺序一致的请求结果。适合小中批量场景。
+            与添加顺序一致的请求结果. 适合小中批量场景.
 
         Raises:
-            ValueError: 请求总数超过 `max_collect`。
+            ValueError: 请求总数超过 `max_collect`.
         """
         if max_collect is not None and len(self._requests) > max_collect:
             raise ValueError(
@@ -153,8 +154,8 @@ class RequestGroup:
         """流式执行请求并对每条结果执行回调.
 
         Args:
-            handler: 每条结果的异步处理函数。
-            batch_timeout: 单批次超时时间(秒)。超时后该批次返回失败结果。
+            handler: 每条结果的异步处理函数.
+            batch_timeout: 单批次超时时间 (秒). 超时后该批次返回失败结果.
         """
         async for outcome in self.execute_iter(batch_timeout=batch_timeout):
             await handler(outcome)
@@ -163,10 +164,10 @@ class RequestGroup:
         """流式执行请求并逐条返回结果.
 
         Args:
-            batch_timeout: 单批次超时时间(秒)。超时后该批次返回失败结果。
+            batch_timeout: 单批次超时时间 (秒). 超时后该批次返回失败结果.
 
         Yields:
-            RequestOutcome: 单条请求结果。
+            RequestOutcome: 单条请求结果.
         """
         if not self._requests:
             return

@@ -1,4 +1,4 @@
-"""搜索相关 API"""
+"""搜索相关 API."""
 
 from enum import Enum
 from typing import Any
@@ -8,7 +8,7 @@ from ._base import ApiModule
 
 
 class SearchType(Enum):
-    """搜索类型。
+    """搜索类型.
 
     + SONG: 歌曲
     + SINGER: 歌手
@@ -33,10 +33,10 @@ class SearchType(Enum):
 
 
 class SearchApi(ApiModule):
-    """搜索相关 API。"""
+    """搜索相关 API."""
 
     def get_hotkey(self):
-        """获取热搜词。"""
+        """获取热搜词列表."""
         return self.build_request(
             "music.musicsearch.HotkeyService",
             "GetHotkeyForQQMusicMobile",
@@ -44,10 +44,10 @@ class SearchApi(ApiModule):
         )
 
     def complete(self, keyword: str):
-        """搜索词补全。
+        """搜索词补全建议.
 
         Args:
-            keyword: 关键词。
+            keyword: 关键词.
         """
         return self.build_request(
             "music.smartboxCgi.SmartBoxCgi",
@@ -61,10 +61,13 @@ class SearchApi(ApiModule):
         )
 
     async def quick_search(self, keyword: str) -> dict[str, Any]:
-        """快速搜索。
+        """快速搜索 (直接返回解析后的 JSON 数据).
 
         Args:
-            keyword: 关键词。
+            keyword: 关键词.
+
+        Returns:
+            dict[str, Any]: 搜索结果字典.
         """
         resp = await self._client.fetch(
             "GET",
@@ -80,12 +83,12 @@ class SearchApi(ApiModule):
         page: int = 1,
         highlight: bool = True,
     ):
-        """综合搜索。
+        """综合搜索.
 
         Args:
-            keyword: 关键词。
-            page: 页码。
-            highlight: 是否高亮关键词。
+            keyword: 关键词.
+            page: 页码.
+            highlight: 是否高亮关键词.
         """
         return self.build_request(
             "music.adaptor.SearchAdaptor",
@@ -109,14 +112,14 @@ class SearchApi(ApiModule):
         page: int = 1,
         highlight: bool = True,
     ):
-        """按类型搜索。
+        """按类型搜索结果.
 
         Args:
-            keyword: 关键词。
-            search_type: 搜索类型。
-            num: 返回数量。
-            page: 页码。
-            highlight: 是否高亮关键词。
+            keyword: 关键词.
+            search_type: 搜索类型.
+            num: 返回结果数量.
+            page: 页码.
+            highlight: 是否高亮关键词.
         """
         return self.build_request(
             "music.search.SearchCgiService",

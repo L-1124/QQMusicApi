@@ -1,17 +1,17 @@
-"""MV 相关 API"""
+"""MV 相关 API."""
 
 from ..utils.common import get_guid
 from ._base import ApiModule
 
 
 class MvApi(ApiModule):
-    """MV 相关 API"""
+    """MV 相关 API."""
 
     def get_detail(self, vids: list[str]):
-        """获取 MV 详细信息
+        """获取 MV 详细信息.
 
         Args:
-            vids: 视频 vid 列表
+            vids: 视频 VID 列表.
         """
         return self.build_request(
             module="video.VideoDataServer",
@@ -46,10 +46,10 @@ class MvApi(ApiModule):
         )
 
     def get_mv_urls(self, vids: list[str]):
-        """获取 MV 播放链接
+        """获取 MV 播放链接.
 
         Args:
-            vids: 视频 vid 列表
+            vids: 视频 VID 列表.
         """
         return self.build_request(
             module="music.stream.MvUrlProxy",

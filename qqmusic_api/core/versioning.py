@@ -35,10 +35,10 @@ class VersionPolicy:
         """获取平台对应的版本档案.
 
         Args:
-            platform: 平台字符串。
+            platform: 平台字符串.
 
         Returns:
-            对应的版本档案。
+            对应的版本档案.
         """
         if platform in {"android", "android_jce"}:
             return self.android
@@ -57,14 +57,14 @@ class VersionPolicy:
         """构建统一 comm 参数.
 
         Args:
-            platform: 平台字符串。
-            credential: 登录凭证。
-            device: 设备信息。
-            qimei: QIMEI 缓存。
-            guid: 客户端 GUID。
+            platform: 平台字符串.
+            credential: 登录凭证.
+            device: 设备信息.
+            qimei: QIMEI 缓存.
+            guid: 客户端 GUID.
 
         Returns:
-            构建后的 comm 参数字典。
+            构建后的 comm 参数字典.
         """
         profile = self.get_profile(platform)
         qimei_data = qimei or {}
@@ -121,10 +121,10 @@ class VersionPolicy:
         """构建查询接口通用参数.
 
         Args:
-            platform: 平台字符串。
+            platform: 平台字符串.
 
         Returns:
-            查询参数中的通用版本字段。
+            查询参数中的通用版本字段.
         """
         profile = self.get_profile(platform)
         return {"ct": profile.ct, "cv": profile.cv}
@@ -133,11 +133,11 @@ class VersionPolicy:
         """根据平台获取 UA.
 
         Args:
-            platform: 平台字符串。
-            device: 设备信息。
+            platform: 平台字符串.
+            device: 设备信息.
 
         Returns:
-            UA 字符串。
+            UA 字符串.
         """
         profile = self.get_profile(platform)
         if platform in {"android", "android_jce"}:
@@ -152,10 +152,10 @@ class VersionPolicy:
         """获取 QIMEI 请求 appVersion.
 
         Args:
-            platform: 平台字符串。
+            platform: 平台字符串.
 
         Returns:
-            QIMEI appVersion。
+            QIMEI appVersion.
         """
         profile = self.get_profile(platform)
         return profile.qimei_app_version or "14.9.0.8"
@@ -164,10 +164,10 @@ class VersionPolicy:
         """获取 QIMEI 请求 sdkVersion.
 
         Args:
-            platform: 平台字符串。
+            platform: 平台字符串.
 
         Returns:
-            QIMEI sdkVersion。
+            QIMEI sdkVersion.
         """
         profile = self.get_profile(platform)
         return profile.qimei_sdk_version or "1.2.13.6"
@@ -177,10 +177,10 @@ class VersionPolicy:
         """计算 g_tk.
 
         Args:
-            credential: 登录凭证。
+            credential: 登录凭证.
 
         Returns:
-            计算后的 g_tk。
+            计算后的 g_tk.
         """
         if credential.musickey:
             return hash33(credential.musickey, 5381)

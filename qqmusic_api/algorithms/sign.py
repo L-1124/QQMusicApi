@@ -1,4 +1,4 @@
-"""QQ音乐 sign"""
+"""QQ音乐 sign."""
 
 import re
 from base64 import b64encode
@@ -51,10 +51,10 @@ def sign_request(request: dict) -> str:
     """QQ音乐 请求签名.
 
     Args:
-        request: 请求数据。
+        request: 请求数据.
 
     Returns:
-        签名结果。
+        签名结果.
     """
     digest = sha1(json.dumps(request)).hexdigest().upper()
     accelerated = sign_from_digest_c(digest)

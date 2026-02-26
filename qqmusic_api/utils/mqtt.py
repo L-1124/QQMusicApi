@@ -21,16 +21,16 @@ class MqttRedirectError(Exception):
     """MQTT 5.0 重定向异常.
 
     Attributes:
-        new_address: 服务端返回的新地址(通常为 `host:port`)。
-        reason_code: MQTT CONNACK 原因码。
+        new_address: 服务端返回的新地址(通常为 `host:port`).
+        reason_code: MQTT CONNACK 原因码.
     """
 
     def __init__(self, new_address: str, reason_code: int = 0x9D) -> None:
         """初始化重定向异常.
 
         Args:
-            new_address: 服务端返回的新地址。
-            reason_code: CONNACK 原因码,默认 0x9D。
+            new_address: 服务端返回的新地址.
+            reason_code: CONNACK 原因码,默认 0x9D.
         """
         self.new_address = new_address
         self.reason_code = reason_code
@@ -70,10 +70,10 @@ class MqttMessage:
     """通用的 MQTT 消息对象.
 
     Attributes:
-        topic: 消息主题。
-        payload: 原始二进制载荷。
-        qos: QoS 等级。
-        properties: 解析后的用户属性。
+        topic: 消息主题.
+        payload: 原始二进制载荷.
+        qos: QoS 等级.
+        properties: 解析后的用户属性.
     """
 
     topic: str
@@ -86,7 +86,7 @@ class MqttMessage:
         """尝试将 payload 解析为 JSON 对象.
 
         Returns:
-            Any | None: 解析成功返回 JSON 对象,失败返回 `None`。
+            Any | None: 解析成功返回 JSON 对象,失败返回 `None`.
         """
         try:
             return json.loads(self.payload)
@@ -112,10 +112,10 @@ class MqttCodec:
         """编码 MQTT 变长字节整数.
 
         Args:
-            val: 待编码整数。
+            val: 待编码整数.
 
         Returns:
-            bytes: 编码结果。
+            bytes: 编码结果.
         """
         out = bytearray()
         while True:
@@ -133,11 +133,11 @@ class MqttCodec:
         """解码 MQTT 变长字节整数.
 
         Args:
-            data: 原始字节串。
-            offset: 起始偏移。
+            data: 原始字节串.
+            offset: 起始偏移.
 
         Returns:
-            tuple[int, int]: `(value, length)`,其中 `length` 为占用字节数。
+            tuple[int, int]: `(value, length)`,其中 `length` 为占用字节数.
         """
         value = 0
         shift = 0
@@ -158,10 +158,10 @@ class MqttCodec:
         """编码 MQTT 字符串.
 
         Args:
-            s: 待编码字符串。
+            s: 待编码字符串.
 
         Returns:
-            bytes: UTF-8 字节与 2 字节长度前缀。
+            bytes: UTF-8 字节与 2 字节长度前缀.
         """
         b = s.encode("utf-8")
         return len(b).to_bytes(2, "big") + b
@@ -171,11 +171,11 @@ class MqttCodec:
         """解码 MQTT 字符串.
 
         Args:
-            data: 原始字节串。
-            offset: 起始偏移。
+            data: 原始字节串.
+            offset: 起始偏移.
 
         Returns:
-            tuple[str, int]: `(string, consumed_length)`。
+            tuple[str, int]: `(string, consumed_length)`.
         """
         str_len = int.from_bytes(data[offset : offset + 2], "big")
         return data[offset + 2 : offset + 2 + str_len].decode("utf-8"), 2 + str_len
@@ -185,10 +185,10 @@ class MqttCodec:
         """编码 MQTT 5.0 属性部分.
 
         Args:
-            props: 属性字典。
+            props: 属性字典.
 
         Returns:
-            bytes: 属性编码结果。
+            bytes: 属性编码结果.
         """
         out = bytearray()
         for pid, val in props.items():
@@ -209,12 +209,12 @@ class MqttCodec:
         """解码 PUBLISH 报文中的 User Properties.
 
         Args:
-            data: 报文字节串。
-            start: 属性段起始位置。
-            end: 属性段结束位置。
+            data: 报文字节串.
+            start: 属性段起始位置.
+            end: 属性段结束位置.
 
         Returns:
-            dict[str, str]: 用户属性键值对。
+            dict[str, str]: 用户属性键值对.
         """
         res = {}
         curr = start
@@ -238,11 +238,11 @@ class MqttCodec:
         """解码 CONNACK 属性.
 
         Args:
-            data: CONNACK 报文字节串。
-            offset: 属性长度字段起始偏移。
+            data: CONNACK 报文字节串.
+            offset: 属性长度字段起始偏移.
 
         Returns:
-            dict[int, Any]: 已解析属性映射。
+            dict[int, Any]: 已解析属性映射.
         """
         props_len, length = MqttCodec.decode_varbyte(data, offset)
         p_start = offset + length
@@ -283,7 +283,7 @@ class Client:
     """通用、轻量级的 MQTT 5.0 over WebSocket 客户端.
 
     该客户端采用单写协程 + 单读协程模型,避免写通道并发竞争,并通过
-    空闲驱动心跳维持连接活性。
+    空闲驱动心跳维持连接活性.
     """
 
     def __init__(
@@ -302,20 +302,20 @@ class Client:
         """初始化客户端.
 
         Args:
-            client_id: MQTT Client ID。
-            host: WebSocket 主机名。
-            port: WebSocket 端口。
-            path: 握手路径。
-            keep_alive: MQTT keep alive 秒数。
-            session: 可选外部 HTTP 会话。
-            max_redirects: 最大重定向次数。
-            heartbeat_idle_ratio: 空闲阈值比例,达到后发送心跳。
-            ping_timeout: 心跳超时时间,`None` 时自动推导。
-            writer_queue_size: 写队列大小,`0` 表示无界。
-            publish_queue_size: 推送队列最大缓冲长度,超过将丢弃或断送连接。默认 8192。
+            client_id: MQTT Client ID.
+            host: WebSocket 主机名.
+            port: WebSocket 端口.
+            path: 握手路径.
+            keep_alive: MQTT keep alive 秒数.
+            session: 可选外部 HTTP 会话.
+            max_redirects: 最大重定向次数.
+            heartbeat_idle_ratio: 空闲阈值比例,达到后发送心跳.
+            ping_timeout: 心跳超时时间,`None` 时自动推导.
+            writer_queue_size: 写队列大小,`0` 表示无界.
+            publish_queue_size: 推送队列最大缓冲长度,超过将丢弃或断送连接.默认 8192.
 
         Raises:
-            ValueError: `heartbeat_idle_ratio` 不在合法范围时抛出。
+            ValueError: `heartbeat_idle_ratio` 不在合法范围时抛出.
         """
         self.client_id = client_id
         self.host = host
@@ -367,7 +367,7 @@ class Client:
         """进入异步上下文.
 
         Returns:
-            Client: 当前实例。
+            Client: 当前实例.
         """
         return self
 
@@ -377,9 +377,9 @@ class Client:
         """退出异步上下文并关闭连接.
 
         Args:
-            exc_type: 异常类型。
-            exc_val: 异常值。
-            exc_tb: 异常回溯。
+            exc_type: 异常类型.
+            exc_val: 异常值.
+            exc_tb: 异常回溯.
         """
         await self.disconnect()
 
@@ -403,7 +403,11 @@ class Client:
         return self._ws_http_client
 
     def _next_packet_id(self) -> int:
-        """生成下一个 packet id."""
+        """生成下一个 packet id.
+
+        Returns:
+            int: 下一个报文标识符.
+        """
         start_id = self._packet_id
         while True:
             self._packet_id = (self._packet_id % 65535) + 1
@@ -413,7 +417,11 @@ class Client:
                 raise ConnectionError("No available MQTT packet id (all 65535 in use)")
 
     def _effective_ping_timeout(self) -> float:
-        """返回当前连接使用的 ping 超时时间."""
+        """返回当前连接使用的 ping 超时时间.
+
+        Returns:
+            float: 超时秒数.
+        """
         if self._ping_timeout is not None:
             return self._ping_timeout
         return min(float(self.keep_alive), 10.0)
@@ -476,7 +484,7 @@ class Client:
         self._reader_error = None
         self._writer_error = None
 
-        # 新连接代次使用新消息队列,避免消费上次连接遗留 sentinel。
+        # 新连接代次使用新消息队列,避免消费上次连接遗留 sentinel.
         qsize = self._publish_queue_size
         self._publish_send_stream, self._publish_receive_stream = anyio.create_memory_object_stream(qsize)
         wsize = self._writer_queue_size if self._writer_queue_size > 0 else float("inf")
@@ -494,12 +502,12 @@ class Client:
         """建立 WebSocket 连接并发送 MQTT CONNECT 报文.
 
         Args:
-            properties: CONNECT 属性。
-            headers: WebSocket 握手请求头。
+            properties: CONNECT 属性.
+            headers: WebSocket 握手请求头.
 
         Raises:
-            ConnectionError: 握手或协议校验失败。
-            MqttRedirectError: 超过最大重定向次数。
+            ConnectionError: 握手或协议校验失败.
+            MqttRedirectError: 超过最大重定向次数.
         """
         if self._ws:
             await self.disconnect_ws_only(notify_messages=True)
@@ -580,7 +588,7 @@ class Client:
                         raise MqttRedirectError(new_server, reason_code=reason_code)
                     logger.info("Received redirect reason code: %s, follow to %s", hex(reason_code), new_server)
                     redirect_count += 1
-                    # 内部重定向不向外部消息流发送结束信号。
+                    # 内部重定向不向外部消息流发送结束信号.
                     await self.disconnect_ws_only(notify_messages=False)
                     self.path = self._build_redirect_path(self.path, new_server)
                     continue
@@ -593,11 +601,11 @@ class Client:
         """根据 `serverReference` 生成重定向后的握手路径.
 
         Args:
-            path: 当前握手路径。
-            server_reference: 服务端返回的新节点地址。
+            path: 当前握手路径.
+            server_reference: 服务端返回的新节点地址.
 
         Returns:
-            str: 新握手路径。
+            str: 新握手路径.
         """
         parts = path.rstrip("/").split("/")
         if parts and ":" in parts[-1]:
@@ -610,13 +618,13 @@ class Client:
         """解析 SUBACK 的 packet id 与 reason code 偏移.
 
         Args:
-            ack: SUBACK 报文字节串。
+            ack: SUBACK 报文字节串.
 
         Returns:
-            tuple[int, int]: `(packet_id, reason_offset)`。
+            tuple[int, int]: `(packet_id, reason_offset)`.
 
         Raises:
-            ConnectionError: SUBACK 结构不合法。
+            ConnectionError: SUBACK 结构不合法.
         """
         _, rl_len = MqttCodec.decode_varbyte(ack, 1)
         offset = 1 + rl_len
@@ -633,10 +641,10 @@ class Client:
         """解析 PUBLISH 报文.
 
         Args:
-            msg_bytes: PUBLISH 报文字节串。
+            msg_bytes: PUBLISH 报文字节串.
 
         Returns:
-            MqttMessage: 解析后的消息对象。
+            MqttMessage: 解析后的消息对象.
         """
         _, length = MqttCodec.decode_varbyte(msg_bytes, 1)
         offset = 1 + length
@@ -784,12 +792,12 @@ class Client:
         """发送 SUBSCRIBE 报文并等待匹配的 SUBACK.
 
         Args:
-            topic: 订阅主题。
-            properties: SUBSCRIBE 属性。
+            topic: 订阅主题.
+            properties: SUBSCRIBE 属性.
 
         Raises:
-            ConnectionError: 连接状态异常或 SUBACK 结构错误。
-            _MqttSubackError: SUBACK 返回失败码。
+            ConnectionError: 连接状态异常或 SUBACK 结构错误.
+            _MqttSubackError: SUBACK 返回失败码.
         """
         if not self._ws:
             raise ConnectionError("WebSocket is not connected")
@@ -865,10 +873,10 @@ class Client:
     async def disconnect_ws_only(self, notify_messages: bool = True) -> None:
         """仅断开 WebSocket 连接.
 
-        该方法会停止后台任务、尽力发送 DISCONNECT,并关闭 ws 上下文。
+        该方法会停止后台任务、尽力发送 DISCONNECT, 并关闭 ws 上下文.
 
         Args:
-            notify_messages: 是否向 `messages()` 广播结束信号。
+            notify_messages: 是否向 `messages()` 广播结束信号.
         """
         async with self._close_lock:
             epoch = self._epoch
@@ -931,10 +939,10 @@ class Client:
         """获取消息监听迭代器.
 
         Yields:
-            MqttMessage: 服务端推送的 MQTT 消息。
+            MqttMessage: 服务端推送的 MQTT 消息.
 
         Raises:
-            ConnectionError: 读取或写入链路出现网络错误。
+            ConnectionError: 读取或写入链路出现网络错误.
         """
         if not self._publish_receive_stream:
             return

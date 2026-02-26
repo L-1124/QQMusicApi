@@ -5,32 +5,32 @@ readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
 authors = [
-  { name = "Luren", email = "68656403+luren-dc@users.noreply.github.com" },
+    { name = "Luren", email = "68656403+luren-dc@users.noreply.github.com" },
 ]
 maintainers = [
-  { name = "Luren", email = "68656403+luren-dc@users.noreply.github.com" },
+    { name = "Luren", email = "68656403+luren-dc@users.noreply.github.com" },
 ]
 keywords = ["api", "music", "qqmusic", "tencentmusic"]
 classifiers = [
-  "Development Status :: 4 - Beta",
-  "Framework :: Pytest",
-  "Framework :: aiohttp",
-  "Natural Language :: Chinese (Simplified)",
-  "Programming Language :: Python",
-  "Programming Language :: Python :: 3 :: Only",
-  "Programming Language :: Python :: 3.10",
-  "Programming Language :: Python :: Implementation :: CPython",
-  "Topic :: Software Development :: Libraries :: Python Modules",
+    "Development Status :: 4 - Beta",
+    "Framework :: Pytest",
+    "Framework :: aiohttp",
+    "Natural Language :: Chinese (Simplified)",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 dependencies = [
-  "anyio>=4.12.1",
-  "cryptography>=46.0.3",
-  "httpx-ws>=0.8.2",
-  "httpx[http2]>=0.27.0",
-  "orjson>=3.10.15",
-  "pydantic>=2.0.0",
-  "tarsio>=0.5.1",
-  "typing-extensions>=4.12.2",
+    "anyio>=4.12.1",
+    "cryptography>=46.0.3",
+    "httpx-ws>=0.8.2",
+    "httpx[http2]>=0.27.0",
+    "orjson>=3.10.15",
+    "pydantic>=2.0.0",
+    "tarsio>=0.5.1",
+    "typing-extensions>=4.12.2",
 ]
 dynamic = ["version"]
 
@@ -41,31 +41,23 @@ repository = "https://github.com/l-1124/QQMusicApi"
 
 [dependency-groups]
 dev = [
-  { include-group = "linting" },
-  { include-group = "testing" },
-  { include-group = "docs" },
-  "pillow>=12.1.1",
-  "pyzbar>=0.1.9",
-  "qrcode>=8.2",
-  "setuptools>=82.0.0",
+    { include-group = "linting" },
+    { include-group = "testing" },
+    { include-group = "docs" },
+    "pillow>=12.1.1",
+    "pyzbar>=0.1.9",
+    "qrcode>=8.2",
+    "setuptools>=82.0.0",
 ]
-linting = [
-  "pyrefly",
-  "pre-commit>=4.5.1",
-  "ruff>=0.14.14",
-]
+linting = ["pyrefly", "pre-commit>=4.5.1", "ruff>=0.14.14"]
 docs = [
-  "markdown-callouts>=0.4.0",
-  "mkdocs-material>=9.7.3",
-  "mkdocstrings>=1.0.3",
-  "mkdocstrings-python>=2.0.3",
-  "zensical>=0.0.23",
+    "markdown-callouts>=0.4.0",
+    "mkdocs-material>=9.7.3",
+    "mkdocstrings>=1.0.3",
+    "mkdocstrings-python>=2.0.3",
+    "zensical>=0.0.23",
 ]
-testing = [
-  "pytest>=9.0.2",
-  "pytest-asyncio>=1.3.0",
-  "pytest-sugar>=1.1.1",
-]
+testing = ["pytest>=9.0.2", "pytest-asyncio>=1.3.0", "pytest-sugar>=1.1.1"]
 
 [build-system]
 requires = ["setuptools>=80.0.0", "wheel"]
@@ -81,9 +73,7 @@ version = { attr = "qqmusic_api.__version__" }
 include = ["qqmusic_api*"]
 
 [tool.setuptools.package-data]
-qqmusic_api = [ "*.pyi", "algorithms/*.pyi"]
-
-
+qqmusic_api = ["*.pyi", "algorithms/*.pyi"]
 
 [tool.pytest]
 addopts = ["-rxXs"]
@@ -96,18 +86,17 @@ extend-exclude = ["docs"]
 
 [tool.ruff.lint]
 extend-select = [
-  "Q",
-  "RUF",
-  "C90",
-  "UP",
-  "I",
-  "D",
-  "ASYNC",
-  "C4",
-  "FURB",
-  "PERF",
+    "Q",
+    "RUF",
+    "C90",
+    "UP",
+    "I",
+    "D",
+    "ASYNC",
+    "C4",
+    "FURB",
+    "PERF",
 ]
-ignore = ["D105", "D107", "D205", "D415", "RUF029"]
 pydocstyle = { convention = "google" }
 
 [tool.uv]
