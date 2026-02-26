@@ -7,7 +7,7 @@ import pytest
 from qqmusic_api.modules.search import SearchApi, SearchType
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_get_hotkey(mock_client, make_request):
     """测试获取热搜词."""
     api = SearchApi(mock_client)
@@ -23,7 +23,7 @@ async def test_get_hotkey(mock_client, make_request):
     assert "search_id" in request_obj.param
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_complete(mock_client, make_request):
     """测试搜索词补全."""
     api = SearchApi(mock_client)
@@ -40,7 +40,7 @@ async def test_complete(mock_client, make_request):
     assert "search_id" in request_obj.param
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_quick_search(mock_client):
     """测试快速搜索."""
     api = SearchApi(mock_client)
@@ -61,7 +61,7 @@ async def test_quick_search(mock_client):
     assert result == {"song": [], "singer": []}
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_general_search(mock_client, make_request):
     """测试综合搜索."""
     api = SearchApi(mock_client)
@@ -80,7 +80,7 @@ async def test_general_search(mock_client, make_request):
     assert request_obj.param["search_type"] == 100
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_search_by_type_default(mock_client, make_request):
     """测试按类型搜索(默认歌曲类型)."""
     api = SearchApi(mock_client)
@@ -99,7 +99,7 @@ async def test_search_by_type_default(mock_client, make_request):
     assert request_obj.param["page_num"] == 1
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_search_by_type_singer(mock_client, make_request):
     """测试按歌手类型搜索."""
     api = SearchApi(mock_client)

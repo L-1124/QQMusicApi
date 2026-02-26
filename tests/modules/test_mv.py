@@ -5,7 +5,7 @@ import pytest
 from qqmusic_api.modules.mv import MvApi
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_get_detail(mock_client, make_request):
     """测试获取 MV 详细信息."""
     api = MvApi(mock_client)
@@ -20,7 +20,7 @@ async def test_get_detail(mock_client, make_request):
     assert "vid" in args[0].param["required"]
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_get_mv_urls(mock_client, make_request):
     """测试获取 MV 播放链接."""
     api = MvApi(mock_client)

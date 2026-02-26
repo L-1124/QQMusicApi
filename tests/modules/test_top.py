@@ -12,7 +12,7 @@ def top_api(mock_client):
     return TopApi(mock_client)
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_get_category(top_api, mock_client):
     """测试获取排行榜分类."""
     mock_client.execute.return_value = TopCategoryResponse(group=[])
@@ -28,7 +28,7 @@ async def test_get_category(top_api, mock_client):
     assert request.response_model == TopCategoryResponse
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_get_detail(top_api, mock_client):
     """测试获取排行榜详情."""
     mock_client.execute.return_value = {"topId": 4}

@@ -7,7 +7,7 @@ from qqmusic_api.core.exceptions import NotLoginError
 from qqmusic_api.modules.songlist import SonglistApi
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_get_detail(mock_client, make_request):
     """测试获取歌单详情请求."""
     api = SonglistApi(mock_client)
@@ -29,7 +29,7 @@ async def test_get_detail(mock_client, make_request):
     assert request.param["userinfo"] is False
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_write_methods_with_valid_credential(mock_client, make_request):
     """测试写接口在有效凭证下可构建请求."""
     api = SonglistApi(mock_client)

@@ -17,7 +17,7 @@ def test_get_cover(mock_client):
         api.get_cover("002RaSAs4XFas0", size=100)  # type: ignore
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_get_detail(mock_client, make_request):
     """测试获取专辑详细信息."""
     api = AlbumApi(mock_client)
@@ -41,7 +41,7 @@ async def test_get_detail(mock_client, make_request):
     assert args[0].param["albumId"] == 12345
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_get_song(mock_client, make_request):
     """测试获取专辑歌曲."""
     api = AlbumApi(mock_client)

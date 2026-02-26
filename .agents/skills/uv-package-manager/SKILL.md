@@ -11,45 +11,45 @@ dependency workflows.
 
 ## When to Use This Skill
 
-- Setting up new Python projects quickly
-- Managing Python dependencies faster than pip
-- Creating and managing virtual environments
-- Installing Python interpreters
-- Resolving dependency conflicts efficiently
-- Migrating from pip/pip-tools/poetry
-- Speeding up CI/CD pipelines
-- Managing monorepo Python projects
-- Working with lockfiles for reproducible builds
-- Optimizing Docker builds with Python dependencies
+* Setting up new Python projects quickly
+* Managing Python dependencies faster than pip
+* Creating and managing virtual environments
+* Installing Python interpreters
+* Resolving dependency conflicts efficiently
+* Migrating from pip/pip-tools/poetry
+* Speeding up CI/CD pipelines
+* Managing monorepo Python projects
+* Working with lockfiles for reproducible builds
+* Optimizing Docker builds with Python dependencies
 
 ## Core Concepts
 
 ### 1. What is uv?
 
-- **Ultra-fast package installer**: 10-100x faster than pip
-- **Written in Rust**: Leverages Rust's performance
-- **Drop-in pip replacement**: Compatible with pip workflows
-- **Virtual environment manager**: Create and manage venvs
-- **Python installer**: Download and manage Python versions
-- **Resolver**: Advanced dependency resolution
-- **Lockfile support**: Reproducible installations
+* **Ultra-fast package installer**: 10-100x faster than pip
+* **Written in Rust**: Leverages Rust's performance
+* **Drop-in pip replacement**: Compatible with pip workflows
+* **Virtual environment manager**: Create and manage venvs
+* **Python installer**: Download and manage Python versions
+* **Resolver**: Advanced dependency resolution
+* **Lockfile support**: Reproducible installations
 
 ### 2. Key Features
 
-- Blazing fast installation speeds
-- Disk space efficient with global cache
-- Compatible with pip, pip-tools, poetry
-- Comprehensive dependency resolution
-- Cross-platform support (Linux, macOS, Windows)
-- No Python required for installation
-- Built-in virtual environment support
+* Blazing fast installation speeds
+* Disk space efficient with global cache
+* Compatible with pip, pip-tools, poetry
+* Comprehensive dependency resolution
+* Cross-platform support (Linux, macOS, Windows)
+* No Python required for installation
+* Built-in virtual environment support
 
 ### 3. UV vs Traditional Tools
 
-- **vs pip**: 10-100x faster, better resolver
-- **vs pip-tools**: Faster, simpler, better UX
-- **vs poetry**: Faster, less opinionated, lighter
-- **vs conda**: Faster, Python-focused
+* **vs pip**: 10-100x faster, better resolver
+* **vs pip-tools**: Faster, simpler, better UX
+* **vs poetry**: Faster, less opinionated, lighter
+* **vs conda**: Faster, Python-focused
 
 ## Installation
 
@@ -816,11 +816,11 @@ uv --version                # Show version
 
 ## Resources
 
-- **Official documentation**: <https://docs.astral.sh/uv/>
-- **GitHub repository**: <https://github.com/astral-sh/uv>
-- **Astral blog**: <https://astral.sh/blog>
-- **Migration guides**: <https://docs.astral.sh/uv/guides/>
-- **Comparison with other tools**: <https://docs.astral.sh/uv/pip/compatibility/>
+* **Official documentation**: <https://docs.astral.sh/uv/>
+* **GitHub repository**: <https://github.com/astral-sh/uv>
+* **Astral blog**: <https://astral.sh/blog>
+* **Migration guides**: <https://docs.astral.sh/uv/guides/>
+* **Comparison with other tools**: <https://docs.astral.sh/uv/pip/compatibility/>
 
 ## Best Practices Summary
 

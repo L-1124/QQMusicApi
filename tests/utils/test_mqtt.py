@@ -25,7 +25,7 @@ def test_extract_suback_packet_id_parses_success_packet():
     assert reason_offset == 5
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_messages_raises_reader_error_on_sentinel():
     """测试消息迭代器在收到结束信号时会抛出 reader 错误."""
     client = Client(client_id="cid", host="example.com", port=443)
@@ -38,7 +38,7 @@ async def test_messages_raises_reader_error_on_sentinel():
             pass
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_disconnect_increments_epoch_and_signals_messages():
     """测试断开连接会推进 epoch 并通知消息消费者退出."""
     client = Client(client_id="cid", host="example.com", port=443)

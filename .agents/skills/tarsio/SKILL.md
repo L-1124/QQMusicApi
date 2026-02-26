@@ -234,14 +234,14 @@ tarsio -f payload.hex --file-format hex
 
 ## 关键注意事项
 
-- `TarsDict` 和 `dict` 编码语义不同：`TarsDict` → Struct 语义，`dict` → Map 语义
-- `wrap_simplelist=True` 仅支持 `Struct`/`TarsDict` 字段
-- `bytes` 字段同时接受 `bytearray`/`memoryview`，编码结果一致
-- Tag 最大值 255，按 Big-Endian 编码
-- 避免在无界循环中动态创建 `Struct` 子类（可能内存泄漏）
-- 约束在 decode 阶段校验，encode 不做业务校验
-- `Optional[T]` 或 `T | None`：`None` 时不写该字段
+* `TarsDict` 和 `dict` 编码语义不同：`TarsDict` → Struct 语义，`dict` → Map 语义
+* `wrap_simplelist=True` 仅支持 `Struct`/`TarsDict` 字段
+* `bytes` 字段同时接受 `bytearray`/`memoryview`，编码结果一致
+* Tag 最大值 255，按 Big-Endian 编码
+* 避免在无界循环中动态创建 `Struct` 子类（可能内存泄漏）
+* 约束在 decode 阶段校验，encode 不做业务校验
+* `Optional[T]` 或 `T | None`：`None` 时不写该字段
 
 ## 详细参考
 
-- **完整类型映射表、Inspect API、CLI 详细选项**: 见 [references/api-reference.md](references/api-reference.md)
+* **完整类型映射表、Inspect API、CLI 详细选项**: 见 [references/api-reference.md](references/api-reference.md)

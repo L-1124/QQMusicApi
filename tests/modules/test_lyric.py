@@ -5,7 +5,7 @@ import pytest
 from qqmusic_api.modules.lyric import LyricApi
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_get_lyric_by_mid(mock_client, make_request):
     """测试通过 mid 获取歌词请求."""
     api = LyricApi(mock_client)
@@ -23,7 +23,7 @@ async def test_get_lyric_by_mid(mock_client, make_request):
     assert request.param["trans"] is True
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_get_lyric_by_id(mock_client, make_request):
     """测试通过 id 获取歌词请求."""
     api = LyricApi(mock_client)

@@ -10,7 +10,7 @@ from qqmusic_api.utils.device import Device
 from qqmusic_api.utils.qimei import DEFAULT_QIMEI, get_qimei
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_get_qimei_timeout_fallback_without_retry(monkeypatch: pytest.MonkeyPatch) -> None:
     """验证 QIMEI 超时后快速降级且不重试."""
     device = Device()
@@ -31,7 +31,7 @@ async def test_get_qimei_timeout_fallback_without_retry(monkeypatch: pytest.Monk
     assert attempts["count"] == 1
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_get_qimei_success_updates_device_cache(monkeypatch: pytest.MonkeyPatch) -> None:
     """验证 QIMEI 成功返回时."""
     device = Device()
@@ -49,7 +49,7 @@ async def test_get_qimei_success_updates_device_cache(monkeypatch: pytest.Monkey
     assert result["q36"] == "q36-ok"
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_client_qimei_timeout_passed_to_get_qimei(monkeypatch: pytest.MonkeyPatch) -> None:
     """验证 Client 会透传 QIMEI 版本与超时参数."""
     captured: dict[str, float | str | None] = {"timeout": 0.0, "version": None, "sdk_version": None}

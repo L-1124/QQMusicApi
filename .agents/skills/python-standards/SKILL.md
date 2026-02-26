@@ -10,16 +10,16 @@ for formatting/linting. Write self-documenting code with minimal comments.
 
 ## When to use this skill
 
-- When installing or managing Python packages and dependencies
-- When writing or running unit tests, integration tests, or test suites
-- When formatting Python code or fixing linting issues
-- When adding type hints or running type checking
-- When writing function/method docstrings
-- When organizing imports in Python files
-- When deciding whether to create a new Python file or extend existing ones
-- When setting up code quality checks (linting, formatting, type checking)
-- When running coverage reports or analyzing test results
-- When ensuring code follows Python best practices and tooling standards
+* When installing or managing Python packages and dependencies
+* When writing or running unit tests, integration tests, or test suites
+* When formatting Python code or fixing linting issues
+* When adding type hints or running type checking
+* When writing function/method docstrings
+* When organizing imports in Python files
+* When deciding whether to create a new Python file or extend existing ones
+* When setting up code quality checks (linting, formatting, type checking)
+* When running coverage reports or analyzing test results
+* When ensuring code follows Python best practices and tooling standards
 
 This Skill provides Claude Code with specific guidance on how to adhere to
 Python tooling standards and best practices for backend development.
@@ -136,9 +136,9 @@ if user.is_admin() or user.is_moderator():
 
 **Comment Style Guidelines:**
 
-- Use **Chinese comments** (中文注释) for inline and block comments
-- Use **English punctuation** (英文符号) in comments (periods, commas, etc.)
-- Follow **Google-style docstring format** for function/class documentation
+* Use **Chinese comments** (中文注释) for inline and block comments
+* Use **English punctuation** (英文符号) in comments (periods, commas, etc.)
+* Follow **Google-style docstring format** for function/class documentation
 
 **Google Style Example:**
 
@@ -167,10 +167,10 @@ def validate_user_credentials(username: str, password: str) -> bool:
 
 **Use comments only for:**
 
-- Complex algorithms requiring explanation (复杂算法说明)
-- Non-obvious business logic or domain rules (业务规则)
-- Workarounds for external library bugs (include issue link)
-- Performance optimizations that sacrifice clarity
+* Complex algorithms requiring explanation (复杂算法说明)
+* Non-obvious business logic or domain rules (业务规则)
+* Workarounds for external library bugs (include issue link)
+* Performance optimizations that sacrifice clarity
 
 ### Import Organization
 
@@ -233,10 +233,10 @@ Before creating a new Python file, ask:
 
 **When to create new files:**
 
-- New model/entity with distinct responsibility
-- New service layer for separate domain
-- Test file for new module
-- Clear architectural boundary
+* New model/entity with distinct responsibility
+* New service layer for separate domain
+* Test file for new module
+* Clear architectural boundary
 
 ## Common Patterns
 

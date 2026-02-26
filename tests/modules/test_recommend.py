@@ -5,7 +5,7 @@ import pytest
 from qqmusic_api.modules.recommend import RecommendApi
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_get_home_feed(mock_client, make_request):
     """测试获取主页推荐."""
     api = RecommendApi(mock_client)
@@ -16,7 +16,7 @@ async def test_get_home_feed(mock_client, make_request):
     )
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_get_guess_recommend(mock_client, make_request):
     """测试获取猜你喜欢."""
     api = RecommendApi(mock_client)
@@ -27,7 +27,7 @@ async def test_get_guess_recommend(mock_client, make_request):
     )
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_get_radar_recommend(mock_client, make_request):
     """测试获取雷达推荐."""
     api = RecommendApi(mock_client)
@@ -38,7 +38,7 @@ async def test_get_radar_recommend(mock_client, make_request):
     )
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_get_recommend_songlist(mock_client, make_request):
     """测试获取推荐歌单."""
     api = RecommendApi(mock_client)
@@ -49,7 +49,7 @@ async def test_get_recommend_songlist(mock_client, make_request):
     )
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_get_recommend_newsong(mock_client, make_request):
     """测试获取推荐新歌."""
     api = RecommendApi(mock_client)

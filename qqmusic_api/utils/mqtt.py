@@ -1,14 +1,15 @@
 """MQTT 5.0 over WebSocket 通用客户端实现模块."""
 
-import asyncio
 import logging
 import time
 from collections.abc import AsyncGenerator
+from contextlib import AsyncExitStack
 from dataclasses import dataclass, field
 from enum import IntEnum
 from typing import Any, Literal
 
 import anyio
+import anyio.abc
 import httpx
 import orjson as json
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
@@ -101,7 +102,8 @@ class _OutboundFrame:
     data: bytes
     kind: Literal["subscribe", "ping", "disconnect", "raw"]
     packet_id: int | None = None
-    ack_future: asyncio.Future[None] | None = None
+    ack_event: anyio.Event | None = None
+    ack_err: Exception | None = None
 
 
 class MqttCodec:
@@ -332,9 +334,9 @@ class Client:
         self._publish_queue_size = 8192
 
         self._ws: AsyncWebSocketSession | None = None
-        self._ws_disconnect_event: asyncio.Event | None = None
-        self._ws_lifecycle_task: asyncio.Task[None] | None = None
-        self._close_lock = asyncio.Lock()
+        self._ws_disconnect_event: anyio.Event | None = None
+        self._ws_lifecycle_scope: anyio.CancelScope | None = None
+        self._close_lock = anyio.Lock()
 
         self._http_client: httpx.AsyncClient | None = session
         self._ws_http_client: httpx.AsyncClient | None = None
@@ -343,10 +345,13 @@ class Client:
         self._epoch = 0
         self._closing = False
 
-        self._reader_task: asyncio.Task[None] | None = None
-        self._writer_task: asyncio.Task[None] | None = None
-        self._keepalive_task: asyncio.Task[None] | None = None
-        self._disconnect_task: asyncio.Task[None] | None = None
+        self._reader_scope: anyio.CancelScope | None = None
+        self._writer_scope: anyio.CancelScope | None = None
+        self._keepalive_scope: anyio.CancelScope | None = None
+        self._disconnect_scope: anyio.CancelScope | None = None
+
+        self._exit_stack = AsyncExitStack()
+        self._tg: anyio.abc.TaskGroup | None = None
 
         self._publish_send_stream: MemoryObjectSendStream | None = None
         self._publish_receive_stream: MemoryObjectReceiveStream | None = None
@@ -369,6 +374,8 @@ class Client:
         Returns:
             Client: 当前实例.
         """
+        await self._exit_stack.__aenter__()
+        self._tg = await self._exit_stack.enter_async_context(anyio.create_task_group())
         return self
 
     async def __aexit__(
@@ -381,7 +388,10 @@ class Client:
             exc_val: 异常值.
             exc_tb: 异常回溯.
         """
-        await self.disconnect()
+        try:
+            await self.disconnect()
+        finally:
+            await self._exit_stack.__aexit__(exc_type, exc_val, exc_tb)
 
     async def _get_http_client(self) -> httpx.AsyncClient:
         """获取 HTTP 客户端."""
@@ -426,16 +436,9 @@ class Client:
             return self._ping_timeout
         return min(float(self.keep_alive), 10.0)
 
-    async def _cancel_task(self, task: asyncio.Task[None] | None) -> None:
-        if task is None or task.done():
-            return
-        task.cancel()
-        try:
-            await task
-        except asyncio.CancelledError:
-            pass
-        except Exception as exc:
-            logger.debug(f"Task suppressed exception during cancellation: {exc}")
+    def _cancel_scope(self, scope: anyio.CancelScope | None) -> None:
+        if scope is not None and not scope.cancel_called:
+            scope.cancel()
 
     def _fail_pending_subacks_for_epoch(self, epoch: int, exc: Exception) -> None:
         stale_ids = [pid for pid, (e, _, _) in self._pending_subacks.items() if e == epoch]
@@ -473,10 +476,10 @@ class Client:
 
     async def _start_background_tasks(self) -> None:
         """启动 reader/writer/heartbeat 后台任务."""
-        await self._cancel_task(self._reader_task)
-        await self._cancel_task(self._writer_task)
-        await self._cancel_task(self._keepalive_task)
-        await self._cancel_task(self._disconnect_task)
+        self._cancel_scope(self._reader_scope)
+        self._cancel_scope(self._writer_scope)
+        self._cancel_scope(self._keepalive_scope)
+        self._cancel_scope(self._disconnect_scope)
 
         self._epoch += 1
         epoch = self._epoch
@@ -493,10 +496,17 @@ class Client:
         self._ping_outstanding = False
         self._last_ping_monotonic = 0.0
 
-        self._writer_task = asyncio.create_task(self._writer_loop(epoch))
-        self._reader_task = asyncio.create_task(self._read_loop(epoch))
-        self._keepalive_task = asyncio.create_task(self._keepalive_loop(epoch))
-        self._disconnect_task = None
+        self._writer_scope = anyio.CancelScope()
+        self._reader_scope = anyio.CancelScope()
+        self._keepalive_scope = anyio.CancelScope()
+        self._disconnect_scope = None
+
+        if self._tg:
+            self._tg.start_soon(self._writer_loop, epoch, self._writer_scope)
+            self._tg.start_soon(self._read_loop, epoch, self._reader_scope)
+            self._tg.start_soon(self._keepalive_loop, epoch, self._keepalive_scope)
+        else:
+            raise RuntimeError("TaskGroup is not initialized. Client must be used within an async context manager.")
 
     async def connect(self, properties: dict[Any, Any] | None = None, headers: dict[str, str] | None = None) -> None:  # noqa: C901
         """建立 WebSocket 连接并发送 MQTT CONNECT 报文.
@@ -518,31 +528,38 @@ class Client:
             logger.info(f"Connecting to {url}...")
             client = await self._get_http_client()
 
-            ws_disconnect_event = asyncio.Event()
+            ws_disconnect_event = anyio.Event()
             self._ws_disconnect_event = ws_disconnect_event
-            ready_event = asyncio.Event()
+            ready_event = anyio.Event()
             error_box: list[Exception | None] = [None]
 
-            async def ws_loop() -> None:
-                try:
-                    async with aconnect_ws(url, subprotocols=["mqtt"], headers=headers, client=client) as session_ws:
-                        self._ws = session_ws
-                        ready_event.set()
-                        await ws_disconnect_event.wait()
-                        try:
-                            await session_ws.close()
-                        except Exception:
-                            pass
-                except asyncio.CancelledError:
-                    pass
-                except Exception as e:
-                    if not ready_event.is_set():
-                        error_box[0] = e
-                        ready_event.set()
-                    else:
-                        logger.debug(f"WebSocket closed with error: {e}")
+            self._cancel_scope(self._ws_lifecycle_scope)
+            self._ws_lifecycle_scope = anyio.CancelScope()
+            scope = self._ws_lifecycle_scope
 
-            self._ws_lifecycle_task = asyncio.create_task(ws_loop())
+            async def ws_loop() -> None:
+                with scope:
+                    try:
+                        async with aconnect_ws(
+                            url, subprotocols=["mqtt"], headers=headers, client=client
+                        ) as session_ws:
+                            self._ws = session_ws
+                            ready_event.set()
+                            await ws_disconnect_event.wait()
+                            try:
+                                await session_ws.close()
+                            except Exception:
+                                pass
+                    except Exception as e:
+                        if not ready_event.is_set():
+                            error_box[0] = e
+                            ready_event.set()
+                        else:
+                            logger.debug(f"WebSocket closed with error: {e}")
+
+            if not self._tg:
+                raise RuntimeError("TaskGroup is not initialized. Client must be used within an async context manager.")
+            self._tg.start_soon(ws_loop)
             await ready_event.wait()
 
             if error_box[0]:
@@ -662,29 +679,36 @@ class Client:
         payload = msg_bytes[p_end:]
         return MqttMessage(topic=topic, payload=payload, qos=qos, properties=user_props)
 
-    async def _writer_loop(self, epoch: int) -> None:
+    async def _writer_loop(self, epoch: int, scope: anyio.CancelScope) -> None:
         """Writer Task: 独占发送 socket 并统一错误处理."""
-        try:
-            if not self._outbound_receive_stream:
-                return
-            async for item in self._outbound_receive_stream:
-                if epoch != self._epoch:
+        with scope:
+            try:
+                if not self._outbound_receive_stream:
                     return
-                if not await self._process_writer_frame(item, epoch):
-                    return
-        except anyio.ClosedResourceError:
-            pass
-        finally:
-            if epoch == self._epoch and not self._closing:
-                if self._disconnect_task is None:
-                    self._disconnect_task = asyncio.create_task(self.disconnect_ws_only())
+                async for item in self._outbound_receive_stream:
+                    if epoch != self._epoch:
+                        return
+                    if not await self._process_writer_frame(item, epoch):
+                        return
+            except anyio.ClosedResourceError:
+                pass
+            finally:
+                if epoch == self._epoch and not self._closing and self._tg:
+                    if self._disconnect_scope is None:
+                        self._disconnect_scope = anyio.CancelScope()
+                        self._tg.start_soon(self._run_disconnect_ws_only, self._disconnect_scope)
+
+    async def _run_disconnect_ws_only(self, scope: anyio.CancelScope) -> None:
+        with scope:
+            await self.disconnect_ws_only()
 
     async def _process_writer_frame(self, item: _OutboundFrame, epoch: int) -> bool:
         """发送单个 writer 帧并返回是否继续循环."""
         if not self._ws:
             err = ConnectionError("WebSocket is not connected")
-            if item.ack_future and not item.ack_future.done():
-                item.ack_future.set_exception(err)
+            if item.ack_event and not item.ack_event.is_set():
+                item.ack_err = err
+                item.ack_event.set()
             self._writer_error = err
             self._signal_messages_done(err)
             return False
@@ -696,97 +720,104 @@ class Client:
             if item.kind == "ping":
                 self._ping_outstanding = True
                 self._last_ping_monotonic = now
-            if item.ack_future and not item.ack_future.done():
-                item.ack_future.set_result(None)
+            if item.ack_event and not item.ack_event.is_set():
+                item.ack_err = None
+                item.ack_event.set()
             return True
         except Exception as exc:
             err = ConnectionError(f"WebSocket write error: {exc}")
             self._writer_error = err
             if self._reader_error is None:
                 self._reader_error = err
-            if item.ack_future and not item.ack_future.done():
-                item.ack_future.set_exception(err)
+            if item.ack_event and not item.ack_event.is_set():
+                item.ack_err = err
+                item.ack_event.set()
             self._fail_pending_subacks_for_epoch(epoch, err)
             self._signal_messages_done(err)
             return False
 
-    async def _read_loop(self, epoch: int) -> None:  # noqa: C901
+    async def _read_loop(self, epoch: int, scope: anyio.CancelScope) -> None:  # noqa: C901
         """Reader Task: 独占读取 socket 并分发报文."""
-        assert self._ws is not None
-        try:
-            while epoch == self._epoch:
-                msg_bytes = await self._ws.receive_bytes()
-                if not msg_bytes:
-                    break
-
-                pkt_type = msg_bytes[0] & 0xF0
-                try:
-                    if pkt_type == PacketType.PUBLISH:
-                        if not self._publish_send_stream:
-                            break
-                        try:
-                            self._publish_send_stream.send_nowait(self._parse_publish(msg_bytes))
-                        except anyio.WouldBlock:
-                            logger.error("Publish queue is full, dropping incoming message to prevent OOM")
-                        except anyio.ClosedResourceError:
-                            break
-                        continue
-                    if pkt_type == PacketType.SUBACK:
-                        packet_id, _ = self._extract_suback_packet_id(msg_bytes)
-                        record = self._pending_subacks.get(packet_id)
-                        if record:
-                            pending_epoch, event, _ = record
-                            if pending_epoch == epoch and not event.is_set():
-                                record[2] = msg_bytes
-                                event.set()
-                        continue
-                    if pkt_type == PacketType.PINGRESP:
-                        self._ping_outstanding = False
-                        continue
-                except (IndexError, ValueError) as exc:
-                    logger.warning(f"Malformed packet discarded (type={hex(pkt_type)}): {exc}")
-                    continue
-        except (WebSocketNetworkError, ConnectionError) as exc:
-            self._reader_error = ConnectionError(f"WebSocket receive error: {exc}")
-        except Exception as exc:
-            self._reader_error = ConnectionError(f"Reader loop failed: {exc}")
-        finally:
-            self._fail_pending_subacks_for_epoch(epoch, ConnectionError("WebSocket closed"))
-            self._signal_messages_done(self._reader_error)
-            if epoch == self._epoch and not self._closing:
-                if self._disconnect_task is None:
-                    self._disconnect_task = asyncio.create_task(self.disconnect_ws_only())
-
-    async def _keepalive_loop(self, epoch: int) -> None:
-        """Keepalive Task: 空闲驱动心跳并处理 ping 超时."""
-        tick = max(1.0, float(self.keep_alive) / 3.0)
-        ping_timeout = self._effective_ping_timeout()
-
-        while epoch == self._epoch:
-            await asyncio.sleep(tick)
-            if epoch != self._epoch or self._closing:
-                return
-
-            now = time.monotonic()
-            if self._ping_outstanding:
-                if now - self._last_ping_monotonic > ping_timeout:
-                    err = ConnectionError("PINGRESP timeout")
-                    self._reader_error = err
-                    self._writer_error = err
-                    self._fail_pending_subacks_for_epoch(epoch, err)
-                    self._signal_messages_done(err)
-                    self._disconnect_task = asyncio.create_task(self.disconnect_ws_only())
-                    return
-                continue
-
-            idle_for = now - self._last_outbound_monotonic
-            if idle_for < float(self.keep_alive) * self._heartbeat_idle_ratio:
-                continue
-
+        with scope:
+            assert self._ws is not None
             try:
-                await self._enqueue_outbound(_OutboundFrame(bytes([PacketType.PINGREQ, 0x00]), kind="ping"), epoch)
-            except Exception:
-                return
+                while epoch == self._epoch:
+                    msg_bytes = await self._ws.receive_bytes()
+                    if not msg_bytes:
+                        break
+
+                    pkt_type = msg_bytes[0] & 0xF0
+                    try:
+                        if pkt_type == PacketType.PUBLISH:
+                            if not self._publish_send_stream:
+                                break
+                            try:
+                                self._publish_send_stream.send_nowait(self._parse_publish(msg_bytes))
+                            except anyio.WouldBlock:
+                                logger.error("Publish queue is full, dropping incoming message to prevent OOM")
+                            except anyio.ClosedResourceError:
+                                break
+                            continue
+                        if pkt_type == PacketType.SUBACK:
+                            packet_id, _ = self._extract_suback_packet_id(msg_bytes)
+                            record = self._pending_subacks.get(packet_id)
+                            if record:
+                                pending_epoch, event, _ = record
+                                if pending_epoch == epoch and not event.is_set():
+                                    record[2] = msg_bytes
+                                    event.set()
+                            continue
+                        if pkt_type == PacketType.PINGRESP:
+                            self._ping_outstanding = False
+                            continue
+                    except (IndexError, ValueError) as exc:
+                        logger.warning(f"Malformed packet discarded (type={hex(pkt_type)}): {exc}")
+                        continue
+            except (WebSocketNetworkError, ConnectionError) as exc:
+                self._reader_error = ConnectionError(f"WebSocket receive error: {exc}")
+            except Exception as exc:
+                self._reader_error = ConnectionError(f"Reader loop failed: {exc}")
+            finally:
+                self._fail_pending_subacks_for_epoch(epoch, ConnectionError("WebSocket closed"))
+                self._signal_messages_done(self._reader_error)
+                if epoch == self._epoch and not self._closing and self._tg:
+                    if self._disconnect_scope is None:
+                        self._disconnect_scope = anyio.CancelScope()
+                        self._tg.start_soon(self._run_disconnect_ws_only, self._disconnect_scope)
+
+    async def _keepalive_loop(self, epoch: int, scope: anyio.CancelScope) -> None:
+        """Keepalive Task: 空闲驱动心跳并处理 ping 超时."""
+        with scope:
+            tick = max(1.0, float(self.keep_alive) / 3.0)
+            ping_timeout = self._effective_ping_timeout()
+
+            while epoch == self._epoch:
+                await anyio.sleep(tick)
+                if epoch != self._epoch or self._closing:
+                    return
+
+                now = time.monotonic()
+                if self._ping_outstanding:
+                    if now - self._last_ping_monotonic > ping_timeout:
+                        err = ConnectionError("PINGRESP timeout")
+                        self._reader_error = err
+                        self._writer_error = err
+                        self._fail_pending_subacks_for_epoch(epoch, err)
+                        self._signal_messages_done(err)
+                        if self._tg and self._disconnect_scope is None:
+                            self._disconnect_scope = anyio.CancelScope()
+                            self._tg.start_soon(self._run_disconnect_ws_only, self._disconnect_scope)
+                        return
+                    continue
+
+                idle_for = now - self._last_outbound_monotonic
+                if idle_for < float(self.keep_alive) * self._heartbeat_idle_ratio:
+                    continue
+
+                try:
+                    await self._enqueue_outbound(_OutboundFrame(bytes([PacketType.PINGREQ, 0x00]), kind="ping"), epoch)
+                except Exception:
+                    return
 
     async def subscribe(self, topic: str, properties: dict[Any, Any] | None = None) -> None:  # noqa: C901
         """发送 SUBSCRIBE 报文并等待匹配的 SUBACK.
@@ -801,7 +832,7 @@ class Client:
         """
         if not self._ws:
             raise ConnectionError("WebSocket is not connected")
-        if not self._reader_task or not self._writer_task:
+        if not self._reader_scope or not self._writer_scope:
             raise ConnectionError("Reader/Writer loop is not running")
 
         epoch = self._epoch
@@ -828,9 +859,10 @@ class Client:
                 await ack_event.wait()
         except TimeoutError:
             logger.warning(f"Subscribe to {topic} timed out, tearing down connection to avoid state mismatch")
-            if epoch == self._epoch and not self._closing:
-                if self._disconnect_task is None:
-                    self._disconnect_task = asyncio.create_task(self.disconnect_ws_only())
+            if epoch == self._epoch and not self._closing and self._tg:
+                if self._disconnect_scope is None:
+                    self._disconnect_scope = anyio.CancelScope()
+                    self._tg.start_soon(self._run_disconnect_ws_only, self._disconnect_scope)
             raise
         finally:
             removed_record = self._pending_subacks.pop(packet_id_num, None)
@@ -855,18 +887,18 @@ class Client:
 
     async def _try_send_disconnect_frame(self, epoch: int) -> None:
         """尽力通过 writer 队列发送 DISCONNECT 帧."""
-        if not self._writer_task or self._writer_task.done() or not self._ws:
+        if not self._writer_scope or not self._ws:
             return
 
-        loop = asyncio.get_running_loop()
-        ack = loop.create_future()
+        ack_event = anyio.Event()
         try:
             await self._enqueue_outbound(
-                _OutboundFrame(bytes([PacketType.DISCONNECT, 0x00]), kind="disconnect", ack_future=ack),
+                _OutboundFrame(bytes([PacketType.DISCONNECT, 0x00]), kind="disconnect", ack_event=ack_event),
                 epoch,
                 allow_when_closing=True,
             )
-            await asyncio.wait_for(ack, timeout=0.5)
+            with anyio.move_on_after(0.5):
+                await ack_event.wait()
         except Exception:
             pass
 
@@ -883,31 +915,26 @@ class Client:
             self._closing = True
             self._fail_pending_subacks_for_epoch(epoch, ConnectionError("WebSocket closed"))
 
-            await self._cancel_task(self._keepalive_task)
-            self._keepalive_task = None
+            self._cancel_scope(self._keepalive_scope)
+            self._keepalive_scope = None
 
             await self._try_send_disconnect_frame(epoch)
 
-            await self._cancel_task(self._writer_task)
-            self._writer_task = None
-            await self._cancel_task(self._reader_task)
-            self._reader_task = None
-            current_task = asyncio.current_task()
-            if self._disconnect_task is not current_task:
-                await self._cancel_task(self._disconnect_task)
-            self._disconnect_task = None
+            self._cancel_scope(self._writer_scope)
+            self._writer_scope = None
+            self._cancel_scope(self._reader_scope)
+            self._reader_scope = None
+            self._cancel_scope(self._disconnect_scope)
+            self._disconnect_scope = None
 
             if self._ws_disconnect_event:
                 self._ws_disconnect_event.set()
 
-            if self._ws_lifecycle_task:
-                if self._ws_lifecycle_task is not current_task:
-                    await self._cancel_task(self._ws_lifecycle_task)
+            self._cancel_scope(self._ws_lifecycle_scope)
 
             self._ws = None
-            self._ws_lifecycle_task = None
+            self._ws_lifecycle_scope = None
             self._ws_disconnect_event = None
-
             self._epoch += 1
             if self._publish_receive_stream:
                 self._publish_receive_stream.close()

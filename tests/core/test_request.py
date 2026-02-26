@@ -14,7 +14,7 @@ from qqmusic_api.models import JsonResponse
 from qqmusic_api.modules._base import ApiModule
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_request_musicu_payload_uses_song_api_params() -> None:
     """验证 musicu 请求体使用歌曲接口参数结构."""
     captured: dict[str, object] = {}
@@ -47,7 +47,7 @@ async def test_request_musicu_payload_uses_song_api_params() -> None:
     assert "573221672" in payload_text
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_request_musicu_uses_version_policy_comm() -> None:
     """验证 req 的 comm 使用中心版本策略."""
     captured: dict[str, object] = {}
@@ -77,7 +77,7 @@ async def test_request_musicu_uses_version_policy_comm() -> None:
     assert comm["cv"] == DEFAULT_VERSION_POLICY.desktop.cv
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_request_musicu_comm_override_takes_priority() -> None:
     """验证 Request 传入 comm 会覆盖中心策略字段."""
     captured: dict[str, object] = {}
@@ -108,7 +108,7 @@ async def test_request_musicu_comm_override_takes_priority() -> None:
     assert comm["ct"] == DEFAULT_VERSION_POLICY.desktop.ct
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_request_musicu_raises_http_error_on_non_200() -> None:
     """验证 request_musicu 在 HTTP 非 200 时抛出 HTTPError."""
 
@@ -130,7 +130,7 @@ async def test_request_musicu_raises_http_error_on_non_200() -> None:
     assert "musicu-failed" in str(exc_info.value)
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_request_jce_raises_http_error_on_non_200() -> None:
     """验证 request_jce 在 HTTP 非 200 时抛出 HTTPError."""
 
@@ -154,7 +154,7 @@ async def test_request_jce_raises_http_error_on_non_200() -> None:
     assert "jce-failed" in str(exc_info.value)
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_build_common_params_for_android_jce_stringifies_values() -> None:
     """验证 android_jce 的 comm 字段值会被字符串化."""
     client = Client(platform="android")
@@ -167,7 +167,7 @@ async def test_build_common_params_for_android_jce_stringifies_values() -> None:
     await client.close()
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_request_group_logs_and_error_outcomes(caplog: pytest.LogCaptureFixture) -> None:
     """验证 RequestGroup 日志与失败结果回填."""
     client = Client(platform="desktop")
@@ -196,7 +196,7 @@ async def test_request_group_logs_and_error_outcomes(caplog: pytest.LogCaptureFi
     await client.close()
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_request_group_execute_for_each_stream_consumption() -> None:
     """验证 execute_for_each 逐条消费结果且不聚合返回."""
     client = Client(platform="desktop")
@@ -227,7 +227,7 @@ async def test_request_group_execute_for_each_stream_consumption() -> None:
     await client.close()
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_request_group_execute_respects_max_collect() -> None:
     """验证 execute 在超过 max_collect 时抛出异常."""
     client = Client(platform="desktop")
@@ -240,7 +240,7 @@ async def test_request_group_execute_respects_max_collect() -> None:
     await client.close()
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_request_group_execute_iter_completeness() -> None:
     """验证 execute_iter 结果可按 index 恢复完整请求集."""
     client = Client(platform="desktop")
@@ -266,7 +266,7 @@ async def test_request_group_execute_iter_completeness() -> None:
     await client.close()
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_request_jce_rejects_non_int_param_keys() -> None:
     """验证 request_jce 会拒绝非 int 键的 param."""
     client = Client(platform="desktop")

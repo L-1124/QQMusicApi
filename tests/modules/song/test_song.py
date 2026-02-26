@@ -12,7 +12,7 @@ def test_query_song_empty_raises(mock_client):
         api.query_song([])
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_query_song_with_mid(mock_client, make_request):
     """测试通过 mid 列表查询歌曲."""
     api = SongApi(mock_client)
@@ -27,7 +27,7 @@ async def test_query_song_with_mid(mock_client, make_request):
     assert request.param["mids"] == ["002mZevo3wHvsc"]
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_query_song_with_id(mock_client, make_request):
     """测试通过 id 列表查询歌曲."""
     api = SongApi(mock_client)
@@ -42,7 +42,7 @@ async def test_query_song_with_id(mock_client, make_request):
     assert request.param["ids"] == [12345]
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_song_methods(mock_client, make_request):
     """测试歌曲模块核心方法."""
     api = SongApi(mock_client)

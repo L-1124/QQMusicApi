@@ -2,16 +2,16 @@
 
 ## 目录
 
-- [类型映射](#类型映射)
-- [Public API 导出](#public-api-导出)
-- [encode / decode 函数签名](#encode--decode-函数签名)
-- [Struct 类方法](#struct-类方法)
-- [field 函数](#field-函数)
-- [Meta 约束](#meta-约束)
-- [Inspect API](#inspect-api)
-- [CLI 完整选项](#cli-完整选项)
-- [协议格式](#协议格式)
-- [已知问题](#已知问题)
+* [类型映射](#类型映射)
+* [Public API 导出](#public-api-导出)
+* [encode / decode 函数签名](#encode--decode-函数签名)
+* [Struct 类方法](#struct-类方法)
+* [field 函数](#field-函数)
+* [Meta 约束](#meta-约束)
+* [Inspect API](#inspect-api)
+* [CLI 完整选项](#cli-完整选项)
+* [协议格式](#协议格式)
+* [已知问题](#已知问题)
 
 ## 类型映射
 
@@ -39,16 +39,16 @@
 
 ### 结构化类型
 
-- `Struct` 子类: 推荐建模方式
-- `Enum`: 按 `value` 的底层类型编码
-- `Optional[T]` 或 `T | None`: `None` 时不写该字段
-- `Union[A, B, ...]`: 按变体顺序匹配并编码
+* `Struct` 子类: 推荐建模方式
+* `Enum`: 按 `value` 的底层类型编码
+* `Optional[T]` 或 `T | None`: `None` 时不写该字段
+* `Union[A, B, ...]`: 按变体顺序匹配并编码
 
 ### typing 标记
 
-- `Annotated[T, Meta(...)]`: 为 `T` 增加约束
-- `Literal`, `NewType`, `Final`, 类型别名: 按展开后底层类型处理
-- `Required` / `NotRequired`: 主要用于 `TypedDict` 字段语义
+* `Annotated[T, Meta(...)]`: 为 `T` 增加约束
+* `Literal`, `NewType`, `Final`, 类型别名: 按展开后底层类型处理
+* `Required` / `NotRequired`: 主要用于 `TypedDict` 字段语义
 
 ## Public API 导出
 
@@ -203,9 +203,9 @@ Tars 协议采用 TLV (Tag-Type-Value) 格式，Big-Endian 字节序。
 
 ### Head 编码
 
-- Tag < 15: 单字节 `[Tag(4bit) | Type(4bit)]`
-- Tag >= 15: 双字节 `[0xF | Type(4bit)] [Tag(8bit)]`
-- Tag 最大值 255
+* Tag < 15: 单字节 `[Tag(4bit) | Type(4bit)]`
+* Tag >= 15: 双字节 `[0xF | Type(4bit)] [Tag(8bit)]`
+* Tag 最大值 255
 
 ### Type ID
 
@@ -239,8 +239,8 @@ Tars 协议采用 TLV (Tag-Type-Value) 格式，Big-Endian 字节序。
 
 规避方案:
 
-- 优先缓存并复用 Struct 类型
-- 动态 schema 放独立 worker 进程并周期性重启
-- 增加内存监控告警
+* 优先缓存并复用 Struct 类型
+* 动态 schema 放独立 worker 进程并周期性重启
+* 增加内存监控告警
 
 静态 schema 项目不受影响。

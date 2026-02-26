@@ -10,7 +10,7 @@ from qqmusic_api.core.versioning import DEFAULT_VERSION_POLICY
 from qqmusic_api.modules.user import UserApi
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_get_euin_uses_http_request(mock_client):
     """测试 get_euin 通过 HTTP 请求获取数据."""
     api = UserApi(mock_client)
@@ -30,7 +30,7 @@ async def test_get_euin_uses_http_request(mock_client):
     assert result == "abc123"
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_get_musicu_methods(mock_client, make_request):
     """测试用户模块普通接口请求参数."""
     api = UserApi(mock_client)
@@ -83,7 +83,7 @@ async def test_get_musicu_methods(mock_client, make_request):
     )
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_verify_methods_with_login(mock_client, make_request):
     """测试 verify 方法在登录态下可构建请求."""
     api = UserApi(mock_client)

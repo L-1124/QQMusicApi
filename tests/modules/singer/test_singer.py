@@ -13,7 +13,7 @@ def test_validate_int_enum() -> None:
         validate_int_enum(999, AreaType)
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_get_singer_list(mock_client, make_request):
     """测试获取歌手列表请求."""
     api = SingerApi(mock_client)
@@ -31,7 +31,7 @@ async def test_get_singer_list(mock_client, make_request):
     assert request.param["genre"] == GenreType.POP.value
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_get_singer_list_index(mock_client, make_request):
     """测试获取歌手索引列表请求."""
     api = SingerApi(mock_client)
@@ -49,7 +49,7 @@ async def test_get_singer_list_index(mock_client, make_request):
     assert request.param["cur_page"] == 2
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_other_singer_methods(mock_client, make_request):
     """测试歌手模块其他核心方法."""
     api = SingerApi(mock_client)

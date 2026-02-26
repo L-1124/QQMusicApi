@@ -5,7 +5,7 @@ import pytest
 from qqmusic_api.modules.comment import CommentApi
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_get_comment_count(mock_client, make_request):
     """测试获取歌曲评论数量."""
     api = CommentApi(mock_client)
@@ -22,7 +22,7 @@ async def test_get_comment_count(mock_client, make_request):
     assert request_obj.param["request"]["biz_id"] == biz_id
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_get_hot_comments(mock_client, make_request):
     """测试获取歌曲热评."""
     api = CommentApi(mock_client)
@@ -40,7 +40,7 @@ async def test_get_hot_comments(mock_client, make_request):
     assert request_obj.param["PageNum"] == 1
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_get_new_comments(mock_client, make_request):
     """测试获取歌曲最新评论."""
     api = CommentApi(mock_client)
@@ -58,7 +58,7 @@ async def test_get_new_comments(mock_client, make_request):
     assert request_obj.param["PageNum"] == 2
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_get_recommend_comments(mock_client, make_request):
     """测试获取歌曲推荐评论."""
     api = CommentApi(mock_client)
@@ -76,7 +76,7 @@ async def test_get_recommend_comments(mock_client, make_request):
     assert request_obj.param["PageNum"] == 0
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_get_moment_comments(mock_client, make_request):
     """测试获取时刻评论."""
     api = CommentApi(mock_client)
