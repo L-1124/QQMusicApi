@@ -99,7 +99,7 @@ class _NullCookieJar(CookieJar):
 class Client:
     """QQMusic API Client.
 
-    管理底层 HTTP 请求、全局设备信息、QIMEI 以及鉴权凭据，并提供对各个业务 API 模块的访问入口。
+    管理底层 HTTP 请求、全局设备信息、QIMEI 以及鉴权凭据,并提供对各个业务 API 模块的访问入口。
     支持自动携带签名字段、防并发积压限制及批量请求的打包调度。
     """
 
@@ -117,10 +117,10 @@ class Client:
         """初始化 Client 实例。
 
         Args:
-            credential: 用户鉴权凭证，若不提供则创建空凭证。
-            device_path: 设备信息持久化路径，默认保存至内存。
+            credential: 用户鉴权凭证,若不提供则创建空凭证。
+            device_path: 设备信息持久化路径,默认保存至内存。
             enable_sign: 是否开启全局请求参数签名。
-            platform: 默认请求使用的平台标识，默认为 "android"。
+            platform: 默认请求使用的平台标识,默认为 "android"。
             max_concurrency: 单个 Client 实例最大并发请求数。
             max_connections: HTTP 连接池大小。
             qimei_timeout: 内部获取 QIMEI 接口的超时时间。
@@ -259,7 +259,7 @@ class Client:
         该方法提供并发控制及网络异常转换。
 
         Args:
-            method: HTTP 方法，如 "GET" 或 "POST"。
+            method: HTTP 方法,如 "GET" 或 "POST"。
             url: 请求的 URL 地址。
             **kwargs: 传递给 httpx.AsyncClient.request 的附加参数。
 
@@ -290,7 +290,7 @@ class Client:
         await self.device_store.sync_workspace(getattr(self.credential, "musicid", None))
 
     async def _ensure_device(self) -> "Device":
-        """获取与当前凭证关联的设备信息（状态防漂移）。
+        """获取与当前凭证关联的设备信息(状态防漂移)。
 
         Returns:
             Device: 当前活动的设备对象。
@@ -300,11 +300,11 @@ class Client:
     async def _get_qimei_cached(self) -> QimeiResult | None:
         """获取并缓存 QIMEI 信息。
 
-        如果设备对象中已有缓存则直接返回，否则向服务器请求新的 QIMEI，
-        并将其持久化到设备存储中。该方法保证并发请求时的安全性（Lock）。
+        如果设备对象中已有缓存则直接返回,否则向服务器请求新的 QIMEI,
+        并将其持久化到设备存储中。该方法保证并发请求时的安全性(Lock)。
 
         Returns:
-            QimeiResult | None: 成功则返回 QIMEI 字典数据，失败则返回 None。
+            QimeiResult | None: 成功则返回 QIMEI 字典数据,失败则返回 None。
         """
         if self._qimei_loaded:
             return self._qimei_cache
@@ -347,7 +347,7 @@ class Client:
     async def _build_common_params(self, platform: str | None, credential: Credential) -> dict[str, Any]:
         """构建 QQ 音乐接口的通用 comm 字典参数。
 
-        提取对应的设备、QIMEI 信息、用户 UID 等，依据当前客户端平台装配到 comm 字典中。
+        提取对应的设备、QIMEI 信息、用户 UID 等,依据当前客户端平台装配到 comm 字典中。
 
         Args:
             platform: 目标平台名称。
@@ -370,9 +370,9 @@ class Client:
         )
 
     def request_group(self, batch_size: int = 20, max_inflight_batches: int = 5) -> "RequestGroup":
-        """创建并返回一个批量请求（RequestGroup）容器。
+        """创建并返回一个批量请求(RequestGroup)容器。
 
-        适用于需合并多个相同协议（JSON 或 JCE）请求的场景。
+        适用于需合并多个相同协议(JSON 或 JCE)请求的场景。
 
         Args:
             batch_size: 单个批次的最大请求数量。
@@ -388,7 +388,7 @@ class Client:
     async def execute(self, request: "Request[R]") -> R:
         """执行单个请求描述符并解析返回结果。
 
-        调用中间件进行请求预处理，随后根据请求格式（JCE/JSON）分发调用底层发包方法，
+        调用中间件进行请求预处理,随后根据请求格式(JCE/JSON)分发调用底层发包方法,
         解析响应后自动组装成预期的 `response_model` 类型。
 
         Args:
@@ -463,16 +463,16 @@ class Client:
 
         Args:
             raw: 原始响应数据。
-            response_model: 期望的响应模型类型，支持 Pydantic BaseModel 或 Tarsio Struct。
+            response_model: 期望的响应模型类型,支持 Pydantic BaseModel 或 Tarsio Struct。
 
         Returns:
-            R: 构建好的响应模型实例，或原样返回（如果无需转换）。
+            R: 构建好的响应模型实例,或原样返回(如果无需转换)。
         """
         if response_model is None:
             return raw
         if isinstance(response_model, type):
             if issubclass(response_model, BaseModel):
-                return response_model.model_validate(raw)
+                return response_model.model_validate(raw)  # type: ignore[return-value]
             if issubclass(response_model, Struct):
                 from tarsio import encode
 
@@ -493,7 +493,7 @@ class Client:
         """根据指定或默认平台生成请求所需的 User-Agent。
 
         Args:
-            platform: 平台标识。若为 None，使用当前 Client 默认平台。
+            platform: 平台标识。若为 None,使用当前 Client 默认平台。
 
         Returns:
             str: 格式化好的 User-Agent 字符串。
@@ -535,10 +535,10 @@ class Client:
         自动装配指定的客户端平台 User-Agent 及对应凭证的 Cookies。
 
         Args:
-            method: HTTP 方法，如 "GET" 或 "POST"。
+            method: HTTP 方法,如 "GET" 或 "POST"。
             url: 请求的 URL 地址。
-            credential: 覆盖默认凭证，可选。
-            platform: 覆盖默认平台，可选。
+            credential: 覆盖默认凭证,可选。
+            platform: 覆盖默认平台,可选。
             **kwargs: 传递给 httpx 的其他参数。
 
         Returns:
@@ -571,10 +571,10 @@ class Client:
         """发送标准 QQ 音乐请求 (Musicu/JSON) 并解析响应。
 
         Args:
-            data: 请求项，支持单个或批量。
+            data: 请求项,支持单个或批量。
             comm: 请求公共参数。
-            credential: 请求凭证（该方法底层未直接使用凭证参数，供扩展）。
-            url: 请求的网关 URL，默认为 musicu.fcg。
+            credential: 请求凭证(该方法底层未直接使用凭证参数,供扩展)。
+            url: 请求的网关 URL,默认为 musicu.fcg。
             platform: 请求发起的平台名称。
             http_params_extra: 额外的 URL 参数。
             http_headers_extra: 额外的 HTTP 头信息。
@@ -632,7 +632,7 @@ class Client:
         """发送 JCE 格式的请求并解析响应。
 
         Args:
-            data: JCE 请求项，支持单个或批量。
+            data: JCE 请求项,支持单个或批量。
             comm: 请求公共参数。
             credential: 请求凭证。
             url: JCE 网关 URL。

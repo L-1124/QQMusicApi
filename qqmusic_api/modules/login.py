@@ -579,7 +579,7 @@ class LoginApi(ApiModule):
         """检查微信二维码状态。"""
         uuid = qrcode.identifier
         try:
-            response = await self._client._request_raw(
+            response = await self._client.fetch(
                 "GET",
                 "https://lp.open.weixin.qq.com/connect/l/qrconnect",
                 params={"uuid": uuid, "_": str(int(time()) * 1000)},

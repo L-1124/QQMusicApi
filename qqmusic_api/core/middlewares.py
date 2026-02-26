@@ -18,7 +18,7 @@ class RequestMiddleware(Protocol):
 class CommContextMiddleware:
     """公共上下文装配中间件。
 
-    自动合并全局设备、凭据配置与局部请求中的 comm 参数，并提取最新的 QIMEI。
+    自动合并全局设备、凭据配置与局部请求中的 comm 参数,并提取最新的 QIMEI。
     """
 
     async def process_request(self, request: "Request", client: "Client") -> "Request":

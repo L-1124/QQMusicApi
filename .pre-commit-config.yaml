@@ -51,9 +51,9 @@ repos:
         language: system
         files: \.(py|pyi)$
 
-      - id: basedpyright
-        name: basedpyright
-        entry: uv run basedpyright
+      - id: pyrefly
+        name: pyrefly
+        entry: uv run pyrefly check
         language: system
         files: \.(py|pyi)$
 

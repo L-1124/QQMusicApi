@@ -61,8 +61,8 @@ class ApiModule:
         Args:
             method: HTTP 方法。
             url: 目标 URL。
-            credential: 请求凭证（默认使用客户端凭证）。
-            platform: 请求平台（默认使用客户端平台）。
+            credential: 请求凭证(默认使用客户端凭证)。
+            platform: 请求平台(默认使用客户端平台)。
             **kwargs: 透传给底层客户端的参数。
 
         Returns:

@@ -50,7 +50,7 @@ dev = [
   "setuptools>=82.0.0",
 ]
 linting = [
-  "basedpyright>=1.37.2",
+  "pyrefly",
   "pre-commit>=4.5.1",
   "ruff>=0.14.14",
 ]
@@ -83,12 +83,7 @@ include = ["qqmusic_api*"]
 [tool.setuptools.package-data]
 qqmusic_api = [ "*.pyi", "algorithms/*.pyi"]
 
-[tool.pyright]
-venvPath = "."
-venv = ".venv"
-include = ["qqmusic_api"]
-pythonVersion = "3.10"
-typeCheckingMode = "standard"
+
 
 [tool.pytest]
 addopts = ["-rxXs"]
@@ -122,3 +117,8 @@ default-groups = ["dev"]
 [[tool.uv.index]]
 url = "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple"
 default = true
+
+[tool.pyrefly]
+project-includes = ["qqmusic_api"]
+python-version = "3.10.0"
+infer-with-first-use = false
