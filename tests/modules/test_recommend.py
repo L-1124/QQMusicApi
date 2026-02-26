@@ -1,4 +1,4 @@
-"""推荐模块测试。"""
+"""推荐模块测试."""
 
 import pytest
 
@@ -7,7 +7,7 @@ from qqmusic_api.modules.recommend import RecommendApi
 
 @pytest.mark.asyncio
 async def test_get_home_feed(mock_client, make_request):
-    """测试获取主页推荐。"""
+    """测试获取主页推荐."""
     api = RecommendApi(mock_client)
     await make_request(
         api.get_home_feed(),
@@ -18,7 +18,7 @@ async def test_get_home_feed(mock_client, make_request):
 
 @pytest.mark.asyncio
 async def test_get_guess_recommend(mock_client, make_request):
-    """测试获取猜你喜欢。"""
+    """测试获取猜你喜欢."""
     api = RecommendApi(mock_client)
     await make_request(
         api.get_guess_recommend(),
@@ -29,7 +29,7 @@ async def test_get_guess_recommend(mock_client, make_request):
 
 @pytest.mark.asyncio
 async def test_get_radar_recommend(mock_client, make_request):
-    """测试获取雷达推荐。"""
+    """测试获取雷达推荐."""
     api = RecommendApi(mock_client)
     await make_request(
         api.get_radar_recommend(),
@@ -40,7 +40,7 @@ async def test_get_radar_recommend(mock_client, make_request):
 
 @pytest.mark.asyncio
 async def test_get_recommend_songlist(mock_client, make_request):
-    """测试获取推荐歌单。"""
+    """测试获取推荐歌单."""
     api = RecommendApi(mock_client)
     await make_request(
         api.get_recommend_songlist(),
@@ -51,7 +51,7 @@ async def test_get_recommend_songlist(mock_client, make_request):
 
 @pytest.mark.asyncio
 async def test_get_recommend_newsong(mock_client, make_request):
-    """测试获取推荐新歌。"""
+    """测试获取推荐新歌."""
     api = RecommendApi(mock_client)
     await make_request(
         api.get_recommend_newsong(),
@@ -61,5 +61,5 @@ async def test_get_recommend_newsong(mock_client, make_request):
 
 
 def test_client_recommend_property(mock_client):
-    """测试 Client.recommend 属性。"""
+    """测试 Client.recommend 属性."""
     assert isinstance(mock_client.recommend, RecommendApi)

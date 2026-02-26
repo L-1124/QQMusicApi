@@ -1,4 +1,4 @@
-"""歌曲模块测试。"""
+"""歌曲模块测试."""
 
 import pytest
 
@@ -6,7 +6,7 @@ from qqmusic_api.modules.song import SongApi
 
 
 def test_query_song_empty_raises(mock_client):
-    """测试空列表查询会抛出异常。"""
+    """测试空列表查询会抛出异常."""
     api = SongApi(mock_client)
     with pytest.raises(ValueError):
         api.query_song([])
@@ -14,7 +14,7 @@ def test_query_song_empty_raises(mock_client):
 
 @pytest.mark.asyncio
 async def test_query_song_with_mid(mock_client, make_request):
-    """测试通过 mid 列表查询歌曲。"""
+    """测试通过 mid 列表查询歌曲."""
     api = SongApi(mock_client)
 
     await make_request(
@@ -29,7 +29,7 @@ async def test_query_song_with_mid(mock_client, make_request):
 
 @pytest.mark.asyncio
 async def test_query_song_with_id(mock_client, make_request):
-    """测试通过 id 列表查询歌曲。"""
+    """测试通过 id 列表查询歌曲."""
     api = SongApi(mock_client)
 
     await make_request(
@@ -44,7 +44,7 @@ async def test_query_song_with_id(mock_client, make_request):
 
 @pytest.mark.asyncio
 async def test_song_methods(mock_client, make_request):
-    """测试歌曲模块核心方法。"""
+    """测试歌曲模块核心方法."""
     api = SongApi(mock_client)
 
     await make_request(
@@ -115,6 +115,6 @@ async def test_song_methods(mock_client, make_request):
 
 
 def test_deleted_helper_not_present(mock_client):
-    """测试被删除 helper 不存在。"""
+    """测试被删除 helper 不存在."""
     api = SongApi(mock_client)
     assert not hasattr(api, "get_song_urls")

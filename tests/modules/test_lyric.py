@@ -1,4 +1,4 @@
-"""歌词模块测试。"""
+"""歌词模块测试."""
 
 import pytest
 
@@ -7,7 +7,7 @@ from qqmusic_api.modules.lyric import LyricApi
 
 @pytest.mark.asyncio
 async def test_get_lyric_by_mid(mock_client, make_request):
-    """测试通过 mid 获取歌词请求。"""
+    """测试通过 mid 获取歌词请求."""
     api = LyricApi(mock_client)
 
     await make_request(
@@ -25,7 +25,7 @@ async def test_get_lyric_by_mid(mock_client, make_request):
 
 @pytest.mark.asyncio
 async def test_get_lyric_by_id(mock_client, make_request):
-    """测试通过 id 获取歌词请求。"""
+    """测试通过 id 获取歌词请求."""
     api = LyricApi(mock_client)
 
     await make_request(

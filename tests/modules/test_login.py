@@ -1,4 +1,4 @@
-"""登录模块测试。"""
+"""登录模块测试."""
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -20,7 +20,7 @@ from qqmusic_api.modules.login import (
 
 @pytest.mark.asyncio
 async def test_check_expired_returns_true_on_login_expired(mock_client):
-    """测试凭证过期时返回 True。"""
+    """测试凭证过期时返回 True."""
     api = LoginApi(mock_client)
     mock_client.execute = AsyncMock(side_effect=LoginExpiredError())
 
@@ -31,7 +31,7 @@ async def test_check_expired_returns_true_on_login_expired(mock_client):
 
 @pytest.mark.asyncio
 async def test_get_qrcode_dispatches_by_type(mock_client):
-    """测试 get_qrcode 按类型分发。"""
+    """测试 get_qrcode 按类型分发."""
     api = LoginApi(mock_client)
     qq_qr = QR(b"qq", QRLoginType.QQ, "image/png", "qq-id")
     wx_qr = QR(b"wx", QRLoginType.WX, "image/jpeg", "wx-id")
@@ -48,7 +48,7 @@ async def test_get_qrcode_dispatches_by_type(mock_client):
 
 @pytest.mark.asyncio
 async def test_send_authcode_maps_codes(mock_client):
-    """测试发送验证码时状态码映射。"""
+    """测试发送验证码时状态码映射."""
     api = LoginApi(mock_client)
     mock_client.execute = AsyncMock(
         side_effect=[
@@ -65,7 +65,7 @@ async def test_send_authcode_maps_codes(mock_client):
 
 @pytest.mark.asyncio
 async def test_send_authcode_wraps_api_error(mock_client):
-    """测试发送验证码底层异常会包装为 LoginError。"""
+    """测试发送验证码底层异常会包装为 LoginError."""
     api = LoginApi(mock_client)
     mock_client.execute = AsyncMock(side_effect=ApiError("bad", code=500001))
 
@@ -75,7 +75,7 @@ async def test_send_authcode_wraps_api_error(mock_client):
 
 @pytest.mark.asyncio
 async def test_phone_authorize_maps_results(mock_client):
-    """测试手机鉴权状态映射。"""
+    """测试手机鉴权状态映射."""
     api = LoginApi(mock_client)
 
     mock_client.execute = AsyncMock(return_value={"musicid": 123, "musickey": "Q_H_L_x"})
@@ -94,7 +94,7 @@ async def test_phone_authorize_maps_results(mock_client):
 
 @pytest.mark.asyncio
 async def test_check_qq_qr_done_parses_credential(mock_client):
-    """测试 QQ 扫码成功后返回凭证。"""
+    """测试 QQ 扫码成功后返回凭证."""
     api = LoginApi(mock_client)
     response = MagicMock()
     response.text = (
@@ -112,7 +112,7 @@ async def test_check_qq_qr_done_parses_credential(mock_client):
 
 @pytest.mark.asyncio
 async def test_refresh_cookies_updates_target_credential(mock_client):
-    """测试刷新凭证后会更新原对象。"""
+    """测试刷新凭证后会更新原对象."""
     api = LoginApi(mock_client)
     target = Credential(musicid=10001, musickey="old", refresh_key="rk", refresh_token="rt")
     mock_client.execute = AsyncMock(return_value={"musicid": 10002, "musickey": "new"})
@@ -124,7 +124,7 @@ async def test_refresh_cookies_updates_target_credential(mock_client):
 
 @pytest.mark.asyncio
 async def test_iter_qrcode_login_deduplicates_events(mock_client):
-    """测试统一事件流会去重重复状态。"""
+    """测试统一事件流会去重重复状态."""
     api = LoginApi(mock_client)
     done_credential = Credential(musicid=10001, musickey="key")
 
@@ -155,7 +155,7 @@ async def test_iter_qrcode_login_deduplicates_events(mock_client):
 
 @pytest.mark.asyncio
 async def test_iter_qrcode_login_timeout(mock_client):
-    """测试统一事件流超时会产出 TIMEOUT。"""
+    """测试统一事件流超时会产出 TIMEOUT."""
     api = LoginApi(mock_client)
 
     async def _mock_iter_web(qrcode, interval, deadline, emit_repeat):
@@ -177,7 +177,7 @@ async def test_iter_qrcode_login_timeout(mock_client):
 
 @pytest.mark.asyncio
 async def test_iter_qrcode_login_mobile_stops_on_other(mock_client):
-    """测试统一事件流在 mobile OTHER 事件时终止。"""
+    """测试统一事件流在 mobile OTHER 事件时终止."""
     api = LoginApi(mock_client)
 
     async def _fake_mobile(_qrcode, *, deadline, interval):
@@ -200,7 +200,7 @@ async def test_iter_qrcode_login_mobile_stops_on_other(mock_client):
 
 @pytest.mark.asyncio
 async def test_handle_mobile_message_invalid_payload_returns_other(mock_client):
-    """测试 mobile cookies 消息无效 payload 时返回 OTHER。"""
+    """测试 mobile cookies 消息无效 payload 时返回 OTHER."""
     api = LoginApi(mock_client)
 
     assert await api._handle_mobile_message("id", "cookies", None) == (QRCodeLoginEvents.OTHER, None)
@@ -209,7 +209,7 @@ async def test_handle_mobile_message_invalid_payload_returns_other(mock_client):
 
 @pytest.mark.asyncio
 async def test_check_mobile_qr_success_cookie_flow(mock_client):
-    """测试 mobile 登录消息可解析 cookies 并返回 DONE。"""
+    """测试 mobile 登录消息可解析 cookies 并返回 DONE."""
     api = LoginApi(mock_client)
 
     class _RawMessage:
@@ -248,7 +248,7 @@ async def test_check_mobile_qr_success_cookie_flow(mock_client):
 
 
 def test_qr_save_returns_none_when_data_empty(tmp_path):
-    """测试二维码数据为空时不写文件。"""
+    """测试二维码数据为空时不写文件."""
     qr = QR(data=b"", qr_type=QRLoginType.QQ, mimetype="image/png", identifier="id")
 
     assert qr.save(tmp_path) is None

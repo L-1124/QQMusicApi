@@ -239,6 +239,55 @@ class LoginApi(ApiModule):
             return await self._check_wx_qr(qrcode)
         return await self._check_qq_qr(qrcode)
 
+    async def checking_mobile_qrcode(
+        self, qrcode: QR
+    ) -> AsyncGenerator[tuple[QRCodeLoginEvents, Credential | None], None]:
+        """检查手机登录二维码状态 (单次 MQTT 连接生命周期).
+
+        建立 MQTT 订阅并持续产出服务端推送的登录状态事件.
+        当收到终端事件 (DONE/REFUSE/TIMEOUT/OTHER) 时会主动结束迭代.
+
+        Args:
+            qrcode: 待检查的二维码对象.
+
+        Yields:
+            tuple[QRCodeLoginEvents, Credential | None]: 包含当前状态和凭证的元组.
+        """
+        client_id = f"{int(time() * 1000)}{random.randint(1000, 9999)}"
+
+        async with MqttClient(
+            client_id=client_id,
+            host="mu.y.qq.com",
+            port=443,
+            path="/ws/handshake",
+            keep_alive=45,
+            session=self._client._session,
+        ) as client:
+            await self._connect_mobile_mqtt(client, qrcode.identifier)
+            await client.subscribe(
+                f"management.qrcode_login/{qrcode.identifier}",
+                properties={PropertyId.USER_PROPERTY: [("authorization", "tmelogin"), ("pubsub", "unicast")]},
+            )
+
+            yield QRCodeLoginEvents.SCAN, None
+
+            async for message in client.messages():
+                event_item = await self._handle_mobile_message(
+                    qrcode.identifier, message.properties.get("type"), message.json
+                )
+                if event_item is None:
+                    continue
+
+                yield event_item
+
+                if event_item[0] in {
+                    QRCodeLoginEvents.DONE,
+                    QRCodeLoginEvents.REFUSE,
+                    QRCodeLoginEvents.TIMEOUT,
+                    QRCodeLoginEvents.OTHER,
+                }:
+                    return
+
     async def iter_qrcode_login(
         self,
         qrcode: QR,
@@ -368,68 +417,26 @@ class LoginApi(ApiModule):
     async def _iter_mobile_qrcode_login(  # noqa: C901
         self, qrcode: QR, *, deadline: float, interval: PollInterval
     ) -> AsyncGenerator[QRLoginItem, None]:
-        """产出 手机客户端 二维码事件流 (MQTT 流式处理器)."""
+        """产出 手机客户端 二维码事件流 (生命周期与异常恢复控制)."""
         MIN_SAFE_INTERVAL = 1.0
         error_retries = 0
 
         while True:
             loop_start = anyio.current_time()
             timeout_left = deadline - loop_start
+
             if timeout_left <= 0:
                 yield QRCodeLoginEvents.TIMEOUT, None
                 return
 
-            client_id = f"{int(time() * 1000)}{random.randint(1000, 9999)}"
             try:
-                async with MqttClient(
-                    client_id=client_id,
-                    host="mu.y.qq.com",
-                    port=443,
-                    path="/ws/handshake",
-                    keep_alive=45,
-                    session=self._client._session,
-                ) as client:
-                    # 1. 局部作用域包裹建连与订阅动作
-                    try:
-                        with anyio.fail_after(deadline - anyio.current_time()):
-                            await self._connect_mobile_mqtt(client, qrcode.identifier)
-                            await client.subscribe(
-                                f"management.qrcode_login/{qrcode.identifier}",
-                                properties={
-                                    PropertyId.USER_PROPERTY: [("authorization", "tmelogin"), ("pubsub", "unicast")]
-                                },
-                            )
-                    except TimeoutError:
-                        yield QRCodeLoginEvents.TIMEOUT, None
-                        return
-
-                    error_retries = 0
-                    yield QRCodeLoginEvents.SCAN, None
-
-                    # 提取异步生成器, 以便手动驱动
-                    msg_gen = client.messages()
-
-                    while True:
-                        timeout_left = deadline - anyio.current_time()
-                        if timeout_left <= 0:
-                            yield QRCodeLoginEvents.TIMEOUT, None
-                            return
-
-                        # 2. 局部作用域包裹网络读取挂起动作 (关键: yield 必须在外部)
-                        try:
-                            with anyio.fail_after(timeout_left):
-                                message = await anext(msg_gen)
-                        except (TimeoutError, StopAsyncIteration, anyio.EndOfStream):
-                            yield QRCodeLoginEvents.TIMEOUT, None
-                            return
-
-                        event_item = await self._handle_mobile_message(
-                            qrcode.identifier, message.properties.get("type"), message.json
-                        )
-                        if event_item is None:
-                            continue
+                # 使用局部作用域包裹整个单次连接生命周期
+                with anyio.fail_after(timeout_left):
+                    async for event_item in self.checking_mobile_qrcode(qrcode):
+                        error_retries = 0  # 成功获取事件则重置退避计数
                         yield event_item
 
+                        # 传递并响应内部发出的终端状态
                         if event_item[0] in {
                             QRCodeLoginEvents.DONE,
                             QRCodeLoginEvents.REFUSE,
@@ -437,6 +444,10 @@ class LoginApi(ApiModule):
                             QRCodeLoginEvents.OTHER,
                         }:
                             return
+
+            except (TimeoutError, anyio.EndOfStream):
+                yield QRCodeLoginEvents.TIMEOUT, None
+                return
             except LoginError:
                 raise
             except Exception:
@@ -451,6 +462,7 @@ class LoginApi(ApiModule):
                         return
                 error_retries += 1
             finally:
+                # 防止由于高频异常导致 CPU 密集空转
                 elapsed = anyio.current_time() - loop_start
                 if elapsed < MIN_SAFE_INTERVAL:
                     await anyio.sleep(MIN_SAFE_INTERVAL - elapsed)

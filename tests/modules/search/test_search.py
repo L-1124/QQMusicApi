@@ -1,4 +1,4 @@
-"""搜索模块测试。"""
+"""搜索模块测试."""
 
 from unittest.mock import AsyncMock, MagicMock
 
@@ -9,7 +9,7 @@ from qqmusic_api.modules.search import SearchApi, SearchType
 
 @pytest.mark.asyncio
 async def test_get_hotkey(mock_client, make_request):
-    """测试获取热搜词。"""
+    """测试获取热搜词."""
     api = SearchApi(mock_client)
 
     await make_request(
@@ -25,7 +25,7 @@ async def test_get_hotkey(mock_client, make_request):
 
 @pytest.mark.asyncio
 async def test_complete(mock_client, make_request):
-    """测试搜索词补全。"""
+    """测试搜索词补全."""
     api = SearchApi(mock_client)
 
     await make_request(
@@ -42,7 +42,7 @@ async def test_complete(mock_client, make_request):
 
 @pytest.mark.asyncio
 async def test_quick_search(mock_client):
-    """测试快速搜索。"""
+    """测试快速搜索."""
     api = SearchApi(mock_client)
 
     mock_response = MagicMock()
@@ -63,7 +63,7 @@ async def test_quick_search(mock_client):
 
 @pytest.mark.asyncio
 async def test_general_search(mock_client, make_request):
-    """测试综合搜索。"""
+    """测试综合搜索."""
     api = SearchApi(mock_client)
 
     await make_request(
@@ -82,7 +82,7 @@ async def test_general_search(mock_client, make_request):
 
 @pytest.mark.asyncio
 async def test_search_by_type_default(mock_client, make_request):
-    """测试按类型搜索(默认歌曲类型)。"""
+    """测试按类型搜索(默认歌曲类型)."""
     api = SearchApi(mock_client)
 
     await make_request(
@@ -101,7 +101,7 @@ async def test_search_by_type_default(mock_client, make_request):
 
 @pytest.mark.asyncio
 async def test_search_by_type_singer(mock_client, make_request):
-    """测试按歌手类型搜索。"""
+    """测试按歌手类型搜索."""
     api = SearchApi(mock_client)
 
     await make_request(
@@ -118,7 +118,7 @@ async def test_search_by_type_singer(mock_client, make_request):
 
 
 def test_search_type_enum_values():
-    """测试 SearchType 枚举值完整性。"""
+    """测试 SearchType 枚举值完整性."""
     assert SearchType.SONG.value == 0
     assert SearchType.SINGER.value == 1
     assert SearchType.ALBUM.value == 2

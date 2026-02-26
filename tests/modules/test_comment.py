@@ -1,4 +1,4 @@
-"""评论模块测试。"""
+"""评论模块测试."""
 
 import pytest
 
@@ -7,7 +7,7 @@ from qqmusic_api.modules.comment import CommentApi
 
 @pytest.mark.asyncio
 async def test_get_comment_count(mock_client, make_request):
-    """测试获取歌曲评论数量。"""
+    """测试获取歌曲评论数量."""
     api = CommentApi(mock_client)
     biz_id = "003m8p9Z1v0T7b"
 
@@ -24,7 +24,7 @@ async def test_get_comment_count(mock_client, make_request):
 
 @pytest.mark.asyncio
 async def test_get_hot_comments(mock_client, make_request):
-    """测试获取歌曲热评。"""
+    """测试获取歌曲热评."""
     api = CommentApi(mock_client)
     biz_id = "003m8p9Z1v0T7b"
 
@@ -42,7 +42,7 @@ async def test_get_hot_comments(mock_client, make_request):
 
 @pytest.mark.asyncio
 async def test_get_new_comments(mock_client, make_request):
-    """测试获取歌曲最新评论。"""
+    """测试获取歌曲最新评论."""
     api = CommentApi(mock_client)
     biz_id = "003m8p9Z1v0T7b"
 
@@ -60,7 +60,7 @@ async def test_get_new_comments(mock_client, make_request):
 
 @pytest.mark.asyncio
 async def test_get_recommend_comments(mock_client, make_request):
-    """测试获取歌曲推荐评论。"""
+    """测试获取歌曲推荐评论."""
     api = CommentApi(mock_client)
     biz_id = "003m8p9Z1v0T7b"
 
@@ -78,7 +78,7 @@ async def test_get_recommend_comments(mock_client, make_request):
 
 @pytest.mark.asyncio
 async def test_get_moment_comments(mock_client, make_request):
-    """测试获取时刻评论。"""
+    """测试获取时刻评论."""
     api = CommentApi(mock_client)
     biz_id = "003m8p9Z1v0T7b"
 

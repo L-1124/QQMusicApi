@@ -1,4 +1,4 @@
-"""TopApi 测试"""
+"""TopApi 测试."""
 
 import pytest
 
@@ -8,13 +8,13 @@ from qqmusic_api.modules.top import TopApi
 
 @pytest.fixture
 def top_api(mock_client):
-    """TopApi 实例"""
+    """TopApi 实例."""
     return TopApi(mock_client)
 
 
 @pytest.mark.asyncio
 async def test_get_category(top_api, mock_client):
-    """测试获取排行榜分类"""
+    """测试获取排行榜分类."""
     mock_client.execute.return_value = TopCategoryResponse(group=[])
 
     # 构建请求
@@ -30,7 +30,7 @@ async def test_get_category(top_api, mock_client):
 
 @pytest.mark.asyncio
 async def test_get_detail(top_api, mock_client):
-    """测试获取排行榜详情"""
+    """测试获取排行榜详情."""
     mock_client.execute.return_value = {"topId": 4}
 
     # 构建请求

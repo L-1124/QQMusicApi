@@ -1,4 +1,4 @@
-"""用户模块测试。"""
+"""用户模块测试."""
 
 from unittest.mock import AsyncMock, MagicMock
 
@@ -12,7 +12,7 @@ from qqmusic_api.modules.user import UserApi
 
 @pytest.mark.asyncio
 async def test_get_euin_uses_http_request(mock_client):
-    """测试 get_euin 通过 HTTP 请求获取数据。"""
+    """测试 get_euin 通过 HTTP 请求获取数据."""
     api = UserApi(mock_client)
     response = MagicMock()
     response.json.return_value = {"data": {"creator": {"encrypt_uin": "abc123"}}}
@@ -32,7 +32,7 @@ async def test_get_euin_uses_http_request(mock_client):
 
 @pytest.mark.asyncio
 async def test_get_musicu_methods(mock_client, make_request):
-    """测试用户模块普通接口请求参数。"""
+    """测试用户模块普通接口请求参数."""
     api = UserApi(mock_client)
 
     await make_request(
@@ -85,7 +85,7 @@ async def test_get_musicu_methods(mock_client, make_request):
 
 @pytest.mark.asyncio
 async def test_verify_methods_with_login(mock_client, make_request):
-    """测试 verify 方法在登录态下可构建请求。"""
+    """测试 verify 方法在登录态下可构建请求."""
     api = UserApi(mock_client)
     credential = Credential(musicid=10001, musickey="key")
 
@@ -129,7 +129,7 @@ async def test_verify_methods_with_login(mock_client, make_request):
 
 
 def test_verify_methods_require_login(mock_client):
-    """测试 verify 方法在无登录态时抛出异常。"""
+    """测试 verify 方法在无登录态时抛出异常."""
     api = UserApi(mock_client)
 
     with pytest.raises(NotLoginError):

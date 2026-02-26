@@ -1,4 +1,4 @@
-"""MV 模块测试。"""
+"""MV 模块测试."""
 
 import pytest
 
@@ -7,7 +7,7 @@ from qqmusic_api.modules.mv import MvApi
 
 @pytest.mark.asyncio
 async def test_get_detail(mock_client, make_request):
-    """测试获取 MV 详细信息。"""
+    """测试获取 MV 详细信息."""
     api = MvApi(mock_client)
 
     await make_request(
@@ -22,7 +22,7 @@ async def test_get_detail(mock_client, make_request):
 
 @pytest.mark.asyncio
 async def test_get_mv_urls(mock_client, make_request):
-    """测试获取 MV 播放链接。"""
+    """测试获取 MV 播放链接."""
     api = MvApi(mock_client)
 
     await make_request(
@@ -36,5 +36,5 @@ async def test_get_mv_urls(mock_client, make_request):
 
 
 def test_client_mv_property(mock_client):
-    """测试 Client.mv 属性。"""
+    """测试 Client.mv 属性."""
     assert isinstance(mock_client.mv, MvApi)

@@ -282,14 +282,14 @@ async def test_request_jce_rejects_non_int_param_keys() -> None:
 
 
 def test_api_module_base() -> None:
-    """测试 ApiModule 基类初始化。"""
+    """测试 ApiModule 基类初始化."""
     client = Client()
     module = ApiModule(client)
     assert module._client is client
 
 
 def test_client_build_result_struct() -> None:
-    """测试 Client._build_result 处理 TarsDict 转换。"""
+    """测试 Client._build_result 处理 TarsDict 转换."""
     from tarsio import Struct, TarsDict, field
 
     class MyStruct(Struct):

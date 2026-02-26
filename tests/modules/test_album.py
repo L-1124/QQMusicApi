@@ -1,4 +1,4 @@
-"""专辑模块测试。"""
+"""专辑模块测试."""
 
 import pytest
 
@@ -7,7 +7,7 @@ from qqmusic_api.modules.album import AlbumApi
 
 
 def test_get_cover(mock_client):
-    """测试获取专辑封面链接。"""
+    """测试获取专辑封面链接."""
     api = AlbumApi(mock_client)
     url = api.get_cover("002RaSAs4XFas0")
     assert "002RaSAs4XFas0" in url
@@ -19,7 +19,7 @@ def test_get_cover(mock_client):
 
 @pytest.mark.asyncio
 async def test_get_detail(mock_client, make_request):
-    """测试获取专辑详细信息。"""
+    """测试获取专辑详细信息."""
     api = AlbumApi(mock_client)
 
     # 测试通过 mid 获取
@@ -43,7 +43,7 @@ async def test_get_detail(mock_client, make_request):
 
 @pytest.mark.asyncio
 async def test_get_song(mock_client, make_request):
-    """测试获取专辑歌曲。"""
+    """测试获取专辑歌曲."""
     api = AlbumApi(mock_client)
 
     # 模拟返回数据
@@ -74,5 +74,5 @@ async def test_get_song(mock_client, make_request):
 
 
 def test_client_album_property(mock_client):
-    """测试 Client.album 属性。"""
+    """测试 Client.album 属性."""
     assert isinstance(mock_client.album, AlbumApi)
