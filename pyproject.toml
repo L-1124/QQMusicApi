@@ -78,7 +78,9 @@ qqmusic_api = ["*.pyi", "algorithms/*.pyi"]
 [tool.pytest]
 addopts = ["-rxXs"]
 asyncio_mode = "auto"
+testpaths = ["tests"]
 asyncio_default_fixture_loop_scope = "session"
+pythonpath = ["."]
 
 [tool.ruff]
 line-length = 120
