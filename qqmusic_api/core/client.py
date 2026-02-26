@@ -29,7 +29,7 @@ from ..models import (
     JsonRequestItem,
     JsonResponse,
 )
-from ..utils.common import bool_to_int, hash33
+from ..utils.common import bool_to_int
 from ..utils.device import Device
 from ..utils.qimei import QimeiResult, get_qimei
 from .exceptions import ApiError, HTTPError, NetworkError, build_api_error, extract_api_error_code
@@ -97,11 +97,16 @@ class _NullCookieJar(CookieJar):
 
 
 class Client:
-    """QQMusic API Client."""
+    """QQMusic API Client.
+
+    管理底层 HTTP 请求、全局设备信息、QIMEI 以及鉴权凭据，并提供对各个业务 API 模块的访问入口。
+    支持自动携带签名字段、防并发积压限制及批量请求的打包调度。
+    """
 
     def __init__(
         self,
         credential: Credential | None = None,
+        device_path: str | anyio.Path | None = None,
         enable_sign: bool = False,
         platform: str = "android",
         max_concurrency: int = 10,
@@ -109,8 +114,25 @@ class Client:
         qimei_timeout: float = 1.5,
         **client_config: Unpack[ClientConfig],
     ):
+        """初始化 Client 实例。
+
+        Args:
+            credential: 用户鉴权凭证，若不提供则创建空凭证。
+            device_path: 设备信息持久化路径，默认保存至内存。
+            enable_sign: 是否开启全局请求参数签名。
+            platform: 默认请求使用的平台标识，默认为 "android"。
+            max_concurrency: 单个 Client 实例最大并发请求数。
+            max_connections: HTTP 连接池大小。
+            qimei_timeout: 内部获取 QIMEI 接口的超时时间。
+            **client_config: 传递给 httpx.AsyncClient 的底层选项。
+        """
         self.credential = credential or Credential()
-        self.device = Device()
+        self._guid = uuid.uuid4().hex
+
+        from ..utils.device import DeviceManager
+
+        self.device_store = DeviceManager(device_path)
+
         self.enable_sign = enable_sign
         self.platform = platform
         self.qimei_timeout = qimei_timeout
@@ -139,6 +161,13 @@ class Client:
         self._qimei_lock = anyio.Lock()
         self._qimei_loaded = False
         self._qimei_cache: QimeiResult | None = None
+
+        from .middlewares import CommContextMiddleware, RequestMiddleware, SignDecisionMiddleware
+
+        self._middlewares: list[RequestMiddleware] = [
+            CommContextMiddleware(),
+            SignDecisionMiddleware(),
+        ]
 
     @property
     def comment(self) -> "CommentApi":
@@ -224,88 +253,109 @@ class Client:
 
         return UserApi(self)
 
-    async def _request_raw(self, method: str, url: str, **kwargs: Any) -> httpx.Response:
-        """发送原始 HTTP 请求。"""
+    async def fetch(self, method: str, url: str, **kwargs: Any) -> httpx.Response:
+        """发送底层 HTTP 请求。
+
+        该方法提供并发控制及网络异常转换。
+
+        Args:
+            method: HTTP 方法，如 "GET" 或 "POST"。
+            url: 请求的 URL 地址。
+            **kwargs: 传递给 httpx.AsyncClient.request 的附加参数。
+
+        Returns:
+            httpx.Response: HTTP 响应对象。
+
+        Raises:
+            NetworkError: 网络请求过程中发生异常。
+        """
         logger.debug("HTTP 请求开始: %s %s", method, url)
         await self._limiter.acquire()
         try:
             resp = await self._session.request(method, url, **kwargs)
             logger.debug("HTTP 请求完成: %s %s -> %s", method, url, resp.status_code)
             return resp
-        except:
-            raise
+        except httpx.RequestError as exc:
+            logger.warning("HTTP 请求失败: %s %s, error=%s", method, url, exc)
+            raise NetworkError(f"Network error: {exc}", original_exc=exc) from exc
         finally:
             self._limiter.release()
 
-    @staticmethod
-    def _ensure_http_ok(resp: httpx.Response) -> None:
-        """校验 HTTP 状态码.
+    async def sync_device_workspace(self) -> None:
+        """同步设备暂存工作区 (UID Drift 处理).
 
-        Raises:
-            HTTPError: HTTP 状态码不是 200。
+        当 Client 的凭据被赋予真实 QQ 时 (例如从游离到登录),
+        自动将属于本实例先前的临时指纹挂载或舍弃, 改为转移到实名用户专有指纹文件中。
         """
-        if resp.status_code != 200:
-            raise HTTPError(f"请求失败: {resp.text[:500]}", status_code=resp.status_code)
+        await self.device_store.sync_workspace(getattr(self.credential, "musicid", None))
 
-    @staticmethod
-    def _parse_json_response(resp: httpx.Response) -> JsonResponse:
-        """解析 JSON 响应。"""
-        try:
-            payload = json.loads(resp.content)
-            return JsonResponse.model_validate(payload)
-        except Exception as exc:
-            raise ApiError(
-                f"JSON 解析失败: {exc!s}",
-                code=-1,
-                data=resp.text[:500],
-                cause=exc,
-            ) from exc
+    async def _ensure_device(self) -> "Device":
+        """获取与当前凭证关联的设备信息（状态防漂移）。
 
-    @staticmethod
-    def _parse_jce_response(resp: httpx.Response) -> JceResponse:
-        """解析 JCE 响应。"""
-        try:
-            return JceResponse.decode(resp.content)
-        except Exception as exc:
-            raise ApiError(
-                f"JCE 响应解析失败: {exc!s}",
-                code=-1,
-                data=resp.text[:500] if isinstance(resp.text, str) else str(resp.content[:500]),
-                cause=exc,
-            ) from exc
+        Returns:
+            Device: 当前活动的设备对象。
+        """
+        return await self.device_store.get_device(getattr(self.credential, "musicid", None))
 
     async def _get_qimei_cached(self) -> QimeiResult | None:
-        """获取并缓存 QIMEI。"""
+        """获取并缓存 QIMEI 信息。
+
+        如果设备对象中已有缓存则直接返回，否则向服务器请求新的 QIMEI，
+        并将其持久化到设备存储中。该方法保证并发请求时的安全性（Lock）。
+
+        Returns:
+            QimeiResult | None: 成功则返回 QIMEI 字典数据，失败则返回 None。
+        """
         if self._qimei_loaded:
             return self._qimei_cache
 
         async with self._qimei_lock:
             if self._qimei_loaded:
                 return self._qimei_cache
+
+            device = await self._ensure_device()
+            if device.qimei and device.qimei36:
+                self._qimei_cache = QimeiResult(q16=device.qimei, q36=device.qimei36)
+                self._qimei_loaded = True
+                return self._qimei_cache
+
             try:
                 qimei_app_version = self._version_policy.get_qimei_app_version(self.platform)
                 qimei_sdk_version = self._version_policy.get_qimei_sdk_version(self.platform)
+
                 self._qimei_cache = await get_qimei(
-                    qimei_app_version,
+                    device=device,
+                    version=qimei_app_version,
                     session=self._session,
                     request_timeout=self.qimei_timeout,
                     sdk_version=qimei_sdk_version,
                 )
+                self._qimei_loaded = True
+
+                if self._qimei_cache:
+                    await self.device_store.apply_qimei(
+                        self._qimei_cache.get("q16") or "",
+                        self._qimei_cache.get("q36") or "",
+                        getattr(self.credential, "musicid", None),
+                    )
+
             except Exception as exc:
                 logger.warning("获取 QIMEI 失败: %s", exc)
                 self._qimei_cache = None
-            self._qimei_loaded = True
             return self._qimei_cache
 
-    @staticmethod
-    def _get_g_tk(credential: Credential) -> int:
-        """计算 g_tk。"""
-        if credential.musickey:
-            return hash33(credential.musickey, 5381)
-        return 5381
-
     async def _build_common_params(self, platform: str | None, credential: Credential) -> dict[str, Any]:
-        """构建通用 comm 参数。"""
+        """构建 QQ 音乐接口的通用 comm 字典参数。
+
+        提取对应的设备、QIMEI 信息、用户 UID 等，依据当前客户端平台装配到 comm 字典中。
+
+        Args:
+            platform: 目标平台名称。
+            credential: 用户凭证。
+
+        Returns:
+            dict[str, Any]: 组装好的 comm 参数字典。
+        """
         target_platform = platform or self.platform
         qimei = await self._get_qimei_cached() if target_platform in {"android", "android_jce"} else None
         qimei_data: dict[str, str] | None = None
@@ -314,19 +364,45 @@ class Client:
         return self._version_policy.build_comm(
             platform=target_platform,
             credential=credential,
-            device=self.device,
+            device=await self._ensure_device(),
             qimei=qimei_data,
             guid=self._guid,
         )
 
     def request_group(self, batch_size: int = 20, max_inflight_batches: int = 5) -> "RequestGroup":
-        """创建批量请求容器。"""
+        """创建并返回一个批量请求（RequestGroup）容器。
+
+        适用于需合并多个相同协议（JSON 或 JCE）请求的场景。
+
+        Args:
+            batch_size: 单个批次的最大请求数量。
+            max_inflight_batches: 允许同时发送的最多批次数量。
+
+        Returns:
+            RequestGroup: 批量请求对象。
+        """
         from .request import RequestGroup
 
-        return RequestGroup(cast("Client", self), batch_size=batch_size, max_inflight_batches=max_inflight_batches)
+        return RequestGroup(self, batch_size=batch_size, max_inflight_batches=max_inflight_batches)
 
     async def execute(self, request: "Request[R]") -> R:
-        """执行单个请求描述符。"""
+        """执行单个请求描述符并解析返回结果。
+
+        调用中间件进行请求预处理，随后根据请求格式（JCE/JSON）分发调用底层发包方法，
+        解析响应后自动组装成预期的 `response_model` 类型。
+
+        Args:
+            request: 请求描述符对象。
+
+        Returns:
+            R: 解析后对应的响应对象模型。
+
+        Raises:
+            ApiError: 接口返回状态码异常或缺少预期字段。
+        """
+        for mw in self._middlewares:
+            request = await mw.process_request(request, self)
+
         data: RequestItem = {
             "module": request.module,
             "method": request.method,
@@ -383,7 +459,15 @@ class Client:
 
     @staticmethod
     def _build_result(raw: Any, response_model: type[R] | None) -> R:
-        """构建响应对象。"""
+        """构建响应对象。
+
+        Args:
+            raw: 原始响应数据。
+            response_model: 期望的响应模型类型，支持 Pydantic BaseModel 或 Tarsio Struct。
+
+        Returns:
+            R: 构建好的响应模型实例，或原样返回（如果无需转换）。
+        """
         if response_model is None:
             return raw
         if isinstance(response_model, type):
@@ -395,15 +479,6 @@ class Client:
                 return response_model.decode(encode(raw))  # type: ignore[return-value]
         return raw
 
-    @staticmethod
-    def _ensure_jce_param_dict(param: dict[str, Any] | dict[int, Any]) -> dict[int, Any]:
-        """校验并返回 JCE 所需的整型键参数字典。"""
-        if not isinstance(param, dict):
-            raise TypeError("JCE param 必须是 dict[int, Any]")
-        if not all(isinstance(key, int) for key in param):
-            raise TypeError("JCE param 必须是 dict[int, Any]")
-        return cast(dict[int, Any], param)
-
     async def close(self) -> None:
         """关闭底层会话。"""
         await self._session.aclose()
@@ -414,13 +489,29 @@ class Client:
     async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         await self.close()
 
-    def _get_user_agent(self, platform: str | None = None) -> str:
-        """根据模式生成 UA。"""
+    async def _get_user_agent(self, platform: str | None = None) -> str:
+        """根据指定或默认平台生成请求所需的 User-Agent。
+
+        Args:
+            platform: 平台标识。若为 None，使用当前 Client 默认平台。
+
+        Returns:
+            str: 格式化好的 User-Agent 字符串。
+        """
         target_platform = platform or self.platform
-        return self._version_policy.get_user_agent(target_platform, self.device)
+        return self._version_policy.get_user_agent(target_platform, await self._ensure_device())
 
     def _get_cookies(self, credential: Credential | None = None) -> dict[str, str]:
-        """从 Credential 提取 Cookies。"""
+        """从鉴权凭证中提取请求需附带的 Cookies。
+
+        转换并映射 uin、qm_keyst 等鉴权字段为标准字典形式。
+
+        Args:
+            credential: 提供凭证对象。若为 None 则使用 Client 当前实例的全局凭证。
+
+        Returns:
+            dict[str, str]: 包含 Cookie 键值对的字典。
+        """
         auth: dict[str, str] = {}
         cred = credential or self.credential
         if cred.musicid:
@@ -431,14 +522,6 @@ class Client:
             auth["qqmusic_key"] = cred.musickey
         return auth
 
-    async def fetch(self, method: str, url: str, **kwargs: Any) -> httpx.Response:
-        """发送 HTTP 请求。"""
-        try:
-            return await self._request_raw(method, url, **kwargs)
-        except httpx.RequestError as exc:
-            logger.warning("HTTP 请求失败: %s %s, error=%s", method, url, exc)
-            raise NetworkError(f"Network error: {exc}", original_exc=exc) from exc
-
     async def request(
         self,
         method: str,
@@ -447,14 +530,30 @@ class Client:
         platform: str | None = None,
         **kwargs: Any,
     ) -> httpx.Response:
-        """发送请求 (自动携带 Cookies)。"""
-        cookies = kwargs.get("cookies", {})
+        """发送带有凭证和 User-Agent 的 HTTP 请求。
+
+        自动装配指定的客户端平台 User-Agent 及对应凭证的 Cookies。
+
+        Args:
+            method: HTTP 方法，如 "GET" 或 "POST"。
+            url: 请求的 URL 地址。
+            credential: 覆盖默认凭证，可选。
+            platform: 覆盖默认平台，可选。
+            **kwargs: 传递给 httpx 的其他参数。
+
+        Returns:
+            httpx.Response: HTTP 响应对象。
+        """
         auth_cookies = self._get_cookies(credential)
-        kwargs["headers"] = kwargs.get("headers", {})
-        kwargs["headers"]["User-Agent"] = self._get_user_agent(platform)
+        if "cookies" in kwargs:
+            auth_cookies.update(kwargs["cookies"])
         if auth_cookies:
-            auth_cookies.update(cookies)
             kwargs["cookies"] = auth_cookies
+
+        headers = kwargs.get("headers", {})
+        if "User-Agent" not in headers:
+            headers["User-Agent"] = await self._get_user_agent(platform)
+        kwargs["headers"] = headers
 
         logger.debug("发送请求: %s %s", method, url)
         return await self.fetch(method, url, **kwargs)
@@ -466,18 +565,32 @@ class Client:
         credential: Credential | None = None,
         url: str = "https://u.y.qq.com/cgi-bin/musicu.fcg",
         platform: str | None = None,
+        http_params_extra: dict[str, str] | None = None,
+        http_headers_extra: dict[str, str] | None = None,
     ) -> JsonResponse:
-        """发送标准 QQ 音乐请求 (Musicu/JSON) 并解析。"""
+        """发送标准 QQ 音乐请求 (Musicu/JSON) 并解析响应。
+
+        Args:
+            data: 请求项，支持单个或批量。
+            comm: 请求公共参数。
+            credential: 请求凭证（该方法底层未直接使用凭证参数，供扩展）。
+            url: 请求的网关 URL，默认为 musicu.fcg。
+            platform: 请求发起的平台名称。
+            http_params_extra: 额外的 URL 参数。
+            http_headers_extra: 额外的 HTTP 头信息。
+
+        Returns:
+            JsonResponse: 解析后的 JSON 响应对象。
+
+        Raises:
+            HTTPError: HTTP 状态码不是 200。
+            ApiError: JSON 解析错误或缺少关键字段。
+        """
         requests = data if isinstance(data, list) else [data]
         logger.debug("构建 JSON 批量请求: count=%s platform=%s", len(requests), platform or self.platform)
 
-        cred = credential or self.credential
-        base_comm = await self._build_common_params(platform, cred)
-        if comm:
-            base_comm.update(comm)
-
-        payload = JsonRequest(
-            comm=base_comm,
+        payload_obj = JsonRequest(
+            comm=comm or {},
             data=[
                 JsonRequestItem(
                     module=req["module"],
@@ -486,19 +599,26 @@ class Client:
                 )
                 for req in requests
             ],
-        ).model_dump(mode="plain")
+        )
+        payload = payload_obj.model_dump(mode="plain")
 
-        params: dict[str, str] = {}
-        if self.enable_sign:
+        params = dict(http_params_extra) if http_params_extra else {}
+        if params.pop("_internal_need_sign", None) == "1" or self.enable_sign:
             from ..algorithms.sign import sign_request
 
-            signature = sign_request(payload)
-            if signature:
+            if signature := sign_request(payload):
                 params["sign"] = signature
 
-        resp = await self.fetch("POST", url, json=payload, params=params)
-        self._ensure_http_ok(resp)
-        return self._parse_json_response(resp)
+        resp = await self.fetch("POST", url, json=payload, params=params, headers=http_headers_extra)
+
+        if resp.status_code != 200:
+            raise HTTPError(f"请求失败: {resp.text[:500]}", status_code=resp.status_code)
+
+        try:
+            payload_data = json.loads(resp.content)
+            return JsonResponse.model_validate(payload_data)
+        except Exception as exc:
+            raise ApiError(f"JSON 解析失败: {exc!s}", code=-1, data=resp.text[:500], cause=exc) from exc
 
     async def request_jce(
         self,
@@ -506,37 +626,61 @@ class Client:
         comm: dict[str, Any] | None = None,
         credential: Credential | None = None,
         url: str = "http://u.y.qq.com/cgi-bin/musicw.fcg",
+        http_params_extra: dict[str, str] | None = None,
+        http_headers_extra: dict[str, str] | None = None,
     ) -> JceResponse:
-        """发送 JCE 格式的请求并解析。"""
+        """发送 JCE 格式的请求并解析响应。
+
+        Args:
+            data: JCE 请求项，支持单个或批量。
+            comm: 请求公共参数。
+            credential: 请求凭证。
+            url: JCE 网关 URL。
+            http_params_extra: 额外的 URL 参数。
+            http_headers_extra: 额外的 HTTP 头信息。
+
+        Returns:
+            JceResponse: 解析后的 JCE 响应对象。
+
+        Raises:
+            HTTPError: HTTP 状态码不是 200。
+            ApiError: JCE 解析失败。
+        """
         requests = data if isinstance(data, list) else [data]
         logger.debug("构建 JCE 批量请求: count=%s", len(requests))
 
-        cred = credential or self.credential
-        base_comm = await self._build_common_params("android_jce", cred)
-        if comm:
-            base_comm.update(comm)
+        def _ensure_jce_param(p: dict[str, Any] | dict[int, Any]) -> dict[int, Any]:
+            if not isinstance(p, dict) or not all(isinstance(k, int) for k in p):
+                raise TypeError("JCE param 必须是 dict[int, Any]")
+            return cast(dict[int, Any], p)
 
         payload = JceRequest(
-            base_comm,
+            comm or {},
             {
                 f"req_{idx}": JceRequestItem(
                     module=req["module"],
                     method=req["method"],
-                    param=TarsDict(self._ensure_jce_param_dict(req["param"])),
+                    param=TarsDict(_ensure_jce_param(req["param"])),
                 )
                 for idx, req in enumerate(requests)
             },
         ).encode()
 
-        resp = await self.fetch(
-            "POST",
-            url,
-            content=payload,
-            headers={
-                "Content-Type": "application/x-www-form-urlencoded",
-                "User-Agent": self._get_user_agent("android"),
-                "x-sign-data-type": "jce",
-            },
-        )
-        self._ensure_http_ok(resp)
-        return self._parse_jce_response(resp)
+        headers = {
+            "Content-Type": "application/x-www-form-urlencoded",
+            "User-Agent": await self._get_user_agent("android"),
+            "x-sign-data-type": "jce",
+        }
+        if http_headers_extra:
+            headers.update(http_headers_extra)
+
+        resp = await self.fetch("POST", url, content=payload, headers=headers, params=http_params_extra)
+
+        if resp.status_code != 200:
+            raise HTTPError(f"请求失败: {resp.text[:500]}", status_code=resp.status_code)
+
+        try:
+            return JceResponse.decode(resp.content)
+        except Exception as exc:
+            data_preview = resp.text[:500] if isinstance(resp.text, str) else str(resp.content[:500])
+            raise ApiError(f"JCE 响应解析失败: {exc!s}", code=-1, data=data_preview, cause=exc) from exc

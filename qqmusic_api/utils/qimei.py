@@ -17,7 +17,7 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
 from ..core.versioning import DEFAULT_VERSION_POLICY
 from .common import calc_md5
-from .device import Device, get_cached_device, save_device
+from .device import Device
 
 logger = logging.getLogger("qqmusicapi.qimei")
 
@@ -158,17 +158,8 @@ def _build_qimei_request(device: Device, version: str, sdk_version: str) -> tupl
     return ts, headers, request_json
 
 
-def _parse_qimei_payload(response_content: bytes) -> dict[str, str]:
-    """解析 QIMEI 接口响应."""
-    response_data: dict[str, Any] = json.loads(response_content)
-    nested_data: dict[str, Any] = json.loads(response_data.get("data", "{}"))
-    qimei_data: dict[str, str] = nested_data.get("data", {})
-    if not qimei_data or "q36" not in qimei_data or "q16" not in qimei_data:
-        raise ValueError("错误的 QIMEI 数据")
-    return qimei_data
-
-
 async def get_qimei(
+    device: Device,
     version: str,
     session: httpx.AsyncClient | None = None,
     request_timeout: float = 1.5,
@@ -177,13 +168,12 @@ async def get_qimei(
     """获取 QIMEI (异步).
 
     Args:
+        device: 从由上层管理的来源提供的待挂载 Device 实例。
         version: 客户端版本。
         session: 可选外部复用的异步会话。
         request_timeout: QIMEI 请求超时时间(秒)。
         sdk_version: QIMEI SDK 版本。
     """
-    device = await get_cached_device()
-
     if device.qimei36 and device.qimei:
         return QimeiResult(q16=device.qimei, q36=device.qimei36)
 
@@ -191,7 +181,8 @@ async def get_qimei(
         target_sdk_version = sdk_version or DEFAULT_VERSION_POLICY.get_qimei_sdk_version("android")
         _, headers, request_json = await to_thread.run_sync(_build_qimei_request, device, version, target_sdk_version)
 
-        async def _do_request(client: httpx.AsyncClient) -> dict[str, str]:
+        client = session or httpx.AsyncClient()
+        try:
             res = await client.post(
                 "https://api.tencentmusic.com/tme/trpc/proxy",
                 headers=headers,
@@ -199,17 +190,15 @@ async def get_qimei(
                 timeout=request_timeout,
             )
             res.raise_for_status()
-            return await to_thread.run_sync(_parse_qimei_payload, res.content)
+        finally:
+            if session is None:
+                await client.aclose()
 
-        if session is None:
-            async with httpx.AsyncClient() as client:
-                qimei_data = await _do_request(client)
-        else:
-            qimei_data = await _do_request(session)
-
-        device.qimei = qimei_data["q16"]
-        device.qimei36 = qimei_data["q36"]
-        await save_device(device)
+        response_data: dict[str, Any] = json.loads(res.content)
+        nested_data: dict[str, Any] = json.loads(response_data.get("data", "{}"))
+        qimei_data: dict[str, str] = nested_data.get("data", {})
+        if not qimei_data or "q36" not in qimei_data or "q16" not in qimei_data:
+            raise ValueError("错误的 QIMEI 数据")
 
         logger.debug("获取 QIMEI 成功: q16=%s, q36=%s", qimei_data["q16"], qimei_data["q36"])
         return QimeiResult(q16=qimei_data["q16"], q36=qimei_data["q36"])

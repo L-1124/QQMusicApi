@@ -49,7 +49,7 @@ async def test_request_musicu_payload_uses_song_api_params() -> None:
 
 @pytest.mark.asyncio
 async def test_request_musicu_uses_version_policy_comm() -> None:
-    """验证 request_musicu 的 comm 使用中心版本策略."""
+    """验证 req 的 comm 使用中心版本策略."""
     captured: dict[str, object] = {}
 
     async def handler(request: httpx.Request) -> httpx.Response:
@@ -58,12 +58,16 @@ async def test_request_musicu_uses_version_policy_comm() -> None:
 
     transport = httpx.MockTransport(handler)
     client = Client(transport=transport, platform="desktop")
-    await client.request_musicu(
-        data={
-            "module": "music.test.Module",
-            "method": "TestMethod",
-            "param": {},
-        }
+    from qqmusic_api.core.request import Request
+
+    await client.execute(
+        Request(
+            _client=client,
+            module="music.test.Module",
+            method="TestMethod",
+            param={},
+            platform="desktop",
+        )
     )
 
     payload = captured["json"]
@@ -75,7 +79,7 @@ async def test_request_musicu_uses_version_policy_comm() -> None:
 
 @pytest.mark.asyncio
 async def test_request_musicu_comm_override_takes_priority() -> None:
-    """验证 request_musicu 传入 comm 会覆盖中心策略字段."""
+    """验证 Request 传入 comm 会覆盖中心策略字段."""
     captured: dict[str, object] = {}
 
     async def handler(request: httpx.Request) -> httpx.Response:
@@ -84,13 +88,17 @@ async def test_request_musicu_comm_override_takes_priority() -> None:
 
     transport = httpx.MockTransport(handler)
     client = Client(transport=transport, platform="desktop")
-    await client.request_musicu(
-        data={
-            "module": "music.test.Module",
-            "method": "TestMethod",
-            "param": {},
-        },
-        comm={"cv": 999001},
+    from qqmusic_api.core.request import Request
+
+    await client.execute(
+        Request(
+            _client=client,
+            module="music.test.Module",
+            method="TestMethod",
+            param={},
+            comm={"cv": 999001},
+            platform="desktop",
+        )
     )
 
     payload = captured["json"]

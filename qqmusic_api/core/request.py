@@ -68,6 +68,9 @@ class Request(Generic[R]):
     credential: Credential | None = None
     platform: str | None = None
 
+    http_params_extra: dict[str, str] = field(default_factory=dict)
+    http_headers_extra: dict[str, str] = field(default_factory=dict)
+
     def __await__(self) -> Generator[Any, None, R]:
         return self._client.execute(self).__await__()
 
@@ -170,6 +173,8 @@ class RequestGroup:
 
         grouped: dict[BaseGroupKey, list[tuple[int, Request[Any]]]] = defaultdict(list)
         for idx, req in enumerate(self._requests):
+            for mw in self._client._middlewares:
+                req = await mw.process_request(req, self._client)
             grouped[self._group_key(req)].append((idx, req))
 
         total_batches = sum((len(group) + self.batch_size - 1) // self.batch_size for group in grouped.values())
@@ -221,6 +226,8 @@ class RequestGroup:
                 data=data,
                 comm=first.comm,
                 credential=first.credential,
+                http_params_extra=first.http_params_extra,
+                http_headers_extra=first.http_headers_extra,
             )
             return self._extract_jce_batch(batch, response)
 
@@ -229,6 +236,8 @@ class RequestGroup:
             comm=first.comm,
             credential=first.credential,
             platform=first.platform,
+            http_params_extra=first.http_params_extra,
+            http_headers_extra=first.http_headers_extra,
         )
         return self._extract_json_batch(batch, response)
 

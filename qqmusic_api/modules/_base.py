@@ -56,16 +56,25 @@ class ApiModule:
         platform: str | None = None,
         **kwargs: Any,
     ) -> httpx.Response:
-        """发送请求 (自动携带 Cookies)。"""
-        cookies = kwargs.get("cookies", {})
-        auth_cookies = self._get_cookies(credential)
-        kwargs["headers"] = kwargs.get("headers", {})
-        kwargs["headers"]["User-Agent"] = self._client._get_user_agent(platform)
-        if auth_cookies:
-            auth_cookies.update(cookies)
-            kwargs["cookies"] = auth_cookies
+        """发送请求并自动携带对应凭证与平台 User-Agent。
 
-        return await self._client.fetch(method, url, **kwargs)
+        Args:
+            method: HTTP 方法。
+            url: 目标 URL。
+            credential: 请求凭证（默认使用客户端凭证）。
+            platform: 请求平台（默认使用客户端平台）。
+            **kwargs: 透传给底层客户端的参数。
+
+        Returns:
+            httpx.Response: 响应对象。
+        """
+        return await self._client.request(
+            method=method,
+            url=url,
+            credential=credential,
+            platform=platform,
+            **kwargs,
+        )
 
     def _build_query_common_params(self, platform: str | None = None) -> dict[str, int]:
         """构建查询接口使用的通用版本参数。"""
