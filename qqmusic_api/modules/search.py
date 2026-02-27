@@ -81,6 +81,7 @@ class SearchApi(ApiModule):
         self,
         keyword: str,
         page: int = 1,
+        *,
         highlight: bool = True,
     ):
         """综合搜索.
@@ -110,6 +111,7 @@ class SearchApi(ApiModule):
         search_type: SearchType = SearchType.SONG,
         num: int = 10,
         page: int = 1,
+        *,
         highlight: bool = True,
     ):
         """按类型搜索结果.

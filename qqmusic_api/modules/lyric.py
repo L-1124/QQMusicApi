@@ -11,6 +11,7 @@ class LyricApi(ApiModule):
     def get_lyric(
         self,
         value: str | int,
+        *,
         qrc: bool = False,
         trans: bool = False,
         roma: bool = False,

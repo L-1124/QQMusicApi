@@ -21,6 +21,7 @@ class TopApi(ApiModule):
         top_id: int,
         num: int = 10,
         page: int = 1,
+        *,
         tag: bool = True,
     ):
         """获取排行榜详情及其歌曲列表.

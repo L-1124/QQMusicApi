@@ -13,6 +13,7 @@ class SonglistApi(ApiModule):
         dirid: int = 0,
         num: int = 10,
         page: int = 1,
+        *,
         onlysong: bool = False,
         tag: bool = True,
         userinfo: bool = True,

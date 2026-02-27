@@ -101,6 +101,7 @@ class Client:
         self,
         credential: Credential | None = None,
         device_path: str | anyio.Path | None = None,
+        *,
         enable_sign: bool = False,
         platform: str = "android",
         max_concurrency: int = 10,

@@ -915,6 +915,7 @@ class Client:
 
     async def disconnect_ws_only(
         self,
+        *,
         notify_messages: bool = True,
     ) -> None:
         """仅断开 WebSocket 连接.

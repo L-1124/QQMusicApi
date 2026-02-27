@@ -114,8 +114,6 @@ extend-select = [
   "UP",
 ]
 ignore = [
-  "FBT001",
-  "FBT002",
   "TRY003",
   "BLE001",
   "TRY300",
