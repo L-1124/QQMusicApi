@@ -9,7 +9,7 @@ def test_validate_int_enum() -> None:
     """测试枚举与整数校验."""
     assert validate_int_enum(AreaType.CHINA, AreaType) == 200
     assert validate_int_enum(-100, AreaType) == -100
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match=r".*"):
         validate_int_enum(999, AreaType)
 
 

@@ -22,7 +22,10 @@ async def test_get_qimei_timeout_fallback_without_retry(monkeypatch: pytest.Monk
 
     transport = httpx.MockTransport(handler)
     result = await get_qimei(
-        device=device, version="14.9.0.8", session=httpx.AsyncClient(transport=transport), request_timeout=0.01
+        device=device,
+        version="14.9.0.8",
+        session=httpx.AsyncClient(transport=transport),
+        request_timeout=0.01,
     )
 
     assert result["q16"] == DEFAULT_QIMEI
@@ -42,7 +45,10 @@ async def test_get_qimei_success_updates_device_cache(monkeypatch: pytest.Monkey
 
     transport = httpx.MockTransport(handler)
     result = await get_qimei(
-        device=device, version="14.9.0.8", session=httpx.AsyncClient(transport=transport), request_timeout=0.5
+        device=device,
+        version="14.9.0.8",
+        session=httpx.AsyncClient(transport=transport),
+        request_timeout=0.5,
     )
 
     assert result["q16"] == "q16-ok"
@@ -55,7 +61,11 @@ async def test_client_qimei_timeout_passed_to_get_qimei(monkeypatch: pytest.Monk
     captured: dict[str, float | str | None] = {"timeout": 0.0, "version": None, "sdk_version": None}
 
     async def fake_get_qimei(
-        device: Device, version: str, session=None, request_timeout: float = 1.5, sdk_version: str | None = None
+        device: Device,
+        version: str,
+        session=None,
+        request_timeout: float = 1.5,
+        sdk_version: str | None = None,
     ):
         captured["version"] = version
         captured["timeout"] = request_timeout

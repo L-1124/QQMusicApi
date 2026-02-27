@@ -55,7 +55,7 @@ async def test_send_authcode_maps_codes(mock_client):
             ApiError("captcha", code=20276),
             ApiError("frequency", code=100001),
             {},
-        ]
+        ],
     )
 
     assert await api.send_authcode(13800138000) == (PhoneLoginEvents.CAPTCHA, None)

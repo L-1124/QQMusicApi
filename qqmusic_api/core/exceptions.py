@@ -137,7 +137,7 @@ def extract_api_error_code(payload: Any) -> tuple[int | None, int | None]:
         tuple[int | None, int | None]: 提取出的 `(code, subcode)`. 如果未找到则返回 None.
     """
     if hasattr(payload, "code"):
-        code = getattr(payload, "code")
+        code = payload.code
         subcode = getattr(payload, "subcode", None)
         return (code if isinstance(code, int) else None, subcode if isinstance(subcode, int) else None)
 

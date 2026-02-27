@@ -13,7 +13,7 @@ def test_get_cover(mock_client):
     assert "002RaSAs4XFas0" in url
     assert "300x300" in url
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match=r".*"):
         api.get_cover("002RaSAs4XFas0", size=100)  # type: ignore
 
 

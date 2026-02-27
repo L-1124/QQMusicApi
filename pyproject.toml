@@ -108,10 +108,19 @@ extend-select = [
   "RET",
   "RUF",
   "SIM",
-  "TCH",
+  "TC",
   "TID",
   "TRY",
   "UP",
+]
+ignore = [
+  "FBT001",
+  "FBT002",
+  "TRY003",
+  "BLE001",
+  "TRY300",
+  "TRY301",
+  "TID252",
 ]
 pydocstyle = { convention = "google" }
 

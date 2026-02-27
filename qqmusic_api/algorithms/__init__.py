@@ -19,6 +19,7 @@ def qrc_decrypt(encrypted_qrc: str | bytearray | bytes) -> str:
         str: 解密后的 QRC 数据.
 
     Raises:
+        TypeError: 无效的加密数据类型.
         ValueError: 解密失败.
     """
     if not encrypted_qrc:
@@ -29,7 +30,7 @@ def qrc_decrypt(encrypted_qrc: str | bytearray | bytes) -> str:
     elif isinstance(encrypted_qrc, bytearray | bytes):
         encrypted_bytes = bytes(encrypted_qrc)
     else:
-        raise ValueError("无效的加密数据类型")
+        raise TypeError("无效的加密数据类型")
 
     try:
         # 优先走 C 后端; 不可用时回退到 Python 参考实现.

@@ -30,7 +30,6 @@ from ..models import (
     JsonResponse,
 )
 from ..utils.common import bool_to_int
-from ..utils.device import Device
 from ..utils.qimei import QimeiResult, get_qimei
 from .exceptions import ApiError, HTTPError, NetworkError, build_api_error, extract_api_error_code
 from .versioning import DEFAULT_VERSION_POLICY, VersionPolicy
@@ -48,6 +47,7 @@ if TYPE_CHECKING:
     from ..modules.songlist import SonglistApi
     from ..modules.top import TopApi
     from ..modules.user import UserApi
+    from ..utils.device import Device
     from .request import Request, RequestGroup, ResponseModel
 
 
@@ -80,17 +80,14 @@ class _NullCookieJar(CookieJar):
     @override
     def set_cookie(self, cookie) -> None:
         """拦截并丢弃单一 Cookie 的写入动作."""
-        pass
 
     @override
     def set_cookie_if_ok(self, cookie, request) -> None:
         """拦截并丢弃经过安全策略校验的单一 Cookie 写入动作."""
-        pass
 
     @override
     def extract_cookies(self, response, request) -> None:
         """完全阻断从 HTTP 响应头中提取并批量存储 Set-Cookie 的行为."""
-        pass
 
 
 class Client:
@@ -657,7 +654,7 @@ class Client:
         def _ensure_jce_param(p: dict[str, Any] | dict[int, Any]) -> dict[int, Any]:
             if not isinstance(p, dict) or not all(isinstance(k, int) for k in p):
                 raise TypeError("JCE param 必须是 dict[int, Any]")
-            return cast(dict[int, Any], p)
+            return cast("dict[int, Any]", p)
 
         payload = JceRequest(
             comm or {},

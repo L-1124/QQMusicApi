@@ -8,7 +8,7 @@ from qqmusic_api.modules.song import SongApi
 def test_query_song_empty_raises(mock_client):
     """测试空列表查询会抛出异常."""
     api = SongApi(mock_client)
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match=r".*"):
         api.query_song([])
 
 

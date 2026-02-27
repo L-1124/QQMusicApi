@@ -12,6 +12,6 @@ setup(
             "qqmusic_api.algorithms._core",
             sources=["qqmusic_api/algorithms/_core.c"],
             extra_compile_args=extra_compile_args,
-        )
-    ]
+        ),
+    ],
 )

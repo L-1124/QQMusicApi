@@ -3,17 +3,19 @@
 import logging
 import time
 from collections.abc import AsyncGenerator
-from contextlib import AsyncExitStack
+from contextlib import AsyncExitStack, suppress
 from dataclasses import dataclass, field
 from enum import IntEnum
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 import anyio
 import anyio.abc
 import httpx
 import orjson as json
-from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
 from httpx_ws import AsyncWebSocketSession, WebSocketNetworkError, aconnect_ws
+
+if TYPE_CHECKING:
+    from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
 
 logger = logging.getLogger("qqmusicapi.MQTTClient")
 
@@ -379,7 +381,10 @@ class Client:
         return self
 
     async def __aexit__(
-        self, exc_type: type[BaseException] | None, exc_val: BaseException | None, exc_tb: Any | None
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: Any | None,
     ) -> None:
         """退出异步上下文并关闭连接.
 
@@ -471,8 +476,8 @@ class Client:
             raise ConnectionError("Stream is not initialized")
         try:
             await self._outbound_send_stream.send(frame)
-        except anyio.ClosedResourceError:
-            raise ConnectionError("WebSocket stream has been closed")
+        except anyio.ClosedResourceError as e:
+            raise ConnectionError("WebSocket stream has been closed") from e
 
     async def _start_background_tasks(self) -> None:
         """启动 reader/writer/heartbeat 后台任务."""
@@ -537,19 +542,28 @@ class Client:
             self._ws_lifecycle_scope = anyio.CancelScope()
             scope = self._ws_lifecycle_scope
 
-            async def ws_loop() -> None:
+            async def ws_loop(
+                scope: anyio.CancelScope = scope,
+                url: str = url,
+                headers: dict[str, str] | None = headers,
+                client: httpx.AsyncClient = client,
+                ready_event: anyio.Event = ready_event,
+                ws_disconnect_event: anyio.Event = ws_disconnect_event,
+                error_box: list[Exception | None] = error_box,
+            ) -> None:
                 with scope:
                     try:
                         async with aconnect_ws(
-                            url, subprotocols=["mqtt"], headers=headers, client=client
+                            url,
+                            subprotocols=["mqtt"],
+                            headers=headers,
+                            client=client,
                         ) as session_ws:
                             self._ws = session_ws
                             ready_event.set()
                             await ws_disconnect_event.wait()
-                            try:
+                            with suppress(Exception):
                                 await session_ws.close()
-                            except Exception:
-                                pass
                     except Exception as e:
                         if not ready_event.is_set():
                             error_box[0] = e
@@ -693,10 +707,9 @@ class Client:
             except anyio.ClosedResourceError:
                 pass
             finally:
-                if epoch == self._epoch and not self._closing and self._tg:
-                    if self._disconnect_scope is None:
-                        self._disconnect_scope = anyio.CancelScope()
-                        self._tg.start_soon(self._run_disconnect_ws_only, self._disconnect_scope)
+                if epoch == self._epoch and not self._closing and self._tg and self._disconnect_scope is None:
+                    self._disconnect_scope = anyio.CancelScope()
+                    self._tg.start_soon(self._run_disconnect_ws_only, self._disconnect_scope)
 
     async def _run_disconnect_ws_only(self, scope: anyio.CancelScope) -> None:
         with scope:
@@ -754,7 +767,7 @@ class Client:
                             try:
                                 self._publish_send_stream.send_nowait(self._parse_publish(msg_bytes))
                             except anyio.WouldBlock:
-                                logger.error("Publish queue is full, dropping incoming message to prevent OOM")
+                                logger.exception("Publish queue is full, dropping incoming message to prevent OOM")
                             except anyio.ClosedResourceError:
                                 break
                             continue
@@ -780,10 +793,9 @@ class Client:
             finally:
                 self._fail_pending_subacks_for_epoch(epoch, ConnectionError("WebSocket closed"))
                 self._signal_messages_done(self._reader_error)
-                if epoch == self._epoch and not self._closing and self._tg:
-                    if self._disconnect_scope is None:
-                        self._disconnect_scope = anyio.CancelScope()
-                        self._tg.start_soon(self._run_disconnect_ws_only, self._disconnect_scope)
+                if epoch == self._epoch and not self._closing and self._tg and self._disconnect_scope is None:
+                    self._disconnect_scope = anyio.CancelScope()
+                    self._tg.start_soon(self._run_disconnect_ws_only, self._disconnect_scope)
 
     async def _keepalive_loop(self, epoch: int, scope: anyio.CancelScope) -> None:
         """Keepalive Task: 空闲驱动心跳并处理 ping 超时."""
@@ -819,7 +831,7 @@ class Client:
                 except Exception:
                     return
 
-    async def subscribe(self, topic: str, properties: dict[Any, Any] | None = None) -> None:  # noqa: C901
+    async def subscribe(self, topic: str, properties: dict[Any, Any] | None = None) -> None:
         """发送 SUBSCRIBE 报文并等待匹配的 SUBACK.
 
         Args:
@@ -859,10 +871,9 @@ class Client:
                 await ack_event.wait()
         except TimeoutError:
             logger.warning(f"Subscribe to {topic} timed out, tearing down connection to avoid state mismatch")
-            if epoch == self._epoch and not self._closing and self._tg:
-                if self._disconnect_scope is None:
-                    self._disconnect_scope = anyio.CancelScope()
-                    self._tg.start_soon(self._run_disconnect_ws_only, self._disconnect_scope)
+            if epoch == self._epoch and not self._closing and self._tg and self._disconnect_scope is None:
+                self._disconnect_scope = anyio.CancelScope()
+                self._tg.start_soon(self._run_disconnect_ws_only, self._disconnect_scope)
             raise
         finally:
             removed_record = self._pending_subacks.pop(packet_id_num, None)
@@ -902,7 +913,10 @@ class Client:
         except Exception:
             pass
 
-    async def disconnect_ws_only(self, notify_messages: bool = True) -> None:
+    async def disconnect_ws_only(
+        self,
+        notify_messages: bool = True,
+    ) -> None:
         """仅断开 WebSocket 连接.
 
         该方法会停止后台任务、尽力发送 DISCONNECT, 并关闭 ws 上下文.

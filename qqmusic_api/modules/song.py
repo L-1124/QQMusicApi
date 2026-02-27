@@ -116,10 +116,7 @@ class SongApi(ApiModule):
         Args:
             value: 歌曲 ID 或 MID.
         """
-        if isinstance(value, int):
-            param = {"song_id": value}
-        else:
-            param = {"song_mid": value}
+        param = {"song_id": value} if isinstance(value, int) else {"song_mid": value}
         return self.build_request(
             module="music.pf_song_detail_svr",
             method="get_song_detail_yqq",
@@ -184,10 +181,7 @@ class SongApi(ApiModule):
         Args:
             value: 歌曲 ID 或 MID.
         """
-        if isinstance(value, int):
-            param = {"songid": value}
-        else:
-            param = {"songmid": value}
+        param = {"songid": value} if isinstance(value, int) else {"songmid": value}
         return self.build_request(
             module="music.musichallSong.OtherVersionServer",
             method="GetOtherVersionSongs",
@@ -200,10 +194,7 @@ class SongApi(ApiModule):
         Args:
             value: 歌曲 ID 或 MID.
         """
-        if isinstance(value, int):
-            param = {"songid": value}
-        else:
-            param = {"songmid": value}
+        param = {"songid": value} if isinstance(value, int) else {"songmid": value}
         return self.build_request(
             module="music.sociality.KolWorksTag",
             method="SongProducer",

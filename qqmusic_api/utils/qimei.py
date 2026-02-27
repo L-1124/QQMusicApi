@@ -3,21 +3,23 @@
 import base64
 import logging
 import random
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from time import time
-from typing import Any, TypedDict, cast
+from typing import TYPE_CHECKING, Any, TypedDict, cast
 
 import httpx
 import orjson as json
 from anyio import to_thread
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import padding
-from cryptography.hazmat.primitives.asymmetric.rsa import RSAPublicKey
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
 from ..core.versioning import DEFAULT_VERSION_POLICY
 from .common import calc_md5
 from .device import Device
+
+if TYPE_CHECKING:
+    from cryptography.hazmat.primitives.asymmetric.rsa import RSAPublicKey
 
 logger = logging.getLogger("qqmusicapi.qimei")
 
@@ -48,7 +50,7 @@ def rsa_encrypt(content: bytes) -> bytes:
     Returns:
         bytes: 加密后的字节流.
     """
-    key = cast(RSAPublicKey, serialization.load_pem_public_key(PUBLIC_KEY.encode()))
+    key = cast("RSAPublicKey", serialization.load_pem_public_key(PUBLIC_KEY.encode()))
     return key.encrypt(content, padding.PKCS1v15())
 
 
@@ -75,7 +77,7 @@ def random_beacon_id() -> str:
         str: 随机生成的 BeaconID 字符串.
     """
     beacon_id = ""
-    time_month = datetime.now().strftime("%Y-%m-") + "01"
+    time_month = datetime.now(timezone.utc).strftime("%Y-%m-") + "01"
     rand1 = random.randint(100000, 999999)
     rand2 = random.randint(100000000, 999999999)
 
@@ -111,7 +113,7 @@ def random_payload_by_device(device: Device, version: str, sdk_version: str) -> 
         "oz": "UhYmelwouA+V2nPWbOvLTgN2/m8jwGB+yUB5v9tysQg=",
         "oo": "Xecjt+9S1+f8Pz2VLSxgpw==",
         "kelong": "0",
-        "uptimes": (datetime.now() - timedelta(seconds=fixed_rand)).strftime("%Y-%m-%d %H:%M:%S"),
+        "uptimes": (datetime.now(timezone.utc) - timedelta(seconds=fixed_rand)).strftime("%Y-%m-%d %H:%M:%S"),
         "multiUser": "0",
         "bod": device.brand,
         "dv": device.device,

@@ -40,7 +40,7 @@ def test_qrc_decrypt_supports_hex_input() -> None:
 
 def test_qrc_decrypt_rejects_invalid_input_type() -> None:
     """验证 qrc_decrypt 对非法输入类型抛出异常."""
-    with pytest.raises(ValueError, match="无效的加密数据类型"):
+    with pytest.raises(TypeError, match="无效的加密数据类型"):
         qrc_decrypt(123)  # type: ignore[arg-type]
 
 

@@ -15,7 +15,7 @@ def mock_client():
     client.execute = AsyncMock()
     client.execute.return_value = {}
 
-    yield client
+    return client
 
 
 @pytest.fixture

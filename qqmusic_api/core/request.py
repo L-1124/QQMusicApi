@@ -136,7 +136,7 @@ class RequestGroup:
         if max_collect is not None and len(self._requests) > max_collect:
             raise ValueError(
                 f"请求数量 {len(self._requests)} 超过 max_collect={max_collect}, "
-                "请改用 execute_iter() 或 execute_for_each() 进行流式消费"
+                "请改用 execute_iter() 或 execute_for_each() 进行流式消费",
             )
         outcomes: list[RequestOutcome | None] = [None] * len(self._requests)
         async for outcome in self.execute_iter(batch_timeout=batch_timeout):
@@ -203,7 +203,8 @@ class RequestGroup:
                     yield outcome
 
     def _iter_batches(
-        self, grouped: dict[BaseGroupKey, list[tuple[int, Request[Any]]]]
+        self,
+        grouped: dict[BaseGroupKey, list[tuple[int, Request[Any]]]],
     ) -> Generator[list[tuple[int, Request[Any]]], None, None]:
         """按分组和 batch_size 迭代批次."""
         for group in grouped.values():
@@ -347,7 +348,7 @@ class RequestGroup:
                             method=req.method,
                             success=True,
                             data=value,
-                        )
+                        ),
                     )
             except Exception as exc:
                 logger.warning("批次执行失败: size=%s error=%s", len(batch), exc)

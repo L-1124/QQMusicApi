@@ -9,9 +9,9 @@ from tarsio import Struct
 from ..core.exceptions import NotLoginError
 
 if TYPE_CHECKING:
-    from qqmusic_api.core.client import Client
-    from qqmusic_api.core.request import Request
-    from qqmusic_api.models import Credential
+    from ..core.client import Client
+    from ..core.request import Request
+    from ..models import Credential
 
 R = TypeVar("R", bound=BaseModel | Struct | dict)
 

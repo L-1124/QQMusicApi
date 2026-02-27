@@ -52,7 +52,7 @@ async def qrcode_login_example(login_type: QRLoginType) -> None:
                     qr,
                     interval=1.5,
                     timeout_seconds=180.0,
-                )
+                ),
             ) as qrcode_stream:
                 async for event, credential in qrcode_stream:
                     print(f"当前状态: {event.name}")

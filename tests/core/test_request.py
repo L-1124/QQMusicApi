@@ -37,7 +37,7 @@ async def test_request_musicu_payload_uses_song_api_params() -> None:
                 "ctx": 0,
                 "client": 1,
             },
-        }
+        },
     )
 
     assert "musicu.fcg" in str(captured["url"])
@@ -67,7 +67,7 @@ async def test_request_musicu_uses_version_policy_comm() -> None:
             method="TestMethod",
             param={},
             platform="desktop",
-        )
+        ),
     )
 
     payload = captured["json"]
@@ -98,7 +98,7 @@ async def test_request_musicu_comm_override_takes_priority() -> None:
             param={},
             comm={"cv": 999001},
             platform="desktop",
-        )
+        ),
     )
 
     payload = captured["json"]
@@ -123,7 +123,7 @@ async def test_request_musicu_raises_http_error_on_non_200() -> None:
                 "module": "music.test.Module",
                 "method": "TestMethod",
                 "param": {},
-            }
+            },
         )
 
     assert exc_info.value.status_code == 500
@@ -147,7 +147,7 @@ async def test_request_jce_raises_http_error_on_non_200() -> None:
                 "module": "music.test.Module",
                 "method": "TestMethod",
                 "param": {0: "ok"},
-            }
+            },
         )
 
     assert exc_info.value.status_code == 500
@@ -208,7 +208,7 @@ async def test_request_group_execute_for_each_stream_consumption() -> None:
             {
                 "code": 0,
                 **{f"req_{idx}": {"code": 0, "data": {"module": req["module"]}} for idx, req in enumerate(requests)},
-            }
+            },
         )
 
     client.request_musicu = fake_request_musicu  # type: ignore[method-assign]
@@ -252,7 +252,7 @@ async def test_request_group_execute_iter_completeness() -> None:
             {
                 "code": 0,
                 **{f"req_{idx}": {"code": 0, "data": {"module": req["module"]}} for idx, req in enumerate(requests)},
-            }
+            },
         )
 
     client.request_musicu = fake_request_musicu  # type: ignore[method-assign]
@@ -276,7 +276,7 @@ async def test_request_jce_rejects_non_int_param_keys() -> None:
                 "module": "music.test.Module",
                 "method": "TestMethod",
                 "param": {"bad_key": 1},
-            }
+            },
         )
     await client.close()
 

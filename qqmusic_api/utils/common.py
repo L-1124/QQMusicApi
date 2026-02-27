@@ -16,7 +16,7 @@ def calc_md5(*strings: str | bytes) -> str:
         str: 计算后的 MD5 十六进制字符串.
 
     Raises:
-        ValueError: 如果传入了不支持的类型.
+        TypeError: 如果传入了不支持的类型.
     """
     md5 = hashlib.md5()
     for item in strings:
@@ -25,7 +25,7 @@ def calc_md5(*strings: str | bytes) -> str:
         elif isinstance(item, str):
             md5.update(item.encode())
         else:
-            raise ValueError(f"Unsupported type: {type(item)}")
+            raise TypeError(f"Unsupported type: {type(item)}")
     return md5.hexdigest()
 
 

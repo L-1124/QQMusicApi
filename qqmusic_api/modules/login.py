@@ -175,7 +175,7 @@ class LoginApi(ApiModule):
                     method="GetLoginUserInfo",
                     param={},
                     credential=target,
-                )
+                ),
             )
             return False
         except LoginExpiredError:
@@ -204,7 +204,7 @@ class LoginApi(ApiModule):
                     },
                     comm={"tmeLoginType": target.login_type},
                     credential=target,
-                )
+                ),
             )
         except ApiError as exc:
             raise self._raise_login_error("QQLogin", "刷新凭证失败", cause=exc) from exc
@@ -240,7 +240,8 @@ class LoginApi(ApiModule):
         return await self._check_qq_qr(qrcode)
 
     async def checking_mobile_qrcode(
-        self, qrcode: QR
+        self,
+        qrcode: QR,
     ) -> AsyncGenerator[tuple[QRCodeLoginEvents, Credential | None], None]:
         """检查手机登录二维码状态 (单次 MQTT 连接生命周期).
 
@@ -273,7 +274,9 @@ class LoginApi(ApiModule):
 
             async for message in client.messages():
                 event_item = await self._handle_mobile_message(
-                    qrcode.identifier, message.properties.get("type"), message.json
+                    qrcode.identifier,
+                    message.properties.get("type"),
+                    message.json,
                 )
                 if event_item is None:
                     continue
@@ -310,10 +313,7 @@ class LoginApi(ApiModule):
         Yields:
             tuple[QRCodeLoginEvents, Credential | None]: 包含当前登录状态和凭证 (仅在 DONE 时包含) 的元组.
         """
-        if isinstance(interval, int | float):
-            interval_config = PollInterval(float(interval))
-        else:
-            interval_config = interval
+        interval_config = PollInterval(float(interval)) if isinstance(interval, int | float) else interval
 
         if timeout_seconds <= 0:
             raise ValueError("timeout_seconds 必须大于 0")
@@ -333,7 +333,10 @@ class LoginApi(ApiModule):
             return
 
         async for event_item in self._iter_web_qrcode_login(
-            qrcode, interval=interval_config, deadline=deadline, emit_repeat=emit_repeat
+            qrcode,
+            interval=interval_config,
+            deadline=deadline,
+            emit_repeat=emit_repeat,
         ):
             event, _ = event_item
             if not emit_repeat and event == last_event:
@@ -415,7 +418,11 @@ class LoginApi(ApiModule):
                 return
 
     async def _iter_mobile_qrcode_login(  # noqa: C901
-        self, qrcode: QR, *, deadline: float, interval: PollInterval
+        self,
+        qrcode: QR,
+        *,
+        deadline: float,
+        interval: PollInterval,
     ) -> AsyncGenerator[QRLoginItem, None]:
         """产出 手机客户端 二维码事件流 (生命周期与异常恢复控制)."""
         MIN_SAFE_INTERVAL = 1.0
@@ -525,7 +532,7 @@ class LoginApi(ApiModule):
                     module="music.login.LoginServer",
                     method="CreateQRCode",
                     param={"tmeAppID": "qqmusic", "ct": 11, "cv": 13020508},
-                )
+                ),
             )
         except ApiError as exc:
             raise self._raise_login_error("MobileLogin", "获取二维码失败", cause=exc) from exc
@@ -693,7 +700,7 @@ class LoginApi(ApiModule):
                         "token": str(cookies.get("qqmusic_key", "") or ""),
                     },
                     comm={"tmeLoginType": 6},
-                )
+                ),
             )
         except (ApiError, ValueError):
             return QRCodeLoginEvents.OTHER, None
@@ -765,7 +772,7 @@ class LoginApi(ApiModule):
                     method="QQLogin",
                     param={"code": code_match[0]},
                     comm={"tmeLoginType": 2},
-                )
+                ),
             )
         except ApiError as exc:
             if exc.code == 20274:
@@ -783,7 +790,7 @@ class LoginApi(ApiModule):
                     method="Login",
                     param={"code": code, "strAppid": "wx48db31d50e334801"},
                     comm={"tmeLoginType": 1},
-                )
+                ),
             )
         except ApiError as exc:
             raise self._raise_login_error("WXLogin", "鉴权失败", code=exc.code, cause=exc) from exc
@@ -806,7 +813,7 @@ class LoginApi(ApiModule):
                     method="SendPhoneAuthCode",
                     param={"tmeAppid": "qqmusic", "phoneNo": str(phone), "areaCode": str(country_code)},
                     comm={"tmeLoginMethod": 3},
-                )
+                ),
             )
         except ApiError as exc:
             if exc.code == PhoneLoginEvents.CAPTCHA.value:
@@ -840,7 +847,7 @@ class LoginApi(ApiModule):
                         "loginMode": 1,
                     },
                     comm={"tmeLoginMethod": 3, "tmeLoginType": 0},
-                )
+                ),
             )
         except ApiError as exc:
             if exc.code == 20274:

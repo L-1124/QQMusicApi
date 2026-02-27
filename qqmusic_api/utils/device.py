@@ -1,6 +1,7 @@
 """虚拟设备信息构造与持久化管理. 用于模拟 Android 设备指纹."""
 
 import binascii
+import contextlib
 import hashlib
 import logging
 import random
@@ -62,13 +63,13 @@ class Device:
     fingerprint: str = field(
         default_factory=lambda: (
             f"xiaomi/iarim/sagit:10/eomam.200122.001/{random.randint(1000000, 9999999)}:user/release-keys"
-        )
+        ),
     )
     boot_id: str = field(default_factory=lambda: str(uuid4()))
     proc_version: str = field(
         default_factory=lambda: (
             f"Linux 5.4.0-54-generic-{''.join(random.choices(string.ascii_letters + string.digits, k=8))} (android-build@google.com)"
-        )
+        ),
     )
     imei: str = field(default_factory=random_imei)
     brand: str = "Xiaomi"
@@ -82,10 +83,10 @@ class Device:
     wifi_bssid: str = "00:50:56:C0:00:08"
     wifi_ssid: str = "<unknown ssid>"
     imsi_md5: list[int] = field(
-        default_factory=lambda: list(hashlib.md5(bytes([random.randint(0, 255) for _ in range(16)])).digest())
+        default_factory=lambda: list(hashlib.md5(bytes([random.randint(0, 255) for _ in range(16)])).digest()),
     )
     android_id: str = field(
-        default_factory=lambda: binascii.hexlify(bytes([random.randint(0, 255) for _ in range(8)])).decode("utf-8")
+        default_factory=lambda: binascii.hexlify(bytes([random.randint(0, 255) for _ in range(8)])).decode("utf-8"),
     )
     apn: str = "wifi"
     vendor_name: str = "MIUI"
@@ -238,7 +239,5 @@ class DeviceManager:
             logger.debug("已将游离设备归档至实名用户环境: %s", target_path)
 
             if await guest_path.exists():
-                try:
+                with contextlib.suppress(OSError):
                     await guest_path.unlink()
-                except OSError:
-                    pass

@@ -116,9 +116,9 @@ def validate_int_enum(value: int | Enum, enum_type: type[Enum]) -> int:
         ValueError: 如果值不在枚举定义中.
     """
     if isinstance(value, enum_type):
-        return cast(int, value.value)
+        return cast("int", value.value)
     if value in {item.value for item in enum_type}:
-        return cast(int, value)
+        return cast("int", value)
     raise ValueError(f"Invalid value: {value} for {enum_type.__name__}")
 
 
