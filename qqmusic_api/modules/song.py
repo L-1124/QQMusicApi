@@ -1,7 +1,7 @@
 """歌曲相关 API 模块."""
 
 from enum import Enum
-from typing import Any
+from typing import Any, overload
 
 from ..utils.common import get_guid
 from ._base import ApiModule
@@ -65,6 +65,8 @@ class EncryptedSongFileType(BaseSongFileType):
 class SongApi(ApiModule):
     """歌曲相关 API 模块类."""
 
+    _SONG_URL_DOMAIN = "https://isure.stream.qqmusic.qq.com/"
+
     def query_song(self, value: list[int] | list[str]):
         """根据 id 或 mid 获取歌曲信息.
 
@@ -109,6 +111,127 @@ class SongApi(ApiModule):
                 "songtype": [1],
             },
         )
+
+    @overload
+    async def get_song_urls(
+        self,
+        mid: list[str],
+        file_type: SongFileType = SongFileType.MP3_128,
+    ) -> dict[str, str]: ...
+
+    @overload
+    async def get_song_urls(
+        self,
+        mid: list[str],
+        file_type: EncryptedSongFileType,
+    ) -> dict[str, tuple[str, str]]: ...
+
+    async def get_song_urls(
+        self,
+        mid: list[str],
+        file_type: SongFileType | EncryptedSongFileType = SongFileType.MP3_128,
+    ) -> dict[str, str] | dict[str, tuple[str, str]]:
+        """获取歌曲文件链接.
+
+        Args:
+            mid: 歌曲 MID 列表.
+            file_type: 歌曲文件类型.
+
+        Returns:
+            dict[str, str] | dict[str, tuple[str, str]]: 普通类型返回下载链接映射,
+            加密类型返回 `(链接, ekey)` 映射.
+        """
+        if not mid:
+            return {}
+
+        encrypted = isinstance(file_type, EncryptedSongFileType)
+        module, method = (
+            ("music.vkey.GetVkey", "UrlGetVkey") if not encrypted else ("music.vkey.GetEVkey", "CgiGetEVkey")
+        )
+
+        request_group = self._client.request_group()
+        for mid_chunk_start in range(0, len(mid), 100):
+            chunk = mid[mid_chunk_start : mid_chunk_start + 100]
+            request_group.add(
+                self.build_request(
+                    module=module,
+                    method=method,
+                    param={
+                        "filename": [f"{file_type.s}{item}{item}{file_type.e}" for item in chunk],
+                        "guid": get_guid(),
+                        "songmid": chunk,
+                        "songtype": [0] * len(chunk),
+                    },
+                ),
+            )
+
+        raw_results = await request_group.execute()
+        if encrypted:
+            encrypted_result: dict[str, tuple[str, str]] = {}
+            for raw in raw_results:
+                if isinstance(raw, Exception):
+                    raise raw
+                self._merge_encrypted_song_urls(encrypted_result, raw)
+            return encrypted_result
+
+        plain_result: dict[str, str] = {}
+        for raw in raw_results:
+            if isinstance(raw, Exception):
+                raise raw
+            self._merge_song_urls(plain_result, raw)
+        return plain_result
+
+    def _merge_song_urls(
+        self,
+        result: dict[str, str],
+        raw: dict[str, Any],
+    ) -> None:
+        """合并单批歌曲链接结果.
+
+        Args:
+            result: 待更新的聚合结果.
+            raw: 单批原始响应数据.
+        """
+        midurlinfo = raw.get("midurlinfo", [])
+        if not isinstance(midurlinfo, list):
+            return
+
+        for info in midurlinfo:
+            if not isinstance(info, dict):
+                continue
+            songmid = info.get("songmid")
+            if not isinstance(songmid, str):
+                continue
+
+            path = info.get("purl") or info.get("wifiurl") or ""
+            url = f"{self._SONG_URL_DOMAIN}{path}" if path else ""
+            result[songmid] = url
+
+    def _merge_encrypted_song_urls(
+        self,
+        result: dict[str, tuple[str, str]],
+        raw: dict[str, Any],
+    ) -> None:
+        """合并单批加密歌曲链接结果.
+
+        Args:
+            result: 待更新的聚合结果.
+            raw: 单批原始响应数据.
+        """
+        midurlinfo = raw.get("midurlinfo", [])
+        if not isinstance(midurlinfo, list):
+            return
+
+        for info in midurlinfo:
+            if not isinstance(info, dict):
+                continue
+            songmid = info.get("songmid")
+            if not isinstance(songmid, str):
+                continue
+
+            path = info.get("purl") or info.get("wifiurl") or ""
+            url = f"{self._SONG_URL_DOMAIN}{path}" if path else ""
+            result[songmid] = (url, str(info.get("ekey", "")))
 
     def get_detail(self, value: str | int):
         """获取歌曲详细信息.

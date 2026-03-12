@@ -43,12 +43,16 @@ repos:
         entry: uv run ruff check
         language: system
         files: \.(py|pyi)$
+        stages:
+          - pre-commit
         args: [--fix]
 
       - id: ruff-format
         name: ruff-format
         entry: uv run ruff format
         language: system
+        stages:
+          - pre-commit
         files: \.(py|pyi)$
 
       - id: pyrefly
@@ -56,6 +60,8 @@ repos:
         entry: uv run pyrefly check
         language: system
         files: \.(py|pyi)$
+        stages:
+          - pre-commit
 
       - id: docs-build
         name: docs build
@@ -63,3 +69,5 @@ repos:
         files: ^docs/
         pass_filenames: false
         language: system
+        stages:
+          - pre-push
