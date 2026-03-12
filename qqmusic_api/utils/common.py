@@ -70,16 +70,22 @@ def get_searchID() -> str:
 def bool_to_int(data: Any) -> Any:
     """递归将数据结构中的 bool 值转换为 int (0 或 1).
 
+    无 bool 值时原样返回, 避免不必要的容器重建.
+
     Args:
         data: 待转换的数据, 支持基本类型、列表及字典.
 
     Returns:
-        Any: 转换后的数据结构.
+        Any: 转换后的数据结构, 无 bool 值时原样返回.
     """
     if isinstance(data, bool):
         return int(data)
     if isinstance(data, dict):
+        if not any(isinstance(v, (bool, dict, list)) for v in data.values()):
+            return data
         return {k: bool_to_int(v) for k, v in data.items()}
     if isinstance(data, list):
+        if not any(isinstance(v, (bool, dict, list)) for v in data):
+            return data
         return [bool_to_int(v) for v in data]
     return data

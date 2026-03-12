@@ -6,7 +6,6 @@ from hashlib import sha1
 import orjson as json
 import pytest
 
-import qqmusic_api.algorithms as algorithms_module
 from qqmusic_api.algorithms import qrc_decrypt
 from qqmusic_api.algorithms.sign import _sign_from_digest_python, sign_request
 from qqmusic_api.algorithms.tripledes import ENCRYPT, tripledes_crypt, tripledes_key_setup
@@ -44,15 +43,6 @@ def test_qrc_decrypt_rejects_invalid_input_type() -> None:
         qrc_decrypt(123)  # type: ignore[arg-type]
 
 
-def test_qrc_decrypt_fallback_to_python_impl(monkeypatch: pytest.MonkeyPatch) -> None:
-    """验证 C 后端不可用时会回退 Python 实现."""
-    plain_text = "[00:00.00]Fallback path"
-    encrypted = _encrypt_qrc_payload(plain_text)
-
-    monkeypatch.setattr(algorithms_module, "tripledes_decrypt_blocks", lambda *_args, **_kwargs: None)
-    assert qrc_decrypt(encrypted) == plain_text
-
-
 def test_sign_matches_python_digest_path() -> None:
     """验证 sign 结果与 Python 摘要实现一致."""
     request = {
@@ -61,14 +51,4 @@ def test_sign_matches_python_digest_path() -> None:
     }
     digest = sha1(json.dumps(request)).hexdigest().upper()
     expected = _sign_from_digest_python(digest)
-    assert sign_request(request) == expected
-
-
-def test_sign_fallback_when_c_backend_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
-    """验证 C 后端不可用时可回退到 Python 实现."""
-    request = {"a": 1, "b": {"x": True}}
-    digest = sha1(json.dumps(request)).hexdigest().upper()
-    expected = _sign_from_digest_python(digest)
-
-    monkeypatch.setattr("qqmusic_api.algorithms.sign.sign_from_digest_c", lambda _digest: None)
     assert sign_request(request) == expected

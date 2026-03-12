@@ -6,8 +6,6 @@ from hashlib import sha1
 
 import orjson as json
 
-from ._core import sign_from_digest as sign_from_digest_c
-
 PART_1_INDEXES: tuple[int, ...] = tuple(i for i in (23, 14, 6, 36, 16, 40, 7, 19) if i < 40)
 PART_2_INDEXES: tuple[int, ...] = (16, 1, 32, 12, 19, 27, 8, 5)
 SCRAMBLE_VALUES: tuple[int, ...] = (
@@ -57,7 +55,4 @@ def sign_request(request: dict) -> str:
         签名结果.
     """
     digest = sha1(json.dumps(request)).hexdigest().upper()
-    accelerated = sign_from_digest_c(digest)
-    if accelerated is not None:
-        return accelerated
     return _sign_from_digest_python(digest)

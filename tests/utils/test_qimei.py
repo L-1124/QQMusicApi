@@ -4,7 +4,7 @@ import httpx
 import orjson as json
 import pytest
 
-from qqmusic_api import Client
+from qqmusic_api import Client, Platform
 from qqmusic_api.core.versioning import DEFAULT_VERSION_POLICY
 from qqmusic_api.utils.device import Device
 from qqmusic_api.utils.qimei import DEFAULT_QIMEI, get_qimei
@@ -80,9 +80,10 @@ async def test_client_qimei_timeout_passed_to_get_qimei(monkeypatch: pytest.Monk
     device.qimei = ""
     device.qimei36 = ""
 
-    await client._build_common_params("android", client.credential)
+    await client._build_common_params(Platform.ANDROID, client.credential)
 
     assert captured["timeout"] == 1.25
-    assert captured["version"] == DEFAULT_VERSION_POLICY.get_qimei_app_version("android")
+    assert captured["version"] == DEFAULT_VERSION_POLICY.get_qimei_app_version(Platform.ANDROID)
+    assert captured["sdk_version"] == DEFAULT_VERSION_POLICY.get_qimei_sdk_version(Platform.ANDROID)
     assert captured["sdk_version"] == DEFAULT_VERSION_POLICY.get_qimei_sdk_version("android")
     await client.close()
