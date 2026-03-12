@@ -32,7 +32,7 @@ class UserApi(ApiModule):
         Args:
             euin: 加密后的 UIN.
         """
-        return self.build_request(
+        return self._build_request(
             module="music.srfDissInfo.DissInfo",
             method="CgiGetDiss",
             param={"disstid": 0, "dirid": 201, "song_num": 1, "enc_host_uin": euin, "onlysonglist": 1},
@@ -45,7 +45,7 @@ class UserApi(ApiModule):
             euin: 加密后的 UIN.
             credential: 登录凭证 (可选).
         """
-        return self.build_request(
+        return self._build_request(
             module="music.UnifiedHomepage.UnifiedHomepageSrv",
             method="GetHomepageHeader",
             param={"uin": euin, "IsQueryTabDetail": 1},
@@ -59,7 +59,7 @@ class UserApi(ApiModule):
             credential: 登录凭证.
         """
         target_credential = self._require_login(credential)
-        return self.build_request(
+        return self._build_request(
             module="VipLogin.VipLoginInter",
             method="vip_login_base",
             param={},
@@ -83,7 +83,7 @@ class UserApi(ApiModule):
             credential: 登录凭证.
         """
         target_credential = self._require_login(credential)
-        return self.build_request(
+        return self._build_request(
             module="music.concern.RelationList",
             method="GetFollowSingerList",
             param={"HostUin": euin, "From": (page - 1) * num, "Size": num},
@@ -107,7 +107,7 @@ class UserApi(ApiModule):
             credential: 登录凭证.
         """
         target_credential = self._require_login(credential)
-        return self.build_request(
+        return self._build_request(
             module="music.concern.RelationList",
             method="GetFansList",
             param={"HostUin": euin, "From": (page - 1) * num, "Size": num},
@@ -129,7 +129,7 @@ class UserApi(ApiModule):
             credential: 登录凭证.
         """
         target_credential = self._require_login(credential)
-        return self.build_request(
+        return self._build_request(
             module="music.homepage.Friendship",
             method="GetFriendList",
             param={"PageSize": num, "Page": page - 1},
@@ -153,7 +153,7 @@ class UserApi(ApiModule):
             credential: 登录凭证.
         """
         target_credential = self._require_login(credential)
-        return self.build_request(
+        return self._build_request(
             module="music.concern.RelationList",
             method="GetFollowUserList",
             param={"HostUin": euin, "From": (page - 1) * num, "Size": num},
@@ -167,7 +167,7 @@ class UserApi(ApiModule):
             uin: 用户 UIN.
             credential: 登录凭证 (可选).
         """
-        return self.build_request(
+        return self._build_request(
             module="music.musicasset.PlaylistBaseRead",
             method="GetPlaylistByUin",
             param={"uin": uin},
@@ -190,7 +190,7 @@ class UserApi(ApiModule):
             num: 返回数量.
             credential: 登录凭证 (可选).
         """
-        return self.build_request(
+        return self._build_request(
             module="music.srfDissInfo.DissInfo",
             method="CgiGetDiss",
             param={
@@ -222,7 +222,7 @@ class UserApi(ApiModule):
             num: 每页数量.
             credential: 登录凭证 (可选).
         """
-        return self.build_request(
+        return self._build_request(
             module="music.musicasset.PlaylistFavRead",
             method="CgiGetPlaylistFavInfo",
             param={"uin": euin, "offset": (page - 1) * num, "size": num},
@@ -245,7 +245,7 @@ class UserApi(ApiModule):
             num: 每页数量.
             credential: 登录凭证 (可选).
         """
-        return self.build_request(
+        return self._build_request(
             module="music.musicasset.AlbumFavRead",
             method="CgiGetAlbumFavInfo",
             param={"euin": euin, "offset": (page - 1) * num, "size": num},
@@ -269,7 +269,7 @@ class UserApi(ApiModule):
             credential: 登录凭证.
         """
         target_credential = self._require_login(credential)
-        return self.build_request(
+        return self._build_request(
             module="music.musicasset.MVFavRead",
             method="getMyFavMV_v2",
             param={"encuin": euin, "pagesize": num, "num": page - 1},
@@ -283,7 +283,7 @@ class UserApi(ApiModule):
             euin: 加密后的 UIN.
             credential: 登录凭证 (可选).
         """
-        return self.build_request(
+        return self._build_request(
             module="music.recommend.UserProfileSettingSvr",
             method="GetProfileReport",
             param={"VisitAccount": euin},

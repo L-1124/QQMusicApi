@@ -29,7 +29,7 @@ class SonglistApi(ApiModule):
             tag: 是否返回标签信息.
             userinfo: 是否返回用户信息.
         """
-        return self.build_request(
+        return self._build_request(
             module="music.srfDissInfo.DissInfo",
             method="CgiGetDiss",
             param={
@@ -52,7 +52,7 @@ class SonglistApi(ApiModule):
             credential: 登录凭证.
         """
         target_credential = self._require_login(credential)
-        return self.build_request(
+        return self._build_request(
             module="music.musicasset.PlaylistBaseWrite",
             method="AddPlaylist",
             param={"dirName": dirname},
@@ -67,7 +67,7 @@ class SonglistApi(ApiModule):
             credential: 登录凭证.
         """
         target_credential = self._require_login(credential)
-        return self.build_request(
+        return self._build_request(
             module="music.musicasset.PlaylistBaseWrite",
             method="DelPlaylist",
             param={"dirId": dirid},
@@ -90,7 +90,7 @@ class SonglistApi(ApiModule):
         """
         target_credential = self._require_login(credential)
         songs = song_ids or []
-        return self.build_request(
+        return self._build_request(
             module="music.musicasset.PlaylistDetailWrite",
             method="AddSonglist",
             param={
@@ -116,7 +116,7 @@ class SonglistApi(ApiModule):
         """
         target_credential = self._require_login(credential)
         songs = song_ids or []
-        return self.build_request(
+        return self._build_request(
             module="music.musicasset.PlaylistDetailWrite",
             method="DelSonglist",
             param={

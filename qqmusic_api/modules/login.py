@@ -170,7 +170,7 @@ class LoginApi(ApiModule):
         target = credential or self._client.credential
         try:
             await self._client.execute(
-                self.build_request(
+                self._build_request(
                     module="music.UserInfo.userInfoServer",
                     method="GetLoginUserInfo",
                     param={},
@@ -193,7 +193,7 @@ class LoginApi(ApiModule):
         target = credential or self._client.credential
         try:
             data = await self._client.execute(
-                self.build_request(
+                self._build_request(
                     module="music.login.LoginServer",
                     method="Login",
                     param={
@@ -528,7 +528,7 @@ class LoginApi(ApiModule):
         """获取手机客户端登录二维码."""
         try:
             data = await self._client.execute(
-                self.build_request(
+                self._build_request(
                     module="music.login.LoginServer",
                     method="CreateQRCode",
                     param={"tmeAppID": "qqmusic", "ct": 11, "cv": 13020508},
@@ -691,7 +691,7 @@ class LoginApi(ApiModule):
 
         try:
             data = await self._client.execute(
-                self.build_request(
+                self._build_request(
                     module="music.login.LoginServer",
                     method="Login",
                     param={
@@ -767,7 +767,7 @@ class LoginApi(ApiModule):
 
         try:
             data = await self._client.execute(
-                self.build_request(
+                self._build_request(
                     module="QQConnectLogin.LoginServer",
                     method="QQLogin",
                     param={"code": code_match[0]},
@@ -785,7 +785,7 @@ class LoginApi(ApiModule):
         """完成微信二维码鉴权并返回凭证."""
         try:
             data = await self._client.execute(
-                self.build_request(
+                self._build_request(
                     module="music.login.LoginServer",
                     method="Login",
                     param={"code": code, "strAppid": "wx48db31d50e334801"},
@@ -808,7 +808,7 @@ class LoginApi(ApiModule):
         """
         try:
             await self._client.execute(
-                self.build_request(
+                self._build_request(
                     module="music.login.LoginServer",
                     method="SendPhoneAuthCode",
                     param={"tmeAppid": "qqmusic", "phoneNo": str(phone), "areaCode": str(country_code)},
@@ -837,7 +837,7 @@ class LoginApi(ApiModule):
         """
         try:
             data = await self._client.execute(
-                self.build_request(
+                self._build_request(
                     module="music.login.LoginServer",
                     method="Login",
                     param={

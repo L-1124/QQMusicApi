@@ -180,8 +180,8 @@ async def test_request_group_error_outcomes_are_written_back() -> None:
     client.request_musicu = fake_request_musicu  # type: ignore[method-assign]
 
     group = client.request_group(batch_size=1, max_inflight_batches=1)
-    group.add(client.user.build_request("ok.module", "ok", {}))
-    group.add(client.user.build_request("bad.module", "bad", {}))
+    group.add(client.user._build_request("ok.module", "ok", {}))
+    group.add(client.user._build_request("bad.module", "bad", {}))
 
     outcomes = await group.execute()
 
@@ -209,7 +209,7 @@ async def test_request_group_execute_returns_full_results_list() -> None:
     client.request_musicu = fake_request_musicu  # type: ignore[method-assign]
     group = client.request_group(batch_size=2, max_inflight_batches=2)
     for idx in range(6):
-        group.add(client.user.build_request(f"module.{idx}", "ok", {}))
+        group.add(client.user._build_request(f"module.{idx}", "ok", {}))
 
     consumed: list[Any] = list(await group.execute())
 
@@ -234,7 +234,7 @@ async def test_request_group_execute_preserves_request_order() -> None:
     client.request_musicu = fake_request_musicu  # type: ignore[method-assign]
     group = client.request_group(batch_size=2, max_inflight_batches=3)
     for idx in range(7):
-        group.add(client.user.build_request(f"module.{idx}", "ok", {}))
+        group.add(client.user._build_request(f"module.{idx}", "ok", {}))
 
     outcomes = await group.execute()  # type: ignore[misc]
     assert len(outcomes) == 7
@@ -260,7 +260,7 @@ async def test_request_group_execute_iter_yields_unordered_results_with_index() 
     client.request_musicu = fake_request_musicu  # type: ignore[method-assign]
     group = client.request_group(batch_size=1, max_inflight_batches=4)
     for idx in range(4):
-        group.add(client.user.build_request(f"module.{idx}", "ok", {}))
+        group.add(client.user._build_request(f"module.{idx}", "ok", {}))
 
     results = [result async for result in group.execute_iter()]
 
@@ -291,8 +291,8 @@ async def test_request_group_execute_iter_wraps_single_item_error() -> None:
 
     client.request_musicu = fake_request_musicu  # type: ignore[method-assign]
     group = client.request_group(batch_size=1, max_inflight_batches=2)
-    group.add(client.user.build_request("ok.module", "ok", {}))
-    group.add(client.user.build_request("bad.module", "bad", {}))
+    group.add(client.user._build_request("ok.module", "ok", {}))
+    group.add(client.user._build_request("bad.module", "bad", {}))
 
     results = [result async for result in group.execute_iter()]
     results_by_index = {result.index: result for result in results}
@@ -326,9 +326,9 @@ async def test_request_group_execute_iter_wraps_batch_exception_per_request() ->
 
     client.request_musicu = fake_request_musicu  # type: ignore[method-assign]
     group = client.request_group(batch_size=2, max_inflight_batches=2)
-    group.add(client.user.build_request("boom.module", "boom", {}))
-    group.add(client.user.build_request("boom.module.2", "boom", {}))
-    group.add(client.user.build_request("ok.module", "ok", {}))
+    group.add(client.user._build_request("boom.module", "boom", {}))
+    group.add(client.user._build_request("boom.module.2", "boom", {}))
+    group.add(client.user._build_request("ok.module", "ok", {}))
 
     results = [result async for result in group.execute_iter()]
     results_by_index = {result.index: result for result in results}

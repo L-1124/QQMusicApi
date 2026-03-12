@@ -108,7 +108,7 @@ class ApiModule:
         return self._client._version_policy.build_query_params(platform or self._client.platform)
 
     @overload
-    def build_request(
+    def _build_request(
         self,
         module: str,
         method: str,
@@ -122,7 +122,7 @@ class ApiModule:
     ) -> "Request[dict[str, Any]]": ...
 
     @overload
-    def build_request(
+    def _build_request(
         self,
         module: str,
         method: str,
@@ -135,7 +135,7 @@ class ApiModule:
         platform: str | None = None,
     ) -> "Request[ResponseModel]": ...
 
-    def build_request(
+    def _build_request(
         self,
         module: str,
         method: str,

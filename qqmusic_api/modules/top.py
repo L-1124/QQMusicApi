@@ -9,7 +9,7 @@ class TopApi(ApiModule):
 
     def get_category(self):
         """获取所有排行榜分类."""
-        return self.build_request(
+        return self._build_request(
             module="music.musicToplist.Toplist",
             method="GetAll",
             param={},
@@ -32,7 +32,7 @@ class TopApi(ApiModule):
             page: 页码.
             tag: 是否返回歌曲标签信息.
         """
-        return self.build_request(
+        return self._build_request(
             module="music.musicToplist.Toplist",
             method="GetDetail",
             param={

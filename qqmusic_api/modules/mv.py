@@ -13,7 +13,7 @@ class MvApi(ApiModule):
         Args:
             vids: 视频 VID 列表.
         """
-        return self.build_request(
+        return self._build_request(
             module="video.VideoDataServer",
             method="get_video_info_batch",
             param={
@@ -51,7 +51,7 @@ class MvApi(ApiModule):
         Args:
             vids: 视频 VID 列表.
         """
-        return self.build_request(
+        return self._build_request(
             module="music.stream.MvUrlProxy",
             method="GetMvUrls",
             param={

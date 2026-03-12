@@ -21,7 +21,7 @@ BaseGroupKey = tuple[bool, str | Platform, FrozenCommKey, int, str]
 
 @dataclass
 class Request(Generic[ResponseModel]):
-    """请求描述符 (Awaitable Object)."""
+    """请求描述符."""
 
     _client: "Client"
     module: str
