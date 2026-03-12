@@ -1,5 +1,7 @@
 """requests 模块测试."""
 
+import gc
+import warnings
 from typing import Any
 
 import anyio
@@ -74,6 +76,31 @@ async def test_request_musicu_uses_version_policy_comm() -> None:
     comm = payload["comm"]
     assert comm["ct"] == DEFAULT_VERSION_POLICY.desktop.ct
     assert comm["cv"] == DEFAULT_VERSION_POLICY.desktop.cv
+
+
+@pytest.mark.anyio
+async def test_request_musicu_applies_user_agent_header() -> None:
+    """验证 request_musicu 会自动注入 User-Agent 请求头."""
+    captured: dict[str, object] = {}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        captured["headers"] = dict(request.headers)
+        return httpx.Response(200, json={"code": 0, "req_0": {"code": 0, "data": {}}})
+
+    transport = httpx.MockTransport(handler)
+    client = Client(transport=transport, platform=Platform.DESKTOP)
+    await client.request_musicu(
+        data={
+            "module": "music.test.Module",
+            "method": "TestMethod",
+            "param": {},
+        },
+    )
+
+    headers = captured["headers"]
+    assert isinstance(headers, dict)
+    assert headers["user-agent"] == await client._get_user_agent(Platform.DESKTOP)
+    await client.close()
 
 
 @pytest.mark.anyio
@@ -386,3 +413,29 @@ def test_client_build_result_returns_raw_tarsdict_when_response_model_is_none() 
     result = Client._build_result(raw_data, None)
 
     assert result is raw_data
+
+
+def test_request_warns_when_never_awaited() -> None:
+    """测试未消费的 Request 会发出运行时告警."""
+    client = Client()
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always", RuntimeWarning)
+        request = client.user._build_request("music.test.Module", "TestMethod", {})
+        del request
+        gc.collect()
+
+    assert any(str(item.message) == "Request 'music.test.Module.TestMethod' was never awaited" for item in caught)
+
+
+def test_request_group_add_marks_request_as_consumed() -> None:
+    """测试加入 RequestGroup 的 Request 不会发出未消费告警."""
+    client = Client()
+    group = client.request_group()
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always", RuntimeWarning)
+        request = client.user._build_request("music.test.Module", "TestMethod", {})
+        group.add(request)
+        del request
+        gc.collect()
+
+    assert caught == []

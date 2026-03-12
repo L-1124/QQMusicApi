@@ -185,7 +185,7 @@ class VersionPolicy:
         profile = self.get_profile(platform)
         if platform in {Platform.ANDROID, Platform.ANDROID_JCE}:
             ua_version = profile.ua_version or profile.cv
-            return f"QQMusic/{ua_version} (Android {device.version.release}; {device.model})"
+            return f"QQMusic {ua_version}(android {device.version.release})"
         return (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
             "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"

@@ -386,6 +386,7 @@ class Client:
         Raises:
             ApiError: 接口返回状态码异常或缺少预期字段.
         """
+        request._mark_consumed()
         data: RequestItem = {
             "module": request.module,
             "method": request.method,
@@ -609,7 +610,14 @@ class Client:
             if signature := sign_request(payload):
                 params["sign"] = signature
 
-        resp = await self.fetch("POST", url, json=payload, params=params)
+        resp = await self.request(
+            "POST",
+            url,
+            credential=credential,
+            platform=platform,
+            json=payload,
+            params=params,
+        )
 
         if resp.status_code != 200:
             raise HTTPError(f"请求失败: {resp.text[:500]}", status_code=resp.status_code)

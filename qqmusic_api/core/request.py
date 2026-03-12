@@ -1,5 +1,6 @@
 """请求描述符与批量请求容器. 提供对 API 请求的抽象与调度."""
 
+import warnings
 from collections.abc import AsyncIterator, Generator
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Generic, cast
@@ -32,10 +33,27 @@ class Request(Generic[ResponseModel]):
     is_jce: bool = False
     credential: Credential | None = None
     platform: Platform | str | None = None
+    _consumed: bool = field(default=False, init=False, repr=False, compare=False)
+
+    def _mark_consumed(self) -> None:
+        """标记当前请求已被执行或纳入调度."""
+        self._consumed = True
 
     def __await__(self) -> Generator[Any, Any, ResponseModel]:
         """使 Request 对象可被 await 执行."""
+        self._mark_consumed()
         return self._client.execute(self).__await__()
+
+    def __del__(self) -> None:
+        """在请求未被消费时发出运行时告警."""
+        if self._consumed:
+            return
+        warnings.warn(
+            f"Request '{self.module}.{self.method}' was never awaited",
+            category=RuntimeWarning,
+            stacklevel=2,
+            source=self,
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,6 +98,7 @@ class RequestGroup:
         Returns:
             当前 RequestGroup, 用于链式调用.
         """
+        request._mark_consumed()
         index = len(self._requests)
         self._requests.append(request)
         group_key = self._group_key(request)

@@ -27,8 +27,7 @@ def test_version_policy_user_agent() -> None:
     desktop_ua = DEFAULT_VERSION_POLICY.get_user_agent(Platform.DESKTOP, device)
     desktop_ua = DEFAULT_VERSION_POLICY.get_user_agent("desktop", device)
 
-    assert "QQMusic/14090008" in android_ua
-    assert "Android" in android_ua
+    assert android_ua == "QQMusic 14090008(android 10)"
     assert "Mozilla/5.0" in desktop_ua
 
 
