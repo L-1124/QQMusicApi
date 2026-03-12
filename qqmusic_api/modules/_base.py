@@ -1,19 +1,15 @@
 """API 模块基类."""
 
-from typing import TYPE_CHECKING, Any, TypeVar, overload
+from typing import TYPE_CHECKING, Any, overload
 
 import httpx
-from pydantic import BaseModel
-from tarsio import Struct
 
 from ..core.exceptions import NotLoginError
 
 if TYPE_CHECKING:
     from ..core.client import Client
-    from ..core.request import Request
-    from ..models import Credential
-
-R = TypeVar("R", bound=BaseModel | Struct | dict)
+    from ..core.request import Request, ResponseModel
+    from ..models.request import Credential
 
 
 class ApiModule:
@@ -131,20 +127,20 @@ class ApiModule:
         module: str,
         method: str,
         param: dict[str, Any] | dict[int, Any],
-        response_model: type[R],
+        response_model: type["ResponseModel"],
         comm: dict[str, Any] | None = None,
         *,
         is_jce: bool = False,
         credential: "Credential | None" = None,
         platform: str | None = None,
-    ) -> "Request[R]": ...
+    ) -> "Request[ResponseModel]": ...
 
     def build_request(
         self,
         module: str,
         method: str,
         param: dict[str, Any] | dict[int, Any],
-        response_model: type[R] | None = None,
+        response_model: type["ResponseModel"] | None = None,
         comm: dict[str, Any] | None = None,
         *,
         is_jce: bool = False,

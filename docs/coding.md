@@ -55,6 +55,8 @@ class MyApi(ApiModule):
 ## 3. 批量请求 `RequestGroup`
 
 使用 `Client` 的 `request_group()` 可以创建批量请求，减少网络开销。
+`execute()` 会一次性返回与添加顺序一致的完整结果列表。
+`execute_iter()` 会按批次完成顺序流式返回结果对象，每条结果都会带原始添加序号。
 
 ```python
 from qqmusic_api import Client
@@ -67,4 +69,15 @@ async def batch_query(ids: list[int]):
             
         results = await rg.execute()
         return results
+```
+
+```python
+async def batch_query_stream(ids: list[int]):
+    async with Client() as client:
+        rg = client.request_group(batch_size=1, max_inflight_batches=4)
+        for i in ids:
+            rg.add(client.song.get_song_detail(i))
+
+        async for result in rg.execute_iter():
+            print(result.index, result.success, result.data, result.error)
 ```

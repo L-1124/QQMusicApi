@@ -13,6 +13,7 @@ __all__ = [
     "NetworkError",
     "NotLoginError",
     "RateLimitError",
+    "RequestGroupResultMissingError",
     "SignInvalidError",
     "build_api_error",
     "extract_api_error_code",
@@ -222,6 +223,22 @@ class LoginError(BaseError):
         super().__init__(message, cause=cause)
 
 
+class RequestGroupResultMissingError(BaseError):
+    """RequestGroup 结果缺失异常.
+
+    当批量请求执行完成后, 某个索引位置未被任何批次写回时抛出。
+    """
+
+    def __init__(self, message: str, context: dict[str, Any] | None = None):
+        """初始化 RequestGroup 结果缺失异常.
+
+        Args:
+            message: 错误描述信息.
+            context: 结果缺失对应的请求上下文.
+        """
+        super().__init__(message, context=context)
+
+
 class SignInvalidError(ApiError):
     """请求签名无效异常 (code=2000).
 
@@ -242,13 +259,13 @@ class RateLimitError(ApiError):
     """请求被限流或触发风控异常 (code=2001).
 
     当 API 返回 2001 错误码时抛出。通常会包含一个 `feedbackURL`,
-    需要用户在浏览器中打开该 URL 完成滑块验证码等安全验证。
+    需要用户在浏览器中打开该 URL 登录或者完成滑块验证码等安全验证。
 
     Attributes:
         feedback_url (str | None): 用于解除风控的验证页面 URL (从响应 data 中提取).
     """
 
-    def __init__(self, message: str = "请求过于频繁或触发风控, 需进行安全验证", data: dict | None = None):
+    def __init__(self, message: str = "请求过于频繁或触发风控, 需进行登录或者安全验证", data: dict | None = None):
         """初始化限流异常.
 
         Args:
@@ -325,7 +342,6 @@ def build_api_error(
         ApiError: 构造好的异常对象(可能是其子类实例).
     """
     resolved_code = code if code is not None else -1
-    resolved_message = message or _default_api_error_message(resolved_code, subcode)
     merged_context = dict(context or {})
     if subcode is not None:
         merged_context["subcode"] = subcode
@@ -334,11 +350,19 @@ def build_api_error(
     data_dict = data if isinstance(data, dict) else None
 
     if exc_cls is LoginExpiredError:
-        return LoginExpiredError(message=resolved_message, data=data_dict)
+        if message is not None:
+            return LoginExpiredError(message=message, data=data_dict)
+        return LoginExpiredError(data=data_dict)
     if exc_cls is SignInvalidError:
-        return SignInvalidError(message=resolved_message, data=data_dict)
+        if message is not None:
+            return SignInvalidError(message=message, data=data_dict)
+        return SignInvalidError(data=data_dict)
     if exc_cls is RateLimitError:
-        return RateLimitError(message=resolved_message, data=data_dict)
+        if message is not None:
+            return RateLimitError(message=message, data=data_dict)
+        return RateLimitError(data=data_dict)
+
+    resolved_message = message or _default_api_error_message(resolved_code, subcode)
 
     return ApiError(
         resolved_message,

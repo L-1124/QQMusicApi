@@ -1,12 +1,12 @@
 """基础数据模型模块."""
 
-from typing import Any
+from typing import Any, TypedDict, TypeVar
 
-from pydantic import BaseModel, Field, model_serializer, model_validator
+from pydantic import BaseModel, Field
 from tarsio import Struct, TarsDict, field
 
 
-class CommonParams(BaseModel):
+class CommonParams(BaseModel, frozen=True):
     """通用请求参数."""
 
     # 客户端类型
@@ -51,7 +51,7 @@ class CommonParams(BaseModel):
     need_new_code: int = Field(default=1, alias="needNewCode")
 
 
-class Credential(BaseModel):
+class Credential(BaseModel, frozen=True):
     """凭据类.
 
     Attributes:
@@ -85,12 +85,12 @@ class Credential(BaseModel):
     login_type: int = Field(default=0, alias="loginType")
 
 
-class JsonRequestItem(BaseModel):
-    """Json 请求项."""
+class RequestItem(TypedDict):
+    """请求项."""
 
     module: str
     method: str
-    param: dict[str, Any]
+    param: dict[str, Any] | dict[int, Any]
 
 
 class JceRequestItem(Struct):
@@ -101,17 +101,6 @@ class JceRequestItem(Struct):
     param: TarsDict = field(tag=2, wrap_simplelist=True)
 
 
-class JsonRequest(BaseModel):
-    """Json 请求."""
-
-    comm: dict[str, Any]
-    data: list[JsonRequestItem]
-
-    @model_serializer(mode="plain")
-    def _serialize_data(self):
-        return {"comm": self.comm, **{f"req_{idx}": item.model_dump() for idx, item in enumerate(self.data)}}
-
-
 class JceRequest(Struct):
     """JCE 请求体."""
 
@@ -119,12 +108,7 @@ class JceRequest(Struct):
     data: dict[str, JceRequestItem] = field(tag=1)
 
 
-class JsonResponseItem(BaseModel):
-    """JSON 格式响应项."""
-
-    code: int = Field(default=0)
-    subcode: int = Field(default=0)
-    data: dict[str, Any] = Field(default_factory=dict)
+ResponseModel = TypeVar("ResponseModel", bound=BaseModel | dict | TarsDict | Struct)
 
 
 class JceResponseItem(Struct):
@@ -132,22 +116,6 @@ class JceResponseItem(Struct):
 
     code: int = field(tag=0, default=0)
     data: TarsDict = field(tag=3, default_factory=TarsDict, wrap_simplelist=True)
-
-
-class JsonResponse(BaseModel):
-    """JSON 格式 API 响应."""
-
-    code: int = Field(default=0)
-    data: dict[str, JsonResponseItem] = Field(default_factory=dict)
-
-    @model_validator(mode="before")
-    @classmethod
-    def collect_req_data(cls, data: Any) -> Any:
-        """将 req_x 字段收集到 data 字典中."""
-        if isinstance(data, dict) and "data" not in data:
-            req_data = {k: v for k, v in data.items() if k.startswith("req_")}
-            return {"code": data.get("code", 0), "data": req_data}
-        return data
 
 
 class JceResponse(Struct):

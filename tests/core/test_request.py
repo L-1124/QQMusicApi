@@ -1,16 +1,15 @@
 """requests 模块测试."""
 
-import logging
+from typing import Any
 
 import anyio
 import httpx
 import orjson as json
 import pytest
 
-from qqmusic_api import Client
+from qqmusic_api import Client, Platform
 from qqmusic_api.core.exceptions import HTTPError
 from qqmusic_api.core.versioning import DEFAULT_VERSION_POLICY
-from qqmusic_api.models import JsonResponse
 from qqmusic_api.modules._base import ApiModule
 
 
@@ -25,7 +24,7 @@ async def test_request_musicu_payload_uses_song_api_params() -> None:
         return httpx.Response(200, json={"code": 0, "req_0": {"code": 0, "data": {"tracks": []}}})
 
     transport = httpx.MockTransport(handler)
-    client = Client(transport=transport, platform="desktop")
+    client = Client(transport=transport, platform=Platform.DESKTOP)
     await client.request_musicu(
         data={
             "module": "music.trackInfo.UniformRuleCtrl",
@@ -57,7 +56,7 @@ async def test_request_musicu_uses_version_policy_comm() -> None:
         return httpx.Response(200, json={"code": 0, "req_0": {"code": 0, "data": {}}})
 
     transport = httpx.MockTransport(handler)
-    client = Client(transport=transport, platform="desktop")
+    client = Client(transport=transport, platform=Platform.DESKTOP)
     from qqmusic_api.core.request import Request
 
     await client.execute(
@@ -66,7 +65,7 @@ async def test_request_musicu_uses_version_policy_comm() -> None:
             module="music.test.Module",
             method="TestMethod",
             param={},
-            platform="desktop",
+            platform=Platform.DESKTOP,
         ),
     )
 
@@ -87,7 +86,7 @@ async def test_request_musicu_comm_override_takes_priority() -> None:
         return httpx.Response(200, json={"code": 0, "req_0": {"code": 0, "data": {}}})
 
     transport = httpx.MockTransport(handler)
-    client = Client(transport=transport, platform="desktop")
+    client = Client(transport=transport, platform=Platform.DESKTOP)
     from qqmusic_api.core.request import Request
 
     await client.execute(
@@ -97,7 +96,7 @@ async def test_request_musicu_comm_override_takes_priority() -> None:
             method="TestMethod",
             param={},
             comm={"cv": 999001},
-            platform="desktop",
+            platform=Platform.DESKTOP,
         ),
     )
 
@@ -116,7 +115,7 @@ async def test_request_musicu_raises_http_error_on_non_200() -> None:
         return httpx.Response(500, text="musicu-failed")
 
     transport = httpx.MockTransport(handler)
-    client = Client(transport=transport, platform="desktop")
+    client = Client(transport=transport, platform=Platform.DESKTOP)
     with pytest.raises(HTTPError) as exc_info:
         await client.request_musicu(
             data={
@@ -138,7 +137,7 @@ async def test_request_jce_raises_http_error_on_non_200() -> None:
         return httpx.Response(500, text="jce-failed")
 
     transport = httpx.MockTransport(handler)
-    client = Client(transport=transport, platform="android")
+    client = Client(transport=transport, platform=Platform.ANDROID)
     client._qimei_loaded = True
     client._qimei_cache = {"q16": "q16-default", "q36": "q36-default"}
     with pytest.raises(HTTPError) as exc_info:
@@ -157,26 +156,26 @@ async def test_request_jce_raises_http_error_on_non_200() -> None:
 @pytest.mark.anyio
 async def test_build_common_params_for_android_jce_stringifies_values() -> None:
     """验证 android_jce 的 comm 字段值会被字符串化."""
-    client = Client(platform="android")
+    client = Client(platform=Platform.ANDROID)
     client._qimei_loaded = True
     client._qimei_cache = {"q16": "q16-default", "q36": "q36-default"}
 
-    comm = await client._build_common_params("android_jce", client.credential)
+    comm = await client._build_common_params(Platform.ANDROID_JCE, client.credential)
 
     assert all(isinstance(value, str) for value in comm.values())
     await client.close()
 
 
 @pytest.mark.anyio
-async def test_request_group_logs_and_error_outcomes(caplog: pytest.LogCaptureFixture) -> None:
-    """验证 RequestGroup 日志与失败结果回填."""
-    client = Client(platform="desktop")
+async def test_request_group_error_outcomes_are_written_back() -> None:
+    """验证 RequestGroup 失败结果会回填到对应位置."""
+    client = Client(platform=Platform.DESKTOP)
 
     async def fake_request_musicu(*, data, **_kwargs):
         req = data[0] if isinstance(data, list) else data
         if req["module"] == "ok.module":
-            return JsonResponse.model_validate({"code": 0, "req_0": {"code": 0, "data": {"ok": True}}})
-        return JsonResponse.model_validate({"code": 0, "req_0": {"code": 500003, "data": {}}})
+            return {"code": 0, "req_0": {"code": 0, "data": {"ok": True}}}
+        return {"code": 0, "req_0": {"code": 500003, "data": {}}}
 
     client.request_musicu = fake_request_musicu  # type: ignore[method-assign]
 
@@ -184,92 +183,183 @@ async def test_request_group_logs_and_error_outcomes(caplog: pytest.LogCaptureFi
     group.add(client.user.build_request("ok.module", "ok", {}))
     group.add(client.user.build_request("bad.module", "bad", {}))
 
-    with caplog.at_level(logging.DEBUG, logger="qqmusicapi.request"):
-        outcomes = await group.execute()
+    outcomes = await group.execute()
 
     assert len(outcomes) == 2
-    assert outcomes[0].success is True
-    assert outcomes[1].success is False
-    assert outcomes[1].error is not None
-    assert outcomes[1].error.code == 500003
-    assert any("批处理开始" in message for message in caplog.messages)
+    assert isinstance(outcomes[0], dict)
+    assert outcomes[0].get("ok") is True
+    assert isinstance(outcomes[1], Exception)
+    assert getattr(outcomes[1], "code", None) == 500003
     await client.close()
 
 
 @pytest.mark.anyio
-async def test_request_group_execute_for_each_stream_consumption() -> None:
-    """验证 execute_for_each 逐条消费结果且不聚合返回."""
-    client = Client(platform="desktop")
+async def test_request_group_execute_returns_full_results_list() -> None:
+    """验证 execute 会返回完整结果列表."""
+    client = Client(platform=Platform.DESKTOP)
 
     async def fake_request_musicu(*, data, **_kwargs):
         requests = data if isinstance(data, list) else [data]
         await anyio.sleep(0.01)
-        return JsonResponse.model_validate(
-            {
-                "code": 0,
-                **{f"req_{idx}": {"code": 0, "data": {"module": req["module"]}} for idx, req in enumerate(requests)},
-            },
-        )
+        return {
+            "code": 0,
+            **{f"req_{idx}": {"code": 0, "data": {"module": req["module"]}} for idx, req in enumerate(requests)},
+        }
 
     client.request_musicu = fake_request_musicu  # type: ignore[method-assign]
     group = client.request_group(batch_size=2, max_inflight_batches=2)
     for idx in range(6):
         group.add(client.user.build_request(f"module.{idx}", "ok", {}))
 
-    consumed: list[int] = []
+    consumed: list[Any] = list(await group.execute())
 
-    async def handler(outcome) -> None:
-        consumed.append(outcome.index)
-
-    result = await group.execute_for_each(handler)
-    assert result is None
-    assert sorted(consumed) == list(range(6))
+    assert len(consumed) == 6
+    assert all(isinstance(c, dict) for c in consumed)
     await client.close()
 
 
 @pytest.mark.anyio
-async def test_request_group_execute_respects_max_collect() -> None:
-    """验证 execute 在超过 max_collect 时抛出异常."""
-    client = Client(platform="desktop")
-    group = client.request_group(batch_size=2, max_inflight_batches=1)
-    for idx in range(11):
-        group.add(client.user.build_request(f"module.{idx}", "ok", {}))
-
-    with pytest.raises(ValueError, match="max_collect=10"):
-        await group.execute(max_collect=10)
-    await client.close()
-
-
-@pytest.mark.anyio
-async def test_request_group_execute_iter_completeness() -> None:
-    """验证 execute_iter 结果可按 index 恢复完整请求集."""
-    client = Client(platform="desktop")
+async def test_request_group_execute_preserves_request_order() -> None:
+    """验证 execute 结果会按请求添加顺序回填."""
+    client = Client(platform=Platform.DESKTOP)
 
     async def fake_request_musicu(*, data, **_kwargs):
         requests = data if isinstance(data, list) else [data]
         await anyio.sleep(0.01)
-        return JsonResponse.model_validate(
-            {
-                "code": 0,
-                **{f"req_{idx}": {"code": 0, "data": {"module": req["module"]}} for idx, req in enumerate(requests)},
-            },
-        )
+        return {
+            "code": 0,
+            **{f"req_{idx}": {"code": 0, "data": {"module": req["module"]}} for idx, req in enumerate(requests)},
+        }
 
     client.request_musicu = fake_request_musicu  # type: ignore[method-assign]
     group = client.request_group(batch_size=2, max_inflight_batches=3)
     for idx in range(7):
         group.add(client.user.build_request(f"module.{idx}", "ok", {}))
 
-    outcomes = [outcome async for outcome in group.execute_iter()]
+    outcomes = await group.execute()  # type: ignore[misc]
     assert len(outcomes) == 7
-    assert sorted(outcome.index for outcome in outcomes) == list(range(7))
+    assert all(isinstance(c, dict) for c in outcomes)
+    await client.close()
+
+
+@pytest.mark.anyio
+async def test_request_group_execute_iter_yields_unordered_results_with_index() -> None:
+    """验证 execute_iter 会按完成顺序返回带 index 的结果对象."""
+    client = Client(platform=Platform.DESKTOP)
+
+    async def fake_request_musicu(*, data, **_kwargs):
+        requests = data if isinstance(data, list) else [data]
+        req = requests[0]
+        module_index = int(req["module"].rsplit(".", maxsplit=1)[-1])
+        await anyio.sleep(0.05 - (module_index * 0.01))
+        return {
+            "code": 0,
+            "req_0": {"code": 0, "data": {"module": req["module"], "index": module_index}},
+        }
+
+    client.request_musicu = fake_request_musicu  # type: ignore[method-assign]
+    group = client.request_group(batch_size=1, max_inflight_batches=4)
+    for idx in range(4):
+        group.add(client.user.build_request(f"module.{idx}", "ok", {}))
+
+    results = [result async for result in group.execute_iter()]
+
+    assert [result.index for result in results] == [3, 2, 1, 0]
+    assert all(result.success for result in results)
+    assert [result.module for result in results] == ["module.3", "module.2", "module.1", "module.0"]
+    assert [result.method for result in results] == ["ok", "ok", "ok", "ok"]
+    data_items = []
+    for result in results:
+        assert result.data is not None
+        data_items.append(result.data)
+    assert [item["index"] for item in data_items] == [3, 2, 1, 0]
+    assert all(result.error is None for result in results)
+    await client.close()
+
+
+@pytest.mark.anyio
+async def test_request_group_execute_iter_wraps_single_item_error() -> None:
+    """验证 execute_iter 会将单条业务错误包装为失败结果对象."""
+    client = Client(platform=Platform.DESKTOP)
+
+    async def fake_request_musicu(*, data, **_kwargs):
+        requests = data if isinstance(data, list) else [data]
+        req = requests[0]
+        if req["module"] == "bad.module":
+            return {"code": 0, "req_0": {"code": 500003, "data": {"reason": "bad"}}}
+        return {"code": 0, "req_0": {"code": 0, "data": {"ok": True}}}
+
+    client.request_musicu = fake_request_musicu  # type: ignore[method-assign]
+    group = client.request_group(batch_size=1, max_inflight_batches=2)
+    group.add(client.user.build_request("ok.module", "ok", {}))
+    group.add(client.user.build_request("bad.module", "bad", {}))
+
+    results = [result async for result in group.execute_iter()]
+    results_by_index = {result.index: result for result in results}
+
+    assert results_by_index[0].success is True
+    assert results_by_index[0].data == {"ok": True}
+    assert results_by_index[0].error is None
+    assert results_by_index[1].success is False
+    assert results_by_index[1].data is None
+    assert isinstance(results_by_index[1].error, Exception)
+    assert getattr(results_by_index[1].error, "code", None) == 500003
+    assert results_by_index[1].module == "bad.module"
+    assert results_by_index[1].method == "bad"
+    await client.close()
+
+
+@pytest.mark.anyio
+async def test_request_group_execute_iter_wraps_batch_exception_per_request() -> None:
+    """验证 execute_iter 会为整批异常中的每个请求产出失败结果."""
+    client = Client(platform=Platform.DESKTOP)
+
+    async def fake_request_musicu(*, data, **_kwargs):
+        requests = data if isinstance(data, list) else [data]
+        if requests[0]["module"] == "boom.module":
+            raise RuntimeError("batch-failed")
+        await anyio.sleep(0.01)
+        return {
+            "code": 0,
+            **{f"req_{idx}": {"code": 0, "data": {"module": req["module"]}} for idx, req in enumerate(requests)},
+        }
+
+    client.request_musicu = fake_request_musicu  # type: ignore[method-assign]
+    group = client.request_group(batch_size=2, max_inflight_batches=2)
+    group.add(client.user.build_request("boom.module", "boom", {}))
+    group.add(client.user.build_request("boom.module.2", "boom", {}))
+    group.add(client.user.build_request("ok.module", "ok", {}))
+
+    results = [result async for result in group.execute_iter()]
+    results_by_index = {result.index: result for result in results}
+
+    assert len(results) == 3
+    assert results_by_index[0].success is False
+    assert results_by_index[1].success is False
+    assert all(isinstance(results_by_index[idx].error, RuntimeError) for idx in (0, 1))
+    assert str(results_by_index[0].error) == "batch-failed"
+    assert str(results_by_index[1].error) == "batch-failed"
+    assert results_by_index[2].success is True
+    assert results_by_index[2].data == {"module": "ok.module"}
+    await client.close()
+
+
+@pytest.mark.anyio
+async def test_request_group_execute_iter_is_empty_for_empty_group() -> None:
+    """验证空 RequestGroup 的 execute_iter 不会产出结果."""
+    client = Client(platform=Platform.DESKTOP)
+    group = client.request_group()
+
+    results = [result async for result in group.execute_iter()]
+
+    assert results == []
     await client.close()
 
 
 @pytest.mark.anyio
 async def test_request_jce_rejects_non_int_param_keys() -> None:
     """验证 request_jce 会拒绝非 int 键的 param."""
-    client = Client(platform="desktop")
+    client = Client(platform=Platform.DESKTOP)
     with pytest.raises(TypeError, match=r"dict\[int, Any\]"):
         await client.request_jce(
             data={
@@ -288,16 +378,11 @@ def test_api_module_base() -> None:
     assert module._client is client
 
 
-def test_client_build_result_struct() -> None:
-    """测试 Client._build_result 处理 TarsDict 转换."""
-    from tarsio import Struct, TarsDict, field
-
-    class MyStruct(Struct):
-        id: int = field(tag=0)
-        name: str = field(tag=1)
+def test_client_build_result_returns_raw_tarsdict_when_response_model_is_none() -> None:
+    """测试 Client._build_result 在无响应模型时原样返回 TarsDict."""
+    from tarsio import TarsDict
 
     raw_data = TarsDict({0: 123, 1: "test"})
-    result = Client._build_result(raw_data, MyStruct)
-    assert isinstance(result, MyStruct)
-    assert result.id == 123
-    assert result.name == "test"
+    result = Client._build_result(raw_data, None)
+
+    assert result is raw_data
