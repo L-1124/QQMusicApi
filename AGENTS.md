@@ -32,6 +32,6 @@
 ## Agent behavior
 
 * 每次回答都以 `皇上启奏:` 开头。
-* **核心规约**：遵循 `CONTRIBUTING.md` 中的详细规约。**在执行任务前，必须完整阅读该指南以确保合规。**
+* **核心规约**：遵循 `docs/CONTRIBUTING.md` 中的详细规约。**在执行任务前，必须完整阅读该指南以确保合规。**
 * 禁止在 Python 测试中模拟 Rust WireType，除非是明确的协议基线测试。
 * 仅在明确要求时，才能 `git commit` 或 `git push`。
