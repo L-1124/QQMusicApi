@@ -12,7 +12,8 @@ from .core.exceptions import (
     SignInvalidError,
 )
 from .core.request import Request, RequestGroup
-from .models import Credential
+from .core.versioning import Platform
+from .models.request import Credential
 
 __version__ = "0.5.0"
 
@@ -25,6 +26,7 @@ __all__ = [
     "LoginExpiredError",
     "NetworkError",
     "NotLoginError",
+    "Platform",
     "Request",
     "RequestGroup",
     "SignInvalidError",

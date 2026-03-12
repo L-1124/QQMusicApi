@@ -4,13 +4,13 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from qqmusic_api import Client
+from qqmusic_api import Client, Platform
 
 
 @pytest.fixture
 def mock_client():
     """提供一个 execute 被 mock 的 Client 实例."""
-    client = Client(platform="desktop")
+    client = Client(platform=Platform.DESKTOP)
 
     client.execute = AsyncMock()
     client.execute.return_value = {}

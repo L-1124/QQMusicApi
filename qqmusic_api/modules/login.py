@@ -17,7 +17,7 @@ import anyio
 import httpx
 
 from ..core.exceptions import ApiError, LoginError, LoginExpiredError
-from ..models import Credential
+from ..models.request import Credential
 from ..utils.common import hash33
 from ..utils.mqtt import Client as MqttClient
 from ..utils.mqtt import PropertyId

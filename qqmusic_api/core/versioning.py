@@ -1,13 +1,21 @@
 """请求版本策略中心."""
 
-from dataclasses import dataclass
-from typing import Any, Literal
+from dataclasses import dataclass, field
+from enum import Enum
+from typing import Any
 
-from ..models import CommonParams, Credential
+from ..models.request import CommonParams, Credential
 from ..utils.common import hash33
 from ..utils.device import Device
 
-PlatformKind = Literal["android", "android_jce", "desktop", "web"]
+
+class Platform(str, Enum):
+    """请求平台枚举."""
+
+    ANDROID = "android"
+    ANDROID_JCE = "android_jce"
+    DESKTOP = "desktop"
+    WEB = "web"
 
 
 @dataclass(frozen=True, slots=True)
@@ -30,8 +38,14 @@ class VersionPolicy:
     android: VersionProfile
     desktop: VersionProfile
     web: VersionProfile
+    _comm_cache: dict[tuple, dict[str, Any]] = field(
+        init=False,
+        default_factory=dict,
+        repr=False,
+        compare=False,
+    )
 
-    def get_profile(self, platform: str) -> VersionProfile:
+    def get_profile(self, platform: Platform | str) -> VersionProfile:
         """获取平台对应的版本档案.
 
         Args:
@@ -40,15 +54,37 @@ class VersionPolicy:
         Returns:
             对应的版本档案.
         """
-        if platform in {"android", "android_jce"}:
+        if platform in {Platform.ANDROID, Platform.ANDROID_JCE}:
             return self.android
-        if platform == "desktop":
+        if platform == Platform.DESKTOP:
             return self.desktop
         return self.web
 
+    def _build_cache_key(
+        self,
+        platform: Platform | str,
+        credential: Credential,
+        device: Device,
+        qimei: dict[str, str] | None,
+        guid: str,
+    ) -> tuple:
+        """构建 comm 缓存键."""
+        if platform in {Platform.ANDROID, Platform.ANDROID_JCE}:
+            device_key: tuple = (
+                device.android_id,
+                device.version.release,
+                device.model,
+                device.version.sdk,
+                device.fingerprint,
+            )
+        else:
+            device_key = ()
+        qimei_key = tuple(sorted(qimei.items())) if qimei else None
+        return (platform, credential, device_key, qimei_key, guid)
+
     def build_comm(
         self,
-        platform: str,
+        platform: Platform | str,
         credential: Credential,
         device: Device,
         qimei: dict[str, str] | None,
@@ -66,10 +102,15 @@ class VersionPolicy:
         Returns:
             构建后的 comm 参数字典.
         """
+        cache_key = self._build_cache_key(platform, credential, device, qimei, guid)
+        cached = self._comm_cache.get(cache_key)
+        if cached is not None:
+            return cached.copy()
+
         profile = self.get_profile(platform)
         qimei_data = qimei or {}
 
-        if platform in {"android", "android_jce"}:
+        if platform in {Platform.ANDROID, Platform.ANDROID_JCE}:
             params = CommonParams(
                 ct=profile.ct,
                 cv=profile.cv,
@@ -90,7 +131,7 @@ class VersionPolicy:
                 newdevicelevel=str(device.version.sdk),
                 rom=device.fingerprint,
             )
-        elif platform == "desktop":
+        elif platform == Platform.DESKTOP:
             params = CommonParams(
                 ct=profile.ct,
                 cv=profile.cv,
@@ -113,11 +154,13 @@ class VersionPolicy:
             )
 
         comm = params.model_dump(by_alias=True, exclude_none=True)
-        if platform == "android_jce":
-            return {k: str(v) for k, v in comm.items()}
-        return comm
+        if platform == Platform.ANDROID_JCE:
+            comm = {k: str(v) for k, v in comm.items()}
 
-    def build_query_params(self, platform: str) -> dict[str, int]:
+        self._comm_cache[cache_key] = comm
+        return comm.copy()
+
+    def build_query_params(self, platform: Platform | str) -> dict[str, int]:
         """构建查询接口通用参数.
 
         Args:
@@ -129,7 +172,7 @@ class VersionPolicy:
         profile = self.get_profile(platform)
         return {"ct": profile.ct, "cv": profile.cv}
 
-    def get_user_agent(self, platform: str, device: Device) -> str:
+    def get_user_agent(self, platform: Platform | str, device: Device) -> str:
         """根据平台获取 UA.
 
         Args:
@@ -140,7 +183,7 @@ class VersionPolicy:
             UA 字符串.
         """
         profile = self.get_profile(platform)
-        if platform in {"android", "android_jce"}:
+        if platform in {Platform.ANDROID, Platform.ANDROID_JCE}:
             ua_version = profile.ua_version or profile.cv
             return f"QQMusic/{ua_version} (Android {device.version.release}; {device.model})"
         return (
@@ -148,7 +191,7 @@ class VersionPolicy:
             "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         )
 
-    def get_qimei_app_version(self, platform: str = "android") -> str:
+    def get_qimei_app_version(self, platform: Platform | str = Platform.ANDROID) -> str:
         """获取 QIMEI 请求 appVersion.
 
         Args:
@@ -160,7 +203,7 @@ class VersionPolicy:
         profile = self.get_profile(platform)
         return profile.qimei_app_version or "14.9.0.8"
 
-    def get_qimei_sdk_version(self, platform: str = "android") -> str:
+    def get_qimei_sdk_version(self, platform: Platform | str = Platform.ANDROID) -> str:
         """获取 QIMEI 请求 sdkVersion.
 
         Args:

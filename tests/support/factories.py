@@ -2,11 +2,11 @@
 
 from typing import Any
 
-from qqmusic_api import Credential
+from qqmusic_api import Credential, Platform
 from qqmusic_api.core.client import Client
 
 
-def make_client(*, platform: str = "desktop") -> Client:
+def make_client(*, platform: Platform | str = Platform.DESKTOP) -> Client:
     """创建测试用 Client."""
     return Client(platform=platform)
 

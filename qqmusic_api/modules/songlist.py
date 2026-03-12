@@ -1,6 +1,6 @@
 """歌单相关 API."""
 
-from ..models import Credential
+from ..models.request import Credential
 from ._base import ApiModule
 
 
