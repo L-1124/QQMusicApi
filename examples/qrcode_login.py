@@ -11,23 +11,9 @@ from qqmusic_api.modules.login import QR, QRCodeLoginEvents, QRLoginType
 def show_qrcode(qr: QR) -> None:
     """显示二维码."""
     try:
-        from io import BytesIO
+        from terminal_qrcode import draw
 
-        from PIL import Image
-        from pyzbar.pyzbar import decode
-
-        from qrcode import QRCode
-
-        img = Image.open(BytesIO(qr.data))
-        decoded = decode(img)
-        if not decoded:
-            print("无法解码二维码图片")
-            return
-
-        url = decoded[0].data.decode("utf-8")
-        qr_console = QRCode()
-        qr_console.add_data(url)
-        qr_console.print_ascii()
+        draw(qr.data).print(end="\n")
     except ImportError:
         # 保存二维码到当前目录
         save_path = qr.save(Path("./qrcode"))

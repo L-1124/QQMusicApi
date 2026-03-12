@@ -50,33 +50,36 @@ repository = "https://github.com/l-1124/QQMusicApi"
 
 [dependency-groups]
 dev = [
-  "pillow>=12.1.1",
-  "pyzbar>=0.1.9",
-  "qrcode>=8.2",
-  "setuptools>=82.0.0",
   { include-group = "docs" },
   { include-group = "linting" },
   { include-group = "testing" },
+  "terminal-qrcode>=1.1.0",
 ]
 docs = [
   "markdown-callouts>=0.4.0",
-  "mkdocs-material>=9.7.3",
+  "mkdocs-material>=9.7.5",
   "mkdocstrings>=1.0.3",
   "mkdocstrings-python>=2.0.3",
-  "zensical>=0.0.23",
+  "zensical>=0.0.26",
 ]
 linting = ["pre-commit>=4.5.1", "pyrefly", "ruff>=0.14.14"]
 testing = ["pytest>=9.0.2", "pytest-sugar>=1.1.1"]
 
 [build-system]
-requires = ["setuptools>=80.0.0", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [tool.commitizen]
 name = "cz_gitmoji"
 
+[tool.hatch.build.targets.wheel]
+packages = ["qqmusic_api"]
+
+[tool.hatch.version]
+path = "qqmusic_api/__init__.py"
+
 [tool.pyrefly]
-project-includes = ["qqmusic_api"]
+project-includes = ["qqmusic_api", "tests", "examples"]
 
 [tool.pytest]
 addopts = ["-rxXs"]
@@ -121,15 +124,6 @@ ignore = [
   "TID252",
 ]
 pydocstyle = { convention = "google" }
-
-[tool.setuptools.dynamic]
-version = { attr = "qqmusic_api.__version__" }
-
-[tool.setuptools.packages.find]
-include = ["qqmusic_api*"]
-
-[tool.setuptools.package-data]
-qqmusic_api = ["*.pyi", "algorithms/*.pyi"]
 
 [tool.uv]
 package = true
