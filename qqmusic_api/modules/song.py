@@ -1,6 +1,8 @@
 """歌曲相关 API 模块."""
 
 from enum import Enum
+from random import choice
+from time import time
 from typing import Any, overload
 
 from ..utils.common import get_guid
@@ -65,7 +67,16 @@ class EncryptedSongFileType(BaseSongFileType):
 class SongApi(ApiModule):
     """歌曲相关 API 模块类."""
 
-    _SONG_URL_DOMAIN = "https://isure.stream.qqmusic.qq.com/"
+    _SONG_URL_FALLBACK_DOMAIN = "https://isure.stream.qqmusic.qq.com/"
+
+    def __init__(self, client) -> None:
+        """初始化歌曲模块."""
+        super().__init__(client)
+        self._SONG_URL_DOMAINS: tuple[str, ...] = ()
+        self._song_url_dispatch_data: dict[str, Any] | None = None
+        self._song_url_dispatch_refresh_at = 0.0
+        self._song_url_dispatch_expire_at = 0.0
+        self._song_url_domain_infos: dict[str, dict[str, Any]] = {}
 
     def query_song(self, value: list[int] | list[str]):
         """根据 id 或 mid 获取歌曲信息.
@@ -112,6 +123,55 @@ class SongApi(ApiModule):
             },
         )
 
+    async def _get_cdn_dispatch(
+        self,
+        *,
+        force_refresh: bool = False,
+        use_new_domain: bool = True,
+        use_ipv6: bool = True,
+    ) -> None:
+        """获取并缓存音频 CDN 调度信息.
+
+        Args:
+            force_refresh: 是否强制刷新缓存.
+            use_new_domain: 是否启用新域名.
+            use_ipv6: 是否启用 IPv6.
+        """
+        now = time()
+        cached_data = self._song_url_dispatch_data
+        refresh_at = self._song_url_dispatch_refresh_at
+
+        if not force_refresh and cached_data is not None and now < refresh_at:
+            return
+
+        data = await self._client.execute(
+            self._build_request(
+                module="music.audioCdnDispatch.cdnDispatch",
+                method="GetCdnDispatch",
+                param={
+                    "guid": get_guid(),
+                    "uid": "0",
+                    "use_new_domain": int(use_new_domain),
+                    "use_ipv6": int(use_ipv6),
+                },
+            ),
+        )
+
+        self._song_url_dispatch_data = data
+        self._SONG_URL_DOMAINS = tuple(data["sip"])
+        self._song_url_domain_infos = {
+            item["cdn"]: item for item in data.get("sipinfo", []) if isinstance(item, dict) and "cdn" in item
+        }
+        now = time()
+        self._song_url_dispatch_refresh_at = now + data["refreshTime"]
+        self._song_url_dispatch_expire_at = now + min(data["expiration"], data["cacheTime"])
+
+    def _choose_song_url_domain(self) -> str:
+        """选择当前使用的歌曲下载域名."""
+        if not self._SONG_URL_DOMAINS:
+            return self._SONG_URL_FALLBACK_DOMAIN
+        return choice(list(self._SONG_URL_DOMAINS))
+
     @overload
     async def get_song_urls(
         self,
@@ -143,6 +203,8 @@ class SongApi(ApiModule):
         """
         if not mid:
             return {}
+
+        await self._get_cdn_dispatch()
 
         encrypted = isinstance(file_type, EncryptedSongFileType)
         module, method = (
@@ -204,7 +266,7 @@ class SongApi(ApiModule):
                 continue
 
             path = info.get("purl") or info.get("wifiurl") or ""
-            url = f"{self._SONG_URL_DOMAIN}{path}" if path else ""
+            url = f"{self._choose_song_url_domain()}{path}" if path else ""
             result[songmid] = url
 
     def _merge_encrypted_song_urls(
@@ -230,7 +292,7 @@ class SongApi(ApiModule):
                 continue
 
             path = info.get("purl") or info.get("wifiurl") or ""
-            url = f"{self._SONG_URL_DOMAIN}{path}" if path else ""
+            url = f"{self._choose_song_url_domain()}{path}" if path else ""
             result[songmid] = (url, str(info.get("ekey", "")))
 
     def get_detail(self, value: str | int):
