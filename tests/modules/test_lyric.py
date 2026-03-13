@@ -19,6 +19,8 @@ async def test_get_lyric_by_mid(mock_client, make_request):
     args, _ = mock_client.execute.call_args
     request = args[0]
     assert request.param["songMid"] == "002mZevo3wHvsc"
+    assert request.param["ct"] == mock_client._version_policy.get_profile(mock_client.platform).ct
+    assert request.param["cv"] == mock_client._version_policy.get_profile(mock_client.platform).cv
     assert request.param["qrc"] is True
     assert request.param["trans"] is True
 

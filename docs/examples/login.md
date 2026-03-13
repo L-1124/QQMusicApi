@@ -12,7 +12,7 @@ async def main() -> None:
         qr = await client.login.get_qrcode(QRLoginType.QQ)
         qr.save("./qrcode")
 
-        async for event, credential in client.login.iter_qrcode_login(qr, timeout=180):
+        async for event, credential in client.login.iter_qrcode_login(qr, timeout_seconds=180):
             print(event)
             if event == QRCodeLoginEvents.DONE and credential is not None:
                 print(credential)

@@ -54,7 +54,7 @@ async with Client(credential=cred) as client:
 初始化 `Client` 时，支持以下配置参数：
 
 * `credential` (Credential, optional): 全局凭证
-* `enable_sign` (bool, default=False): 是否启用请求签名算法 (纯 C 扩展支持)
+* `enable_sign` (bool, default=False): 是否启用请求签名算法
 * `platform` (str, default="android"): 模拟的平台类型
 * `session` (httpx.AsyncClient, optional): 自定义 HTTP 连接会话
 * `max_concurrency` (int, default=10): 最大并发请求数限制

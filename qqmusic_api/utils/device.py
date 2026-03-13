@@ -1,7 +1,6 @@
 """虚拟设备信息构造与持久化管理. 用于模拟 Android 设备指纹."""
 
 import binascii
-import contextlib
 import hashlib
 import logging
 import random
@@ -15,10 +14,6 @@ import anyio
 import orjson as json
 
 logger = logging.getLogger("qqmusicapi.device")
-
-# 默认设备缓存基准目录
-DEFAULT_CACHE_DIR = Path(__file__).parent.parent / ".cache"
-DEFAULT_DEVICE_PATH = DEFAULT_CACHE_DIR / "device.json"
 
 
 def random_imei() -> str:
@@ -118,12 +113,15 @@ async def save_device(device: Device, path: Path | anyio.Path | str | None = Non
 
     Args:
         device: 待保存的设备对象.
-        path: 保存路径, 默认使用全局默认路径.
+        path: 保存路径. 若为 None 则不执行持久化.
 
     Returns:
         None.
     """
-    save_path = anyio.Path(path or DEFAULT_DEVICE_PATH)
+    if path is None:
+        return
+
+    save_path = anyio.Path(path)
     await save_path.parent.mkdir(parents=True, exist_ok=True)
     await save_path.write_text(json.dumps(asdict(device)).decode())
 
@@ -132,12 +130,15 @@ async def get_cached_device(path: Path | anyio.Path | str | None = None) -> Devi
     """获取缓存的设备信息,如果不存在则创建新的.
 
     Args:
-        path: 缓存文件路径.
+        path: 缓存文件路径. 若为 None 则只返回内存中的新设备对象.
 
     Returns:
         Device: 缓存或新创建的设备对象.
     """
-    raw_path = path or DEFAULT_DEVICE_PATH
+    if path is None:
+        return Device()
+
+    raw_path = path
     cache_path = anyio.Path(raw_path)
 
     if not await cache_path.exists():
@@ -170,13 +171,9 @@ class DeviceManager:
         Returns:
             anyio.Path: 解析后的设备文件路径.
         """
-        if self._device_path is not None:
-            return self._device_path
-
-        devices_dir = DEFAULT_CACHE_DIR / "devices"
-        if uid:
-            return anyio.Path(devices_dir / f"{uid}.json")
-        return anyio.Path(devices_dir / "guest.json")
+        if self._device_path is None:
+            raise RuntimeError("未配置 device_path 时不支持解析持久化路径")
+        return self._device_path
 
     async def get_device(self, uid: int | str | None) -> Device:
         """获取并加载设备对象.
@@ -190,7 +187,7 @@ class DeviceManager:
         if self.device is not None:
             return self.device
 
-        target_path = self._resolve_path(uid)
+        target_path = self._resolve_path(uid) if self._device_path is not None else None
         self.device = await get_cached_device(target_path)
         return self.device
 
@@ -200,7 +197,7 @@ class DeviceManager:
         Args:
             uid: 用户唯一标识.
         """
-        if self.device is not None:
+        if self.device is not None and self._device_path is not None:
             await save_device(self.device, self._resolve_path(uid))
 
     async def apply_qimei(self, q16: str, q36: str, uid: int | str | None) -> None:
@@ -222,22 +219,15 @@ class DeviceManager:
         Args:
             uid: 用户唯一标识.
         """
-        if not uid or self._device_path is not None:
+        if not uid or self._device_path is None:
             return
 
         target_path = self._resolve_path(uid)
-        guest_path = self._resolve_path(None)
-
         if await target_path.exists():
             self.device = await load_device(target_path)
             logger.debug("已切换至实名用户设备: %s", target_path)
-        else:
-            if self.device is None:
-                self.device = await get_cached_device(guest_path)
-            await save_device(self.device, target_path)
-            # 收尾防串联: 彻底销毁刚刚被过户的公共游客壳子, 确保下一个新建的游客得到全新的清洁指纹
-            logger.debug("已将游离设备归档至实名用户环境: %s", target_path)
+            return
 
-            if await guest_path.exists():
-                with contextlib.suppress(OSError):
-                    await guest_path.unlink()
+        if self.device is not None:
+            await save_device(self.device, target_path)
+            logger.debug("已将内存设备归档至实名用户环境: %s", target_path)

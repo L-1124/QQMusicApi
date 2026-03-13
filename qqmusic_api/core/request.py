@@ -80,8 +80,8 @@ class RequestGroup:
     _client: "Client"
     batch_size: int = 20
     max_inflight_batches: int = 5
-    _requests: list[Request[RequestValue]] = field(default_factory=list)
-    _grouped_requests: dict[BaseGroupKey, list[tuple[int, Request[RequestValue]]]] = field(default_factory=dict)
+    _requests: list[Request[Any]] = field(default_factory=list)
+    _grouped_requests: dict[BaseGroupKey, list[tuple[int, Request[Any]]]] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         """校验分批参数."""
@@ -90,7 +90,7 @@ class RequestGroup:
         if self.max_inflight_batches <= 0:
             raise ValueError("max_inflight_batches 必须大于 0")
 
-    def add(self, request: Request[RequestValue]) -> "RequestGroup":
+    def add(self, request: Request[Any]) -> "RequestGroup":
         """添加请求.
 
         Args:
@@ -106,7 +106,7 @@ class RequestGroup:
         self._grouped_requests.setdefault(group_key, []).append((index, request))
         return self
 
-    def extend(self, requests: list[Request[RequestValue]]) -> "RequestGroup":
+    def extend(self, requests: list[Request[Any]]) -> "RequestGroup":
         """批量添加请求.
 
         Args:
@@ -119,7 +119,7 @@ class RequestGroup:
             self.add(request)
         return self
 
-    def _group_key(self, request: Request[RequestValue]) -> BaseGroupKey:
+    def _group_key(self, request: Request[Any]) -> BaseGroupKey:
         """生成分组键.
 
         Args:
@@ -197,15 +197,15 @@ class RequestGroup:
 
     def _iter_batches(
         self,
-        grouped: dict[BaseGroupKey, list[tuple[int, Request[RequestValue]]]],
-    ) -> Generator[list[tuple[int, Request[RequestValue]]], None, None]:
+        grouped: dict[BaseGroupKey, list[tuple[int, Request[Any]]]],
+    ) -> Generator[list[tuple[int, Request[Any]]], None, None]:
         """按分组和 batch_size 迭代批次.
 
         Args:
             grouped: 分组后的请求映射.
 
         Yields:
-            list[tuple[int, Request[RequestValue]]]: 单个待发送批次.
+            list[tuple[int, Request[Any]]]: 单个待发送批次.
         """
         for group in grouped.values():
             for start in range(0, len(group), self.batch_size):
@@ -213,7 +213,7 @@ class RequestGroup:
 
     async def _stream_batch_results(
         self,
-        batch_slice: list[tuple[int, Request[RequestValue]]],
+        batch_slice: list[tuple[int, Request[Any]]],
         limiter: anyio.CapacityLimiter,
         send_stream: ObjectSendStream[RequestGroupResult],
     ) -> None:
@@ -235,7 +235,7 @@ class RequestGroup:
 
     async def _execute_batch(
         self,
-        batch_slice: list[tuple[int, Request[RequestValue]]],
+        batch_slice: list[tuple[int, Request[Any]]],
     ) -> list[RequestGroupResult]:
         """执行单个批次并返回逐条结果.
 
@@ -340,7 +340,7 @@ class RequestGroup:
 
     def _build_batch_failure_results(
         self,
-        batch_slice: list[tuple[int, Request[RequestValue]]],
+        batch_slice: list[tuple[int, Request[Any]]],
         error: Exception,
     ) -> list[RequestGroupResult]:
         """为整批失败构造逐条失败结果."""

@@ -26,8 +26,6 @@ class LyricApi(ApiModule):
         """
         params: dict[str, Any] = {
             "crypt": 1,
-            "ct": 11,
-            "cv": 13020508,
             "lrc_t": 0,
             "qrc": qrc,
             "qrc_t": 0,
@@ -37,6 +35,7 @@ class LyricApi(ApiModule):
             "trans_t": 0,
             "type": 1,
         }
+        params.update(self._build_query_common_params())
         if isinstance(value, int):
             params["songId"] = value
         else:
