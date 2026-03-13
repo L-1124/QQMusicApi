@@ -4,7 +4,7 @@ import logging
 import sys
 import uuid
 from http.cookiejar import CookieJar
-from typing import TYPE_CHECKING, Any, TypedDict, cast, overload
+from typing import TYPE_CHECKING, Any, TypedDict, overload
 
 from typing_extensions import override
 
@@ -26,6 +26,9 @@ from ..models.request import (
     JceRequestItem,
     JceResponse,
     RequestItem,
+    RequestResult,
+    RequestValue,
+    ResponseData,
     ResponseModel,
 )
 from ..utils.common import bool_to_int
@@ -366,12 +369,12 @@ class Client:
         return RequestGroup(self, batch_size=batch_size, max_inflight_batches=max_inflight_batches)
 
     @overload
-    async def execute(self, request: "Request[ResponseModel]") -> "ResponseModel": ...
+    async def execute(self, request: "Request[RequestResult]") -> "RequestResult": ...
 
     @overload
-    async def execute(self, request: "Request") -> TarsDict | dict[str, Any]: ...
+    async def execute(self, request: "Request") -> ResponseData: ...
 
-    async def execute(self, request: "Request") -> Any:
+    async def execute(self, request: "Request") -> RequestValue:
         """执行单个请求描述符并解析返回结果.
 
         调用中间件进行请求预处理, 随后根据请求格式 (JCE/JSON) 分发调用底层发包方法,
@@ -416,7 +419,10 @@ class Client:
                     data=item.data,
                     context={"module": request.module, "method": request.method, "is_jce": True},
                 )
-            return self._build_result(item.data, request.response_model)
+            response_model = request.response_model
+            if response_model is None:
+                return item.data
+            return self._build_result(item.data, response_model)
 
         response = await self.request_musicu(
             data=data,
@@ -442,7 +448,11 @@ class Client:
                 data=item.get("data"),
                 context={"module": request.module, "method": request.method, "is_jce": False},
             )
-        return self._build_result(item.get("data"), request.response_model)
+        response_model = request.response_model
+        raw = item.get("data")
+        if response_model is None:
+            return raw
+        return self._build_result(raw, response_model)
 
     @overload
     @staticmethod
@@ -461,13 +471,13 @@ class Client:
     @staticmethod
     def _build_result(
         raw: TarsDict | dict[str, Any],
-        response_model: type["ResponseModel"] | None,
-    ) -> Any:
+        response_model: type[BaseModel] | None,
+    ) -> RequestValue:
         """构建响应对象.
 
         Args:
             raw: 原始响应数据.
-            response_model: 期望的响应模型类型, 支持 Pydantic BaseModel 或 Tarsio Struct.
+            response_model: 期望的响应模型类型, 支持 Pydantic BaseModel.
 
         Returns:
             R: 构建好的响应模型实例, 或原样返回 (如果无需转换).
@@ -653,9 +663,9 @@ class Client:
         logger.debug("构建 JCE 批量请求: count=%s", len(requests))
 
         def _ensure_jce_param(p: dict[str, Any] | dict[int, Any]) -> dict[int, Any]:
-            if not isinstance(p, dict) or not all(isinstance(k, int) for k in p):
+            if not all(isinstance(k, int) for k in p):
                 raise TypeError("JCE param 必须是 dict[int, Any]")
-            return cast("dict[int, Any]", p)
+            return {key: value for key, value in p.items() if isinstance(key, int)}
 
         payload = JceRequest(
             await self._build_common_params(Platform.ANDROID_JCE, credential or self.credential, comm),

@@ -3,12 +3,13 @@
 import warnings
 from collections.abc import AsyncIterator, Generator
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Generic, cast
+from typing import TYPE_CHECKING, Any, Generic
 
 import anyio
 from anyio.abc import ObjectSendStream
+from pydantic import BaseModel
 
-from ..models.request import Credential, RequestItem, ResponseModel
+from ..models.request import Credential, RequestItem, RequestResult, RequestValue, ResponseData
 from .exceptions import ApiError, build_api_error, extract_api_error_code
 from .versioning import Platform
 
@@ -21,14 +22,14 @@ BaseGroupKey = tuple[bool, str | Platform, FrozenCommKey, int, str]
 
 
 @dataclass
-class Request(Generic[ResponseModel]):
+class Request(Generic[RequestResult]):
     """请求描述符."""
 
     _client: "Client"
     module: str
     method: str
     param: dict[str, Any] | dict[int, Any]
-    response_model: type[ResponseModel] | None = None
+    response_model: type[BaseModel] | None = None
     comm: dict[str, int | str | bool] | None = None
     is_jce: bool = False
     credential: Credential | None = None
@@ -39,7 +40,7 @@ class Request(Generic[ResponseModel]):
         """标记当前请求已被执行或纳入调度."""
         self._consumed = True
 
-    def __await__(self) -> Generator[Any, Any, ResponseModel]:
+    def __await__(self) -> Generator[Any, Any, RequestResult]:
         """使 Request 对象可被 await 执行."""
         self._mark_consumed()
         return self._client.execute(self).__await__()
@@ -64,7 +65,7 @@ class RequestGroupResult:
     module: str
     method: str
     success: bool
-    data: Any | None = None
+    data: RequestValue | None = None
     error: Exception | None = None
 
 
@@ -79,8 +80,8 @@ class RequestGroup:
     _client: "Client"
     batch_size: int = 20
     max_inflight_batches: int = 5
-    _requests: list[Request[Any]] = field(default_factory=list)
-    _grouped_requests: dict[BaseGroupKey, list[tuple[int, Request[Any]]]] = field(default_factory=dict)
+    _requests: list[Request[RequestValue]] = field(default_factory=list)
+    _grouped_requests: dict[BaseGroupKey, list[tuple[int, Request[RequestValue]]]] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         """校验分批参数."""
@@ -89,7 +90,7 @@ class RequestGroup:
         if self.max_inflight_batches <= 0:
             raise ValueError("max_inflight_batches 必须大于 0")
 
-    def add(self, request: Request[Any]) -> "RequestGroup":
+    def add(self, request: Request[RequestValue]) -> "RequestGroup":
         """添加请求.
 
         Args:
@@ -105,7 +106,7 @@ class RequestGroup:
         self._grouped_requests.setdefault(group_key, []).append((index, request))
         return self
 
-    def extend(self, requests: list[Request[Any]]) -> "RequestGroup":
+    def extend(self, requests: list[Request[RequestValue]]) -> "RequestGroup":
         """批量添加请求.
 
         Args:
@@ -118,7 +119,7 @@ class RequestGroup:
             self.add(request)
         return self
 
-    def _group_key(self, request: Request[Any]) -> BaseGroupKey:
+    def _group_key(self, request: Request[RequestValue]) -> BaseGroupKey:
         """生成分组键.
 
         Args:
@@ -151,20 +152,31 @@ class RequestGroup:
             return None
         return tuple(sorted(comm.items(), key=lambda kv: kv[0]))
 
-    async def execute(self) -> list[Any | Exception]:
+    async def execute(self) -> list[RequestValue | Exception]:
         """执行当前批量请求并返回混合结果列表.
 
         Returns:
-            list[Any | Exception]: 与请求添加顺序一致的结果列表.
+            list[RequestValue | Exception]: 与请求添加顺序一致的结果列表.
             成功项为响应数据, 失败项为异常对象.
         """
         if not self._requests:
             return []
 
-        results: list[Any | Exception | None] = [None] * len(self._requests)
+        results: list[RequestValue | Exception | None] = [None] * len(self._requests)
         async for result in self.execute_iter():
-            results[result.index] = result.data if result.success else cast("Exception", result.error)
-        return cast("list[Any | Exception]", results)
+            if result.success:
+                results[result.index] = result.data
+            else:
+                if result.error is None:
+                    raise RuntimeError("批量请求失败结果缺少异常对象")
+                results[result.index] = result.error
+
+        finalized: list[RequestValue | Exception] = []
+        for item in results:
+            if item is None:
+                raise RuntimeError("批量请求结果存在未填充项")
+            finalized.append(item)
+        return finalized
 
     async def execute_iter(self) -> AsyncIterator[RequestGroupResult]:
         """执行当前批量请求并按完成先后流式返回结果."""
@@ -185,15 +197,15 @@ class RequestGroup:
 
     def _iter_batches(
         self,
-        grouped: dict[BaseGroupKey, list[tuple[int, Request[Any]]]],
-    ) -> Generator[list[tuple[int, Request[Any]]], None, None]:
+        grouped: dict[BaseGroupKey, list[tuple[int, Request[RequestValue]]]],
+    ) -> Generator[list[tuple[int, Request[RequestValue]]], None, None]:
         """按分组和 batch_size 迭代批次.
 
         Args:
             grouped: 分组后的请求映射.
 
         Yields:
-            list[tuple[int, Request[Any]]]: 单个待发送批次.
+            list[tuple[int, Request[RequestValue]]]: 单个待发送批次.
         """
         for group in grouped.values():
             for start in range(0, len(group), self.batch_size):
@@ -201,7 +213,7 @@ class RequestGroup:
 
     async def _stream_batch_results(
         self,
-        batch_slice: list[tuple[int, Request[Any]]],
+        batch_slice: list[tuple[int, Request[RequestValue]]],
         limiter: anyio.CapacityLimiter,
         send_stream: ObjectSendStream[RequestGroupResult],
     ) -> None:
@@ -221,7 +233,10 @@ class RequestGroup:
             for result in batch_results:
                 await send_stream.send(result)
 
-    async def _execute_batch(self, batch_slice: list[tuple[int, Request[Any]]]) -> list[RequestGroupResult]:
+    async def _execute_batch(
+        self,
+        batch_slice: list[tuple[int, Request[RequestValue]]],
+    ) -> list[RequestGroupResult]:
         """执行单个批次并返回逐条结果.
 
         Args:
@@ -272,7 +287,14 @@ class RequestGroup:
                 )
                 continue
             code, subcode = extract_api_error_code(item)
-            item_data = getattr(item, "data", None) if first.is_jce else cast("dict[str, Any]", item).get("data")
+            item_data: ResponseData | None
+            if first.is_jce:
+                item_data = getattr(item, "data", None)
+            elif isinstance(item, dict):
+                raw_item_data = item.get("data")
+                item_data = raw_item_data if isinstance(raw_item_data, dict) else None
+            else:
+                item_data = None
             if code is not None and code != 0:
                 output.append(
                     RequestGroupResult(
@@ -291,13 +313,17 @@ class RequestGroup:
                 continue
 
             try:
+                response_model = req.response_model
+                if item_data is None:
+                    raise ApiError("缺少响应数据", code=-1, data=item)
+                result = self._client._build_result(item_data, response_model) if response_model is not None else item_data
                 output.append(
                     RequestGroupResult(
                         index=origin_idx,
                         module=req.module,
                         method=req.method,
                         success=True,
-                        data=self._client._build_result(cast("Any", item_data), req.response_model),
+                        data=result,
                     ),
                 )
             except Exception as exc:
@@ -314,7 +340,7 @@ class RequestGroup:
 
     def _build_batch_failure_results(
         self,
-        batch_slice: list[tuple[int, Request[Any]]],
+        batch_slice: list[tuple[int, Request[RequestValue]]],
         error: Exception,
     ) -> list[RequestGroupResult]:
         """为整批失败构造逐条失败结果."""

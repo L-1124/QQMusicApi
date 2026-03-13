@@ -8,8 +8,8 @@ from ..core.exceptions import NotLoginError
 
 if TYPE_CHECKING:
     from ..core.client import Client
-    from ..core.request import Request, ResponseModel
-    from ..models.request import Credential
+    from ..core.request import Request
+    from ..models.request import Credential, ResponseData, ResponseModel
 
 
 class ApiModule:
@@ -119,7 +119,7 @@ class ApiModule:
         is_jce: bool = False,
         credential: "Credential | None" = None,
         platform: str | None = None,
-    ) -> "Request[dict[str, Any]]": ...
+    ) -> "Request[ResponseData]": ...
 
     @overload
     def _build_request(

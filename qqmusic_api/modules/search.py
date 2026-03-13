@@ -135,5 +135,4 @@ class SearchApi(ApiModule):
                 "highlight": highlight,
                 "grp": True,
             },
-            response_model=dict[str, Any],
         )
