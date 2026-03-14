@@ -9,6 +9,14 @@ from ..utils.common import get_guid
 from ._base import ApiModule
 
 
+def _as_str_dict(value: Any) -> dict[str, Any] | None:
+    if not isinstance(value, dict):
+        return None
+    if any(not isinstance(key, str) for key in value):
+        return None
+    return value
+
+
 class BaseSongFileType(Enum):
     """基础歌曲文件类型枚举类."""
 
@@ -157,14 +165,30 @@ class SongApi(ApiModule):
             ),
         )
 
-        self._song_url_dispatch_data = data
-        self._SONG_URL_DOMAINS = tuple(data["sip"])
+        payload = _as_str_dict(data)
+        if payload is None:
+            raise TypeError("GetCdnDispatch 返回了非字符串键字典")
+
+        self._song_url_dispatch_data = payload
+        sip = payload.get("sip", [])
+        if isinstance(sip, list):
+            self._SONG_URL_DOMAINS = tuple(item for item in sip if isinstance(item, str))
+        else:
+            self._SONG_URL_DOMAINS = ()
         self._song_url_domain_infos = {
-            item["cdn"]: item for item in data.get("sipinfo", []) if isinstance(item, dict) and "cdn" in item
+            item["cdn"]: item
+            for item in payload.get("sipinfo", [])
+            if isinstance(item, dict) and isinstance(item.get("cdn"), str)
         }
         now = time()
-        self._song_url_dispatch_refresh_at = now + data["refreshTime"]
-        self._song_url_dispatch_expire_at = now + min(data["expiration"], data["cacheTime"])
+        refresh_time = payload.get("refreshTime", 0)
+        expiration = payload.get("expiration", 0)
+        cache_time = payload.get("cacheTime", 0)
+        self._song_url_dispatch_refresh_at = now + (refresh_time if isinstance(refresh_time, int | float) else 0)
+        if isinstance(expiration, int | float) and isinstance(cache_time, int | float):
+            self._song_url_dispatch_expire_at = now + min(expiration, cache_time)
+        else:
+            self._song_url_dispatch_expire_at = now
 
     def _choose_song_url_domain(self) -> str:
         """选择当前使用的歌曲下载域名."""
@@ -233,14 +257,20 @@ class SongApi(ApiModule):
             for raw in raw_results:
                 if isinstance(raw, Exception):
                     raise raw
-                self._merge_encrypted_song_urls(encrypted_result, raw)
+                payload = _as_str_dict(raw)
+                if payload is None:
+                    continue
+                self._merge_encrypted_song_urls(encrypted_result, payload)
             return encrypted_result
 
         plain_result: dict[str, str] = {}
         for raw in raw_results:
             if isinstance(raw, Exception):
                 raise raw
-            self._merge_song_urls(plain_result, raw)
+            payload = _as_str_dict(raw)
+            if payload is None:
+                continue
+            self._merge_song_urls(plain_result, payload)
         return plain_result
 
     def _merge_song_urls(

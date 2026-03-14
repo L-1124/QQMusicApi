@@ -316,7 +316,9 @@ class RequestGroup:
                 response_model = req.response_model
                 if item_data is None:
                     raise ApiError("缺少响应数据", code=-1, data=item)
-                result = self._client._build_result(item_data, response_model) if response_model is not None else item_data
+                result = (
+                    self._client._build_result(item_data, response_model) if response_model is not None else item_data
+                )
                 output.append(
                     RequestGroupResult(
                         index=origin_idx,

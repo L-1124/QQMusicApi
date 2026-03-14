@@ -135,4 +135,5 @@ class SearchApi(ApiModule):
                 "highlight": highlight,
                 "grp": True,
             },
+            platform="mobile",
         )

@@ -2,7 +2,7 @@
 
 import gc
 import warnings
-from typing import Any
+from typing import Any, cast
 
 import anyio
 import httpx
@@ -214,7 +214,8 @@ async def test_request_group_error_outcomes_are_written_back() -> None:
 
     assert len(outcomes) == 2
     assert isinstance(outcomes[0], dict)
-    assert outcomes[0].get("ok") is True
+    first_result = cast("dict[str, Any]", outcomes[0])
+    assert first_result.get("ok") is True
     assert isinstance(outcomes[1], Exception)
     assert getattr(outcomes[1], "code", None) == 500003
     await client.close()
@@ -298,7 +299,8 @@ async def test_request_group_execute_iter_yields_unordered_results_with_index() 
     data_items = []
     for result in results:
         assert result.data is not None
-        data_items.append(result.data)
+        assert isinstance(result.data, dict)
+        data_items.append(cast("dict[str, Any]", result.data))
     assert [item["index"] for item in data_items] == [3, 2, 1, 0]
     assert all(result.error is None for result in results)
     await client.close()

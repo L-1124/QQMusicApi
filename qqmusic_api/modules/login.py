@@ -34,6 +34,14 @@ logger = logging.getLogger("qqmusicapi.login")
 QRLoginItem = tuple["QRCodeLoginEvents", Credential | None]
 
 
+def _as_str_dict(value: Any) -> dict[str, Any] | None:
+    if not isinstance(value, dict):
+        return None
+    if any(not isinstance(key, str) for key in value):
+        return None
+    return value
+
+
 @dataclass(frozen=True)
 class PollInterval:
     """二维码登录轮询间隔控制策略 (单位: 秒).
@@ -537,8 +545,12 @@ class LoginApi(ApiModule):
         except ApiError as exc:
             raise self._raise_login_error("MobileLogin", "获取二维码失败", cause=exc) from exc
 
-        qrcode = str(data.get("qrcode", ""))
-        qrcode_id = str(data.get("qrcodeID", ""))
+        payload = _as_str_dict(data)
+        if payload is None:
+            raise self._raise_login_error("MobileLogin", "获取二维码失败")
+
+        qrcode = str(payload.get("qrcode", ""))
+        qrcode_id = str(payload.get("qrcodeID", ""))
         if not qrcode or not qrcode_id:
             raise self._raise_login_error("MobileLogin", "获取二维码失败")
         return QR(
