@@ -1,7 +1,8 @@
 """请求描述符与批量请求容器. 提供对 API 请求的抽象与调度."""
 
 from collections.abc import AsyncIterator, Generator
-from dataclasses import dataclass, field, replace as dc_replace
+from dataclasses import dataclass, field
+from dataclasses import replace as dc_replace
 from typing import TYPE_CHECKING, Any, Generic, Literal, TypeAlias, TypeVar
 
 import anyio
@@ -17,8 +18,8 @@ from .exceptions import (
     _build_api_error,
     _extract_api_error_code,
 )
-from .versioning import Platform
 from .pagination import PaginationMeta, ResponsePager
+from .versioning import Platform
 
 if TYPE_CHECKING:
     from .client import Client
@@ -53,7 +54,7 @@ class Request(Generic[RequestResultT]):
         return self._client.execute(self).__await__()
 
     def replace(self, **changes: Any) -> "Request[RequestResultT]":
-        """克隆请求并应用修改，保持原请求不可变."""
+        """克隆请求并应用修改, 保持原请求不可变."""
         return dc_replace(self, **changes)
 
     def paginate(self) -> ResponsePager[RequestResultT]:

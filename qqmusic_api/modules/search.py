@@ -146,7 +146,7 @@ class SearchApi(ApiModule):
                 strategy=PageStrategy(page_key="page_num", page_size=num, start_page=page),
                 adapter=ResponseAdapter(
                     has_more_flag=lambda r: getattr(r, "nextpage", -1) != -1,
-                    total="total_num"
-                )
+                    total="total_num",
+                ),
             ),
         )

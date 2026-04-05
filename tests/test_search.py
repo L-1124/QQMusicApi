@@ -61,13 +61,14 @@ async def test_search_by_type_with_int(client: Client) -> None:
 
 @pytest.mark.asyncio
 async def test_search_by_type_paginate(client):
+    """测试按类型搜索的分页能力."""
     # 测试分页迭代 (取前两页)
-    pager = client.search.search_by_type('周杰伦', num=5, page=1).paginate()
+    pager = client.search.search_by_type("周杰伦", num=5, page=1).paginate()
     pages = []
     async for page in pager:
         pages.append(page)
         if len(pages) >= 2:
             break
-    
+
     assert len(pages) == 2
     assert pages[0].nextpage == 2

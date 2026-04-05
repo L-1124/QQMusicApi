@@ -15,32 +15,37 @@ RequestResultT = TypeVar("RequestResultT")
 
 
 class ResponseAdapter:
-    """响应提取器，负责从响应中提取分页相关的核心数据."""
+    """响应提取器, 负责从响应中提取分页相关的核心数据."""
 
     def __init__(
         self,
         has_more_flag: str | Callable[[Any], bool] | None = None,
         total: str | Callable[[Any], int] | None = None,
         cursor: str | Callable[[Any], Any] | None = None,
-    ):
+    ) -> None:
+        """初始化响应提取器.
+
+        Args:
+            has_more_flag: 是否还有更多数据的标志位提取方式.
+            total: 总数提取方式.
+            cursor: 下一页游标提取方式.
+        """
         self._has_more_flag = has_more_flag
         self._total = total
         self._cursor = cursor
 
     def _extract(self, response: Any, extractor: str | Callable[[Any], Any] | None) -> Any:
+        """从响应中提取指定字段."""
         if extractor is None:
             return None
         if callable(extractor):
             return extractor(response)
-        
+
         # 简单处理字符串属性路径 (支持 "meta.has_more" 等用 . 分割的路径)
         if isinstance(extractor, str):
             current = response
             for part in extractor.split("."):
-                if isinstance(current, dict):
-                    current = current.get(part)
-                else:
-                    current = getattr(current, part, None)
+                current = current.get(part) if isinstance(current, dict) else getattr(current, part, None)
                 if current is None:
                     return None
             return current
@@ -64,22 +69,42 @@ class BaseStrategy(ABC):
 
     @abstractmethod
     def has_next(self, params: dict[str, Any], response: Any, adapter: ResponseAdapter) -> bool:
-        """判断是否还有下一页."""
+        """判断是否还有下一页.
+
+        Args:
+            params: 当前请求参数.
+            response: 当前响应数据.
+            adapter: 响应适配器.
+        """
 
     @abstractmethod
     def next_params(self, params: dict[str, Any], response: Any, adapter: ResponseAdapter) -> dict[str, Any]:
-        """计算并返回全新的下一页参数字典."""
+        """计算并返回全新的下一页参数字典.
+
+        Args:
+            params: 当前请求参数.
+            response: 当前响应数据.
+            adapter: 响应适配器.
+        """
 
 
 class PageStrategy(BaseStrategy):
     """基于页码的翻页策略."""
 
-    def __init__(self, page_key: str, page_size: int, start_page: int = 1):
+    def __init__(self, page_key: str, page_size: int, start_page: int = 1) -> None:
+        """初始化页码策略.
+
+        Args:
+            page_key: 页码参数名.
+            page_size: 每页条数.
+            start_page: 起始页码.
+        """
         self.page_key = page_key
         self.page_size = page_size
         self.start_page = start_page
 
     def has_next(self, params: dict[str, Any], response: Any, adapter: ResponseAdapter) -> bool:
+        """判断是否还有下一页."""
         explicit_flag = adapter.get_has_more_flag(response)
         if explicit_flag is not None:
             return bool(explicit_flag)
@@ -93,6 +118,7 @@ class PageStrategy(BaseStrategy):
         return True
 
     def next_params(self, params: dict[str, Any], response: Any, adapter: ResponseAdapter) -> dict[str, Any]:
+        """计算下一页参数."""
         new_params = copy.deepcopy(params)
         new_params[self.page_key] = new_params.get(self.page_key, self.start_page) + 1
         return new_params
@@ -109,15 +135,24 @@ class PaginationMeta:
 class ResponsePager(Generic[RequestResultT], AsyncIterator[RequestResultT]):
     """按页返回响应对象的分页迭代器."""
 
-    def __init__(self, initial_request: "Request[RequestResultT]"):
+    def __init__(self, initial_request: "Request[RequestResultT]") -> None:
+        """初始化分页器.
+
+        Args:
+            initial_request: 初始请求对象.
+        """
         if initial_request.pagination_meta is None:
-            raise PaginationNotSupportedError(f"请求 {initial_request.module}.{initial_request.method} 未声明 PaginationMeta")
+            raise PaginationNotSupportedError(
+                f"请求 {initial_request.module}.{initial_request.method} 未声明 PaginationMeta",
+            )
         self._next_request: Request[RequestResultT] | None = initial_request
 
     def __aiter__(self) -> AsyncIterator[RequestResultT]:
+        """返回异步迭代器."""
         return self
 
     async def __anext__(self) -> RequestResultT:
+        """获取下一页响应."""
         if self._next_request is None:
             raise StopAsyncIteration
 

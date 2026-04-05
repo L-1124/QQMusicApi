@@ -185,6 +185,7 @@ class ApiModule:
             preserve_bool: 是否保留 JSON 参数中的布尔字面量.
             credential: 指定请求凭证.
             platform: 指定请求平台.
+            pagination_meta: 分页元数据声明.
 
         """
         from ..core.request import Request
