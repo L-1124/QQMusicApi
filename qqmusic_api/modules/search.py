@@ -4,6 +4,7 @@ from enum import IntEnum
 from typing import Any
 
 from ..core import Platform
+from ..core.pagination import PageStrategy, PaginationMeta, ResponseAdapter
 from ..models.search import GeneralSearchResponse, SearchByTypeResponse
 from ..utils import get_searchID
 from ._base import ApiModule
@@ -141,4 +142,11 @@ class SearchApi(ApiModule):
             },
             platform=Platform.ANDROID,
             response_model=SearchByTypeResponse,
+            pagination_meta=PaginationMeta(
+                strategy=PageStrategy(page_key="page_num", page_size=num, start_page=page),
+                adapter=ResponseAdapter(
+                    has_more_flag=lambda r: getattr(r, "nextpage", -1) != -1,
+                    total="total_num",
+                ),
+            ),
         )

@@ -2,6 +2,7 @@
 
 from collections.abc import AsyncIterator, Generator
 from dataclasses import dataclass, field
+from dataclasses import replace as dc_replace
 from typing import TYPE_CHECKING, Any, Generic, Literal, TypeAlias, TypeVar
 
 import anyio
@@ -17,6 +18,7 @@ from .exceptions import (
     _build_api_error,
     _extract_api_error_code,
 )
+from .pagination import PaginationMeta, ResponsePager
 from .versioning import Platform
 
 if TYPE_CHECKING:
@@ -45,10 +47,19 @@ class Request(Generic[RequestResultT]):
     preserve_bool: bool = False
     credential: Credential | None = None
     platform: Platform | None = None
+    pagination_meta: "PaginationMeta | None" = None
 
     def __await__(self) -> Generator[Any, Any, RequestResultT]:
         """使 Request 对象可被 await 执行."""
         return self._client.execute(self).__await__()
+
+    def replace(self, **changes: Any) -> "Request[RequestResultT]":
+        """克隆请求并应用修改, 保持原请求不可变."""
+        return dc_replace(self, **changes)
+
+    def paginate(self) -> ResponsePager[RequestResultT]:
+        """返回响应的分页迭代器."""
+        return ResponsePager(self)
 
 
 @dataclass(frozen=True, slots=True)
