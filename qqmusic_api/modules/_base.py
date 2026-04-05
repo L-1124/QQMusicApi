@@ -11,6 +11,7 @@ if TYPE_CHECKING:
     from tarsio import TarsDict
 
     from ..core.client import Client
+    from ..core.pagination import PaginationMeta
     from ..core.request import Request, ResponseModel
     from ..models.request import Credential
 
@@ -123,6 +124,7 @@ class ApiModule:
         preserve_bool: bool = False,
         credential: "Credential | None" = None,
         platform: Platform | None = None,
+        pagination_meta: "PaginationMeta | None" = None,
     ) -> "Request[dict[str, Any]]": ...
 
     @overload
@@ -138,6 +140,7 @@ class ApiModule:
         preserve_bool: bool = False,
         credential: "Credential | None" = None,
         platform: Platform | None = None,
+        pagination_meta: "PaginationMeta | None" = None,
     ) -> "Request[TarsDict]": ...
 
     @overload
@@ -153,6 +156,7 @@ class ApiModule:
         preserve_bool: bool = False,
         credential: "Credential | None" = None,
         platform: Platform | None = None,
+        pagination_meta: "PaginationMeta | None" = None,
     ) -> "Request[ResponseModel]": ...
 
     def _build_request(
@@ -167,6 +171,7 @@ class ApiModule:
         preserve_bool: bool = False,
         credential: "Credential | None" = None,
         platform: Platform | None = None,
+        pagination_meta: "PaginationMeta | None" = None,
     ) -> "Request[Any]":
         """构建可 await 的请求描述符.
 
@@ -195,4 +200,5 @@ class ApiModule:
             preserve_bool=preserve_bool,
             credential=credential,
             platform=platform,
+            pagination_meta=pagination_meta,
         )
