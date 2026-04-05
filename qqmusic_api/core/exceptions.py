@@ -12,6 +12,7 @@ __all__ = [
     "LoginExpiredError",
     "NetworkError",
     "NotLoginError",
+    "PaginationNotSupportedError",
     "RatelimitedError",
     "RequestGroupResultMissingError",
     "SignInvalidError",
@@ -287,3 +288,17 @@ def _build_api_error(
         data=data,
         context=merged_context or None,
     )
+
+
+class PaginationNotSupportedError(ApiError):
+    """请求不支持分页异常.
+
+    当对未声明 PaginationMeta 的 Request 调用 paginate() 时抛出。
+    """
+
+    def __init__(
+        self,
+        message: str = "当前请求未声明分页元数据, 不支持 paginate()",
+        context: dict[str, Any] | None = None,
+    ):
+        super().__init__(message, code=-1, context=context)
