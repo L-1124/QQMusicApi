@@ -3,10 +3,12 @@
 import base64
 import random
 import re
+from contextlib import aclosing
 from time import time
 from typing import Any
 from uuid import uuid4
 
+import anyio
 import httpx
 
 from ..core import ApiError, LoginError, LoginExpiredError, NetworkError, Platform
@@ -133,7 +135,7 @@ class LoginApi(ApiModule):
             return await self._check_wx_qr(qrcode)
         return await self._check_qq_qr(qrcode)
 
-    async def checking_mobile_qrcode(self, qrcode: QR) -> QRLoginStream:
+    async def checking_mobile_qrcode(self, qrcode: QR, timeout_seconds: float | None = None) -> QRLoginStream:
         """检查手机登录二维码状态 (单次 MQTT 连接生命周期).
 
         建立 MQTT 订阅并持续产出服务端推送的登录状态事件.
@@ -141,6 +143,7 @@ class LoginApi(ApiModule):
 
         Args:
             qrcode: 待检查的二维码对象.
+            timeout_seconds: 最长等待时长. 为 None 时不额外限制超时.
 
         Yields:
             QRLoginResult: 包含当前状态和凭证的结果对象.
@@ -156,7 +159,6 @@ class LoginApi(ApiModule):
             port=443,
             path="/ws/handshake",
             keep_alive=45,
-            session=self._client._session,
         ) as client:
             try:
                 await self._connect_mobile_mqtt(client, qrcode.identifier)
@@ -171,24 +173,37 @@ class LoginApi(ApiModule):
             yield QRLoginResult(event=QRCodeLoginEvents.SCAN)
 
             try:
-                async for message in client.messages():
-                    event_item = await self._handle_mobile_message(
-                        qrcode.identifier,
-                        message.properties.get("type"),
-                        message.json,
-                    )
-                    if event_item is None:
-                        continue
+                async with aclosing(client.messages()) as messages:
+                    while True:
+                        try:
+                            if timeout_seconds is None:
+                                message = await anext(messages)
+                            else:
+                                with anyio.fail_after(timeout_seconds):
+                                    message = await anext(messages)
+                        except StopAsyncIteration:
+                            return
+                        except TimeoutError:
+                            yield QRLoginResult(event=QRCodeLoginEvents.TIMEOUT)
+                            return
 
-                    yield event_item
+                        event_item = await self._handle_mobile_message(
+                            qrcode.identifier,
+                            message.properties.get("type"),
+                            message.json,
+                        )
+                        if event_item is None:
+                            continue
 
-                    if event_item.event in {
-                        QRCodeLoginEvents.DONE,
-                        QRCodeLoginEvents.REFUSE,
-                        QRCodeLoginEvents.TIMEOUT,
-                        QRCodeLoginEvents.OTHER,
-                    }:
-                        return
+                        yield event_item
+
+                        if event_item.event in {
+                            QRCodeLoginEvents.DONE,
+                            QRCodeLoginEvents.REFUSE,
+                            QRCodeLoginEvents.TIMEOUT,
+                            QRCodeLoginEvents.OTHER,
+                        }:
+                            return
             except ConnectionError as exc:
                 raise NetworkError(f"MQTT network error: {exc}", original_exc=exc) from exc
 
