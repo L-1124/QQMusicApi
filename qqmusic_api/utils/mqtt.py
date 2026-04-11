@@ -27,7 +27,6 @@ _MQTT_RECONNECT_MIN_DELAY = 1
 _MQTT_RECONNECT_MAX_DELAY = 120
 _MQTT_PUBLISH_QUEUE_SIZE = 8192
 _MQTT_CONNECT_TIMEOUT = 20.0
-_MQTT_CONNECT_POLL_INTERVAL = 0.25
 
 
 class MqttRedirectError(Exception):
@@ -85,7 +84,7 @@ class _PendingSuback:
 class _ConnectOutcome:
     """单次连接尝试的结果."""
 
-    event: threading.Event = field(default_factory=threading.Event)
+    event: anyio.Event = field(default_factory=anyio.Event)
     reason_code: int | None = None
     properties: dict[int, Any] = field(default_factory=dict)
     error: Exception | None = None
@@ -282,6 +281,12 @@ class Client:
             self._current_connect.error = error
         self._current_connect.event.set()
 
+    def _set_connect_last_error(self, error: Exception) -> None:
+        """记录首连阶段的最近一次底层失败."""
+        if self._current_connect is None:
+            return
+        self._current_connect.last_error = error
+
     def _dispatch_to_async(self, callback: Callable[..., Any], *args: Any) -> None:
         """从 Paho 线程切回当前事件循环."""
         if self._event_loop_token is None:
@@ -294,13 +299,16 @@ class Client:
     def _on_connect(self, _client: mqtt.Client, _userdata: Any, _flags: Any, reason_code: Any, properties: Any) -> None:
         """处理 CONNACK."""
         code = self._reason_code_value(reason_code)
-        self._set_connect_outcome(reason_code=code, properties=self._decode_connack_properties(properties))
+        connack_properties = self._decode_connack_properties(properties)
+        self._dispatch_to_async(self._set_connect_success, code, connack_properties)
 
     def _on_connect_fail(self, _client: mqtt.Client, _userdata: Any) -> None:
         """记录首连阶段的底层 TCP 建连失败."""
-        if self._current_connect is None:
-            return
-        self._current_connect.last_error = ConnectionError("MQTT TCP connect failed before CONNACK")
+        self._dispatch_to_async(self._set_connect_last_error, ConnectionError("MQTT TCP connect failed before CONNACK"))
+
+    def _set_connect_success(self, reason_code: int, properties: dict[int, Any]) -> None:
+        """记录首连阶段的成功 CONNACK."""
+        self._set_connect_outcome(reason_code=reason_code, properties=properties)
 
     def _on_message(self, _client: mqtt.Client, _userdata: Any, message: "MQTTMessage") -> None:
         """处理下行消息."""
@@ -358,7 +366,7 @@ class Client:
             if isinstance(reason, str) and reason:
                 message = f"{message}, reason={reason}"
             logger.debug(message)
-            self._set_connect_outcome(error=ConnectionError(message))
+            self._dispatch_to_async(self._set_connect_error, ConnectionError(message))
             return
 
         phase = "subscribe" if self._pending_subacks else "session"
@@ -380,6 +388,10 @@ class Client:
         if self._mqtt_client is client:
             self._mqtt_client = None
         self._fail_message_stream(exc)
+
+    def _set_connect_error(self, error: Exception) -> None:
+        """记录首连阶段的终态错误."""
+        self._set_connect_outcome(error=error)
 
     async def _wait_threading_event(self, event: threading.Event, wait_seconds: float) -> bool:
         """异步等待 threading.Event."""
@@ -417,22 +429,15 @@ class Client:
             raise ConnectionError(f"MQTT connection failed: {exc}") from exc
 
         candidate.loop_start()
-        deadline = anyio.current_time() + connect_timeout
-        connected = False
-        while anyio.current_time() < deadline:
-            wait_seconds = min(deadline - anyio.current_time(), _MQTT_CONNECT_POLL_INTERVAL)
-            if wait_seconds <= 0:
-                break
-            connected = await self._wait_threading_event(connect_outcome.event, wait_seconds)
-            if connected:
-                break
-
-        if not connected:
+        try:
+            with anyio.fail_after(connect_timeout):
+                await connect_outcome.event.wait()
+        except TimeoutError:
             await self._stop_paho_client(candidate)
             self._current_connect = None
             if connect_outcome.last_error is not None:
-                raise connect_outcome.last_error
-            raise TimeoutError("MQTT connect timed out")
+                raise connect_outcome.last_error from None
+            raise TimeoutError("MQTT connect timed out") from None
 
         if connect_outcome.error is not None:
             await self._stop_paho_client(candidate)
