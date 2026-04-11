@@ -429,28 +429,31 @@ class Client:
             raise ConnectionError(f"MQTT connection failed: {exc}") from exc
 
         candidate.loop_start()
+        should_stop_candidate = True
         try:
-            with anyio.fail_after(connect_timeout):
-                await connect_outcome.event.wait()
-        except TimeoutError:
-            await self._stop_paho_client(candidate)
-            self._current_connect = None
-            if connect_outcome.last_error is not None:
-                raise connect_outcome.last_error from None
-            raise TimeoutError("MQTT connect timed out") from None
+            try:
+                with anyio.fail_after(connect_timeout):
+                    await connect_outcome.event.wait()
+            except TimeoutError:
+                self._current_connect = None
+                if connect_outcome.last_error is not None:
+                    raise connect_outcome.last_error from None
+                raise TimeoutError("MQTT connect timed out") from None
 
-        if connect_outcome.error is not None:
-            await self._stop_paho_client(candidate)
-            self._current_connect = None
-            raise connect_outcome.error
+            if connect_outcome.error is not None:
+                self._current_connect = None
+                raise connect_outcome.error
 
-        reason_code = connect_outcome.reason_code
-        if reason_code is None:
-            await self._stop_paho_client(candidate)
-            self._current_connect = None
-            raise ConnectionError("MQTT connect finished without CONNACK")
+            reason_code = connect_outcome.reason_code
+            if reason_code is None:
+                self._current_connect = None
+                raise ConnectionError("MQTT connect finished without CONNACK")
 
-        return candidate, reason_code, connect_outcome.properties
+            should_stop_candidate = False
+            return candidate, reason_code, connect_outcome.properties
+        finally:
+            if should_stop_candidate:
+                await self._stop_paho_client(candidate)
 
     async def connect(self, properties: dict[Any, Any] | None = None, headers: dict[str, str] | None = None) -> None:
         """建立 WebSocket 连接并发送 MQTT CONNECT 报文.
