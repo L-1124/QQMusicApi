@@ -34,6 +34,7 @@ classifiers = [
 dependencies = [
   "anyio>=4.12.1",
   "cryptography>=46.0.3",
+  "httpx-retries>=0.4.6",
   "httpx[http2]>=0.27.0",
   "jsonpath-ng>=1.8.0",
   "orjson>=3.10.15",

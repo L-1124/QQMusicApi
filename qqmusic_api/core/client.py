@@ -7,6 +7,7 @@ from collections.abc import Callable
 from http.cookiejar import CookieJar
 from typing import TYPE_CHECKING, Any, TypedDict, TypeVar, cast, overload
 
+from httpx_retries import Retry, RetryTransport
 from typing_extensions import override
 
 if sys.version_info >= (3, 11):
@@ -30,7 +31,6 @@ from ..models.request import (
 )
 from ..utils.common import bool_to_int
 from ..utils.qimei import QimeiResult, get_qimei
-from ..utils.retry import AsyncRetrying
 from .exceptions import ApiDataError, ApiError, HTTPError, NetworkError, _build_api_error, _extract_api_error_code
 from .request import Request, RequestGroup, RequestResult, RequestResultT, ResponseModel
 from .versioning import DEFAULT_VERSION_POLICY, Platform, VersionPolicy
@@ -53,6 +53,15 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger("qqmusicapi.client")
 ModuleT = TypeVar("ModuleT")
+_HTTP_RETRYABLE_EXCEPTIONS = (
+    httpx.ConnectError,
+    httpx.ReadError,
+    httpx.ReadTimeout,
+    httpx.RemoteProtocolError,
+    httpx.WriteError,
+    httpx.WriteTimeout,
+)
+_HTTP_RETRYABLE_METHODS = ("DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT")
 
 
 class ClientConfig(TypedDict, total=False):
@@ -136,6 +145,18 @@ class Client:
         self._version_policy: VersionPolicy = DEFAULT_VERSION_POLICY
 
         self._limiter = anyio.CapacityLimiter(max_concurrency)
+        transport = client_config.get("transport")
+        retry_transport = RetryTransport(
+            transport=transport,
+            retry=Retry(
+                total=2,
+                allowed_methods=_HTTP_RETRYABLE_METHODS,
+                status_forcelist=[],
+                retry_on_exceptions=_HTTP_RETRYABLE_EXCEPTIONS,
+                backoff_factor=0.5,
+                backoff_jitter=0.0,
+            ),
+        )
 
         self._session = httpx.AsyncClient(
             follow_redirects=False,
@@ -151,7 +172,7 @@ class Client:
             verify=client_config.get("verify", True),
             cert=client_config.get("cert"),
             event_hooks=client_config.get("event_hooks"),
-            transport=client_config.get("transport"),
+            transport=retry_transport,
             mounts=client_config.get("mounts"),
         )
 
@@ -269,16 +290,10 @@ class Client:
             NetworkError: 网络请求在重试耗尽后仍然失败.
         """
         logger.debug("HTTP 请求开始: %s %s", method, url)
-        retrying = AsyncRetrying(
-            max_attempts=3,
-            wait_multiplier=0.5,
-            wait_exp_base=2.0,
-            log=logger,
-        )
 
         await self._limiter.acquire()
         try:
-            resp = await retrying(self._session.request, method, url, **kwargs)
+            resp = await self._session.request(method, url, **kwargs)
             logger.debug("HTTP 请求完成: %s %s -> %s", method, url, resp.status_code)
             return resp
         except httpx.RequestError as exc:
