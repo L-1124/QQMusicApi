@@ -86,6 +86,7 @@ class _ConnectOutcome:
     event: threading.Event = field(default_factory=threading.Event)
     reason_code: int | None = None
     properties: dict[int, Any] = field(default_factory=dict)
+    error: Exception | None = None
 
 
 class Client:
@@ -256,6 +257,7 @@ class Client:
         *,
         reason_code: int | None = None,
         properties: dict[int, Any] | None = None,
+        error: Exception | None = None,
     ) -> None:
         """记录当前连接尝试的结果."""
         if self._current_connect is None:
@@ -264,6 +266,8 @@ class Client:
             self._current_connect.reason_code = reason_code
         if properties is not None:
             self._current_connect.properties = properties
+        if error is not None:
+            self._current_connect.error = error
         self._current_connect.event.set()
 
     def _dispatch_to_async(self, callback: Callable[..., Any], *args: Any) -> None:
@@ -336,10 +340,12 @@ class Client:
             if isinstance(reason, str) and reason:
                 message = f"{message}, reason={reason}"
             logger.debug(message)
+            self._set_connect_outcome(error=ConnectionError(message))
             return
 
+        phase = "subscribe" if self._pending_subacks else "session"
         err = ConnectionError(
-            f"MQTT disconnected during subscribe. reason_code={hex(code)}, from_server={from_server}",
+            f"MQTT disconnected during {phase}. reason_code={hex(code)}, from_server={from_server}",
         )
         self._fail_pending_subacks(err)
         logger.debug(
@@ -389,6 +395,11 @@ class Client:
             await self._stop_paho_client(candidate)
             self._current_connect = None
             raise TimeoutError("MQTT connect timed out")
+
+        if connect_outcome.error is not None:
+            await self._stop_paho_client(candidate)
+            self._current_connect = None
+            raise connect_outcome.error
 
         reason_code = connect_outcome.reason_code
         if reason_code is None:

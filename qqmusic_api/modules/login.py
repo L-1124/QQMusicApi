@@ -135,7 +135,7 @@ class LoginApi(ApiModule):
             return await self._check_wx_qr(qrcode)
         return await self._check_qq_qr(qrcode)
 
-    async def checking_mobile_qrcode(self, qrcode: QR, timeout_seconds: float | None = None) -> QRLoginStream:
+    async def checking_mobile_qrcode(self, qrcode: QR, deadline: float | None = None) -> QRLoginStream:
         """检查手机登录二维码状态 (单次 MQTT 连接生命周期).
 
         建立 MQTT 订阅并持续产出服务端推送的登录状态事件.
@@ -143,7 +143,7 @@ class LoginApi(ApiModule):
 
         Args:
             qrcode: 待检查的二维码对象.
-            timeout_seconds: 最长等待时长. 为 None 时不额外限制超时.
+            deadline: 最长等待截止时间. 为 None 时不额外限制超时.
 
         Yields:
             QRLoginResult: 包含当前状态和凭证的结果对象.
@@ -176,10 +176,14 @@ class LoginApi(ApiModule):
                 async with aclosing(client.messages()) as messages:
                     while True:
                         try:
-                            if timeout_seconds is None:
+                            if deadline is None:
                                 message = await anext(messages)
                             else:
-                                with anyio.fail_after(timeout_seconds):
+                                remaining = deadline - anyio.current_time()
+                                if remaining <= 0:
+                                    yield QRLoginResult(event=QRCodeLoginEvents.TIMEOUT)
+                                    return
+                                with anyio.fail_after(remaining):
                                     message = await anext(messages)
                         except StopAsyncIteration:
                             return

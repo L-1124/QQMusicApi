@@ -3,7 +3,7 @@
 import logging
 import sys
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from http.cookiejar import CookieJar
 from typing import TYPE_CHECKING, Any, TypedDict, TypeVar, cast, overload
 
@@ -145,41 +145,81 @@ class Client:
         self._version_policy: VersionPolicy = DEFAULT_VERSION_POLICY
 
         self._limiter = anyio.CapacityLimiter(max_concurrency)
-        transport = client_config.get("transport")
-        retry_transport = RetryTransport(
-            transport=transport,
-            retry=Retry(
-                total=2,
-                allowed_methods=_HTTP_RETRYABLE_METHODS,
-                status_forcelist=[],
-                retry_on_exceptions=_HTTP_RETRYABLE_EXCEPTIONS,
-                backoff_factor=0.5,
-                backoff_jitter=0.0,
-            ),
+        limits = httpx.Limits(
+            max_connections=max_connections,
+            max_keepalive_connections=max_connections,
         )
-
-        self._session = httpx.AsyncClient(
-            follow_redirects=False,
-            limits=httpx.Limits(
-                max_connections=max_connections,
-                max_keepalive_connections=max_connections,
-            ),
-            http2=True,
-            cookies=_NullCookieJar(),
-            timeout=httpx.Timeout(5.0, read=10.0, write=5.0, pool=10.0),
+        retry_policy = Retry(
+            total=2,
+            allowed_methods=_HTTP_RETRYABLE_METHODS,
+            status_forcelist=[],
+            retry_on_exceptions=_HTTP_RETRYABLE_EXCEPTIONS,
+            backoff_factor=0.5,
+            backoff_jitter=0.0,
+        )
+        transport = self._build_retry_transport(
+            retry_policy,
+            transport=client_config.get("transport"),
             proxy=client_config.get("proxy"),
             trust_env=client_config.get("trust_env", True),
             verify=client_config.get("verify", True),
             cert=client_config.get("cert"),
+            limits=limits,
+            http2=True,
+        )
+        mounts = self._wrap_mount_transports(client_config.get("mounts"), retry_policy)
+
+        self._session = httpx.AsyncClient(
+            follow_redirects=False,
+            cookies=_NullCookieJar(),
+            timeout=httpx.Timeout(5.0, read=10.0, write=5.0, pool=10.0),
             event_hooks=client_config.get("event_hooks"),
-            transport=retry_transport,
-            mounts=client_config.get("mounts"),
+            transport=transport,
+            mounts=mounts,
         )
 
         self._qimei_lock = anyio.Lock()
         self._qimei_loaded = False
         self._qimei_cache: QimeiResult | None = None
         self._module_cache: dict[str, Any] = {}
+
+    @staticmethod
+    def _build_retry_transport(
+        retry_policy: Retry,
+        *,
+        transport: httpx.BaseTransport | httpx.AsyncBaseTransport | None,
+        proxy: Any,
+        trust_env: bool,
+        verify: Any,
+        cert: Any,
+        limits: httpx.Limits,
+        http2: bool,
+    ) -> RetryTransport:
+        """构造带重试能力的底层 transport."""
+        if transport is None:
+            transport = httpx.AsyncHTTPTransport(
+                verify=verify,
+                cert=cert,
+                trust_env=trust_env,
+                http2=http2,
+                limits=limits,
+                proxy=proxy,
+            )
+        return RetryTransport(transport=transport, retry=retry_policy)
+
+    @staticmethod
+    def _wrap_mount_transports(
+        mounts: Mapping[str, httpx.AsyncBaseTransport | None] | None,
+        retry_policy: Retry,
+    ) -> Mapping[str, httpx.AsyncBaseTransport | None] | None:
+        """为 mounted transport 补上与默认请求一致的重试策略."""
+        if mounts is None:
+            return None
+
+        wrapped_mounts: dict[str, httpx.AsyncBaseTransport | None] = {}
+        for key, transport in mounts.items():
+            wrapped_mounts[key] = None if transport is None else RetryTransport(transport=transport, retry=retry_policy)
+        return wrapped_mounts
 
     def _get_module(self, name: str, factory: Callable[[], ModuleT]) -> ModuleT:
         """获取并缓存模块实例."""
