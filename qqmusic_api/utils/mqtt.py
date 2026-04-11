@@ -161,6 +161,7 @@ class Client:
         )
         client.enable_logger(logger)
         client.on_connect = self._on_connect
+        client.on_connect_fail = self._on_connect_fail
         client.on_message = self._on_message
         client.on_subscribe = self._on_subscribe
         client.on_disconnect = self._on_disconnect
@@ -260,6 +261,18 @@ class Client:
             record.error = exc
             record.event.set()
 
+    async def _finalize_unexpected_disconnect(self, client: mqtt.Client, exc: Exception) -> None:
+        """将意外断线收敛为终态并停止底层客户端."""
+        async with self._close_lock:
+            if self._mqtt_client is client:
+                self._mqtt_client = None
+            self._fail_message_stream(exc)
+            self._closing = True
+            try:
+                await self._stop_paho_client(client)
+            finally:
+                self._closing = False
+
     def _set_connect_outcome(
         self,
         *,
@@ -287,10 +300,23 @@ class Client:
         except RuntimeError:
             logger.debug("Event loop already closed, dropping callback result")
 
+    def _dispatch_coroutine_to_async(self, callback: Callable[..., Any], *args: Any) -> None:
+        """从 Paho 线程调度异步收尾逻辑."""
+        if self._event_loop_token is None:
+            return
+        try:
+            anyio.from_thread.run(callback, *args, token=self._event_loop_token)
+        except RuntimeError:
+            logger.debug("Event loop already closed, dropping coroutine result")
+
     def _on_connect(self, _client: mqtt.Client, _userdata: Any, _flags: Any, reason_code: Any, properties: Any) -> None:
         """处理 CONNACK."""
         code = self._reason_code_value(reason_code)
         self._set_connect_outcome(reason_code=code, properties=self._decode_connack_properties(properties))
+
+    def _on_connect_fail(self, _client: mqtt.Client, _userdata: Any) -> None:
+        """处理首连阶段的底层 TCP 建连失败."""
+        self._set_connect_outcome(error=ConnectionError("MQTT TCP connect failed before CONNACK"))
 
     def _on_message(self, _client: mqtt.Client, _userdata: Any, message: "MQTTMessage") -> None:
         """处理下行消息."""
@@ -356,9 +382,9 @@ class Client:
             f"MQTT disconnected during {phase}. reason_code={hex(code)}, from_server={from_server}",
         )
         self._fail_pending_subacks(err)
-        self._dispatch_to_async(self._fail_message_stream, err)
+        self._dispatch_coroutine_to_async(self._finalize_unexpected_disconnect, _client, err)
         logger.debug(
-            "MQTT unexpected disconnect, waiting for built-in reconnect. reason_code=%s, from_server=%s, reason=%s",
+            "MQTT unexpected disconnect, terminating session. reason_code=%s, from_server=%s, reason=%s",
             hex(code),
             from_server,
             reason,
