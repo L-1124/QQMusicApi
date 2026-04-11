@@ -207,15 +207,19 @@ class LoginApi(ApiModule):
 
                         message_type = message.properties.get("type")
                         message_payload = message.json
-                        event_item = await await_before_deadline(
-                            lambda message_type=message_type, message_payload=message_payload: (
-                                self._handle_mobile_message(
-                                    qrcode.identifier,
-                                    message_type,
-                                    message_payload,
-                                )
-                            ),
-                        )
+                        try:
+                            event_item = await await_before_deadline(
+                                lambda message_type=message_type, message_payload=message_payload: (
+                                    self._handle_mobile_message(
+                                        qrcode.identifier,
+                                        message_type,
+                                        message_payload,
+                                    )
+                                ),
+                            )
+                        except TimeoutError:
+                            yield QRLoginResult(event=QRCodeLoginEvents.TIMEOUT)
+                            return
                         if event_item is None:
                             continue
 
