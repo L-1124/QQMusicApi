@@ -26,6 +26,8 @@ logger = logging.getLogger("qqmusicapi.MQTTClient")
 _MQTT_RECONNECT_MIN_DELAY = 1
 _MQTT_RECONNECT_MAX_DELAY = 120
 _MQTT_PUBLISH_QUEUE_SIZE = 8192
+_MQTT_CONNECT_TIMEOUT = 20.0
+_MQTT_CONNECT_POLL_INTERVAL = 0.25
 
 
 class MqttRedirectError(Exception):
@@ -87,6 +89,7 @@ class _ConnectOutcome:
     reason_code: int | None = None
     properties: dict[int, Any] = field(default_factory=dict)
     error: Exception | None = None
+    last_error: Exception | None = None
 
 
 class Client:
@@ -152,6 +155,7 @@ class Client:
             client_id=self.client_id,
             protocol=mqtt.MQTTv5,
             transport="websockets",
+            reconnect_on_failure=False,
         )
         # QQ 音乐二维码 MQTT 服务运行在 443 端口, 这里必须启用 TLS 才会走 wss.
         client.tls_set_context(ssl.create_default_context())
@@ -261,18 +265,6 @@ class Client:
             record.error = exc
             record.event.set()
 
-    async def _finalize_unexpected_disconnect(self, client: mqtt.Client, exc: Exception) -> None:
-        """将意外断线收敛为终态并停止底层客户端."""
-        async with self._close_lock:
-            if self._mqtt_client is client:
-                self._mqtt_client = None
-            self._fail_message_stream(exc)
-            self._closing = True
-            try:
-                await self._stop_paho_client(client)
-            finally:
-                self._closing = False
-
     def _set_connect_outcome(
         self,
         *,
@@ -291,6 +283,12 @@ class Client:
             self._current_connect.error = error
         self._current_connect.event.set()
 
+    def _record_connect_failure(self, error: Exception) -> None:
+        """记录首连阶段的瞬时失败, 保留给超时路径使用."""
+        if self._current_connect is None:
+            return
+        self._current_connect.last_error = error
+
     def _dispatch_to_async(self, callback: Callable[..., Any], *args: Any) -> None:
         """从 Paho 线程切回当前事件循环."""
         if self._event_loop_token is None:
@@ -300,23 +298,14 @@ class Client:
         except RuntimeError:
             logger.debug("Event loop already closed, dropping callback result")
 
-    def _dispatch_coroutine_to_async(self, callback: Callable[..., Any], *args: Any) -> None:
-        """从 Paho 线程调度异步收尾逻辑."""
-        if self._event_loop_token is None:
-            return
-        try:
-            anyio.from_thread.run(callback, *args, token=self._event_loop_token)
-        except RuntimeError:
-            logger.debug("Event loop already closed, dropping coroutine result")
-
     def _on_connect(self, _client: mqtt.Client, _userdata: Any, _flags: Any, reason_code: Any, properties: Any) -> None:
         """处理 CONNACK."""
         code = self._reason_code_value(reason_code)
         self._set_connect_outcome(reason_code=code, properties=self._decode_connack_properties(properties))
 
     def _on_connect_fail(self, _client: mqtt.Client, _userdata: Any) -> None:
-        """处理首连阶段的底层 TCP 建连失败."""
-        self._set_connect_outcome(error=ConnectionError("MQTT TCP connect failed before CONNACK"))
+        """记录首连阶段的底层 TCP 建连失败."""
+        self._record_connect_failure(ConnectionError("MQTT TCP connect failed before CONNACK"))
 
     def _on_message(self, _client: mqtt.Client, _userdata: Any, message: "MQTTMessage") -> None:
         """处理下行消息."""
@@ -382,13 +371,19 @@ class Client:
             f"MQTT disconnected during {phase}. reason_code={hex(code)}, from_server={from_server}",
         )
         self._fail_pending_subacks(err)
-        self._dispatch_coroutine_to_async(self._finalize_unexpected_disconnect, _client, err)
+        self._dispatch_to_async(self._handle_unexpected_disconnect, _client, err)
         logger.debug(
             "MQTT unexpected disconnect, terminating session. reason_code=%s, from_server=%s, reason=%s",
             hex(code),
             from_server,
             reason,
         )
+
+    def _handle_unexpected_disconnect(self, client: mqtt.Client, exc: Exception) -> None:
+        """在事件循环线程内收敛意外断线状态."""
+        if self._mqtt_client is client:
+            self._mqtt_client = None
+        self._fail_message_stream(exc)
 
     async def _wait_threading_event(self, event: threading.Event, wait_seconds: float) -> bool:
         """异步等待 threading.Event."""
@@ -411,6 +406,7 @@ class Client:
         self._current_connect = connect_outcome
         candidate = self._create_paho_client()
         candidate.ws_set_options(path=current_path, headers=headers)
+        candidate.connect_timeout = min(connect_timeout, candidate.connect_timeout)
 
         try:
             candidate.connect_async(
@@ -425,10 +421,21 @@ class Client:
             raise ConnectionError(f"MQTT connection failed: {exc}") from exc
 
         candidate.loop_start()
-        connected = await self._wait_threading_event(connect_outcome.event, connect_timeout)
+        deadline = anyio.current_time() + connect_timeout
+        connected = False
+        while anyio.current_time() < deadline:
+            wait_seconds = min(deadline - anyio.current_time(), _MQTT_CONNECT_POLL_INTERVAL)
+            if wait_seconds <= 0:
+                break
+            connected = await self._wait_threading_event(connect_outcome.event, wait_seconds)
+            if connected:
+                break
+
         if not connected:
             await self._stop_paho_client(candidate)
             self._current_connect = None
+            if connect_outcome.last_error is not None:
+                raise connect_outcome.last_error
             raise TimeoutError("MQTT connect timed out")
 
         if connect_outcome.error is not None:
@@ -458,7 +465,7 @@ class Client:
         await self.disconnect_ws_only()
 
         redirect_count = 0
-        connect_timeout = max(float(self.keep_alive), 5.0)
+        connect_timeout = _MQTT_CONNECT_TIMEOUT
         current_path = self.path
         connect_props = self._build_paho_properties(PacketTypes.CONNECT, properties)
 

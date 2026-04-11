@@ -3,6 +3,7 @@
 import base64
 import random
 import re
+from collections.abc import Callable
 from contextlib import aclosing
 from time import time
 from typing import Any
@@ -153,6 +154,22 @@ class LoginApi(ApiModule):
         """
         client_id = f"{int(time() * 1000)}{random.randint(1000, 9999)}"
 
+        def get_timeout_left() -> float | None:
+            """返回当前 deadline 剩余秒数."""
+            if deadline is None:
+                return None
+            return deadline - anyio.current_time()
+
+        async def await_before_deadline(operation: Callable[[], Any]) -> Any:
+            """在 deadline 之前完成单次异步操作."""
+            timeout_left = get_timeout_left()
+            if timeout_left is None:
+                return await operation()
+            if timeout_left <= 0:
+                raise TimeoutError
+            with anyio.fail_after(timeout_left):
+                return await operation()
+
         async with MqttClient(
             client_id=client_id,
             host="mu.y.qq.com",
@@ -161,12 +178,17 @@ class LoginApi(ApiModule):
             keep_alive=45,
         ) as client:
             try:
-                await self._connect_mobile_mqtt(client, qrcode.identifier)
+                await await_before_deadline(lambda: self._connect_mobile_mqtt(client, qrcode.identifier))
                 topic = f"management.qrcode_login/{qrcode.identifier}"
-                await client.subscribe(
-                    topic,
-                    properties={PropertyId.USER_PROPERTY: [("authorization", "tmelogin"), ("pubsub", "unicast")]},
+                await await_before_deadline(
+                    lambda: client.subscribe(
+                        topic,
+                        properties={PropertyId.USER_PROPERTY: [("authorization", "tmelogin"), ("pubsub", "unicast")]},
+                    ),
                 )
+            except TimeoutError:
+                yield QRLoginResult(event=QRCodeLoginEvents.TIMEOUT)
+                return
             except ConnectionError as exc:
                 raise NetworkError(f"MQTT network error: {exc}", original_exc=exc) from exc
 
@@ -176,25 +198,23 @@ class LoginApi(ApiModule):
                 async with aclosing(client.messages()) as messages:
                     while True:
                         try:
-                            if deadline is None:
-                                message = await anext(messages)
-                            else:
-                                remaining = deadline - anyio.current_time()
-                                if remaining <= 0:
-                                    yield QRLoginResult(event=QRCodeLoginEvents.TIMEOUT)
-                                    return
-                                with anyio.fail_after(remaining):
-                                    message = await anext(messages)
+                            message = await await_before_deadline(lambda: anext(messages))
                         except StopAsyncIteration:
                             return
                         except TimeoutError:
                             yield QRLoginResult(event=QRCodeLoginEvents.TIMEOUT)
                             return
 
-                        event_item = await self._handle_mobile_message(
-                            qrcode.identifier,
-                            message.properties.get("type"),
-                            message.json,
+                        message_type = message.properties.get("type")
+                        message_payload = message.json
+                        event_item = await await_before_deadline(
+                            lambda message_type=message_type, message_payload=message_payload: (
+                                self._handle_mobile_message(
+                                    qrcode.identifier,
+                                    message_type,
+                                    message_payload,
+                                )
+                            ),
                         )
                         if event_item is None:
                             continue
