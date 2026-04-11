@@ -391,6 +391,8 @@ class Client:
 
     def _set_connect_error(self, error: Exception) -> None:
         """记录首连阶段的终态错误."""
+        if self._current_connect is not None and self._current_connect.reason_code is not None:
+            return
         self._set_connect_outcome(error=error)
 
     async def _wait_threading_event(self, event: threading.Event, wait_seconds: float) -> bool:
@@ -440,12 +442,11 @@ class Client:
                     raise connect_outcome.last_error from None
                 raise TimeoutError("MQTT connect timed out") from None
 
-            if connect_outcome.error is not None:
-                self._current_connect = None
-                raise connect_outcome.error
-
             reason_code = connect_outcome.reason_code
             if reason_code is None:
+                if connect_outcome.error is not None:
+                    self._current_connect = None
+                    raise connect_outcome.error
                 self._current_connect = None
                 raise ConnectionError("MQTT connect finished without CONNACK")
 
