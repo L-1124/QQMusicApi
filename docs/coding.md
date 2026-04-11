@@ -85,18 +85,6 @@ class SearchApi(ApiModule):
         return resp.json()["data"]
 ```
 
-### 自动重试行为
-
-`Client` 底层会对瞬时网络波动做有限次自动重试。
-
-* 通过 `Request` / `RequestGroup` 发出的请求, 会继承 `Client` 内部的 HTTP 重试策略。
-* 直接调用 `self._client.fetch(...)` 时, 同样会自动重试连接超时、读写超时、协议中断等底层网络异常。
-* MQTT 连接建立流程也会对连接抖动做自动重试。
-
-当前默认策略为最多重试 3 次, 并使用指数退避等待。重试只针对底层网络异常生效, 业务错误、HTTP 状态错误或响应数据错误会直接向上抛出。
-
-因此, 模块方法通常不需要再额外包一层通用网络重试。只有在接口语义明确要求更长轮询或更高层的恢复策略时, 才应在模块层显式实现, 并在 docstring 中说明行为。
-
 ### `Credential` 和 `Platform` 参数
 
 `_build_request` 可以接受 `credential` 和 `platform` 参数，默认会继承当前 `Client` 的设置。
