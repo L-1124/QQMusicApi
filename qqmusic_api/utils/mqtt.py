@@ -127,6 +127,7 @@ class Client:
         self._closing = False
         self._current_connect: _ConnectOutcome | None = None
         self._event_loop_token: anyio.lowlevel.EventLoopToken | None = None
+        self._message_error: Exception | None = None
 
         self._mqtt_client: mqtt.Client | None = None
 
@@ -235,6 +236,7 @@ class Client:
     def _new_message_stream(self) -> None:
         """重建消息流."""
         self._close_message_stream()
+        self._message_error = None
         self._publish_send_stream, self._publish_receive_stream = anyio.create_memory_object_stream(
             _MQTT_PUBLISH_QUEUE_SIZE,
         )
@@ -243,6 +245,12 @@ class Client:
         """关闭当前消息流."""
         if self._publish_receive_stream:
             self._publish_receive_stream.close()
+        if self._publish_send_stream:
+            self._publish_send_stream.close()
+
+    def _fail_message_stream(self, exc: Exception) -> None:
+        """让消息流以指定错误结束."""
+        self._message_error = exc
         if self._publish_send_stream:
             self._publish_send_stream.close()
 
@@ -348,6 +356,7 @@ class Client:
             f"MQTT disconnected during {phase}. reason_code={hex(code)}, from_server={from_server}",
         )
         self._fail_pending_subacks(err)
+        self._dispatch_to_async(self._fail_message_stream, err)
         logger.debug(
             "MQTT unexpected disconnect, waiting for built-in reconnect. reason_code=%s, from_server=%s, reason=%s",
             hex(code),
@@ -541,6 +550,7 @@ class Client:
             self._pending_subacks.clear()
 
             self._close_message_stream()
+            self._message_error = None
             self._publish_receive_stream = None
             self._publish_send_stream = None
             self._closing = False
@@ -560,3 +570,6 @@ class Client:
                 yield msg
         except anyio.ClosedResourceError:
             pass
+
+        if self._message_error is not None:
+            raise self._message_error
