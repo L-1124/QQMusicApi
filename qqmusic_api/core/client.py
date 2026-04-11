@@ -15,7 +15,6 @@ if sys.version_info >= (3, 11):
 else:
     from typing_extensions import Unpack
 
-
 import anyio
 import httpx
 import orjson as json
@@ -187,7 +186,7 @@ class Client:
     def _build_retry_transport(
         retry_policy: Retry,
         *,
-        transport: httpx.BaseTransport | httpx.AsyncBaseTransport | None,
+        transport: httpx.AsyncBaseTransport | None,
         proxy: Any,
         trust_env: bool,
         verify: Any,
@@ -196,6 +195,8 @@ class Client:
         http2: bool,
     ) -> RetryTransport:
         """构造带重试能力的底层 transport."""
+        if transport is not None and not isinstance(transport, httpx.AsyncBaseTransport):
+            raise TypeError("client_config.transport must be an httpx.AsyncBaseTransport")
         if transport is None:
             transport = httpx.AsyncHTTPTransport(
                 verify=verify,
@@ -218,6 +219,8 @@ class Client:
 
         wrapped_mounts: dict[str, httpx.AsyncBaseTransport | None] = {}
         for key, transport in mounts.items():
+            if transport is not None and not isinstance(transport, httpx.AsyncBaseTransport):
+                raise TypeError(f"client_config.mounts[{key!r}] must be an httpx.AsyncBaseTransport")
             wrapped_mounts[key] = None if transport is None else RetryTransport(transport=transport, retry=retry_policy)
         return wrapped_mounts
 

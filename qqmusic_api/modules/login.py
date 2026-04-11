@@ -144,7 +144,7 @@ class LoginApi(ApiModule):
 
         Args:
             qrcode: 待检查的二维码对象.
-            deadline: 最长等待截止时间. 为 None 时不额外限制超时.
+            deadline: 基于 `anyio.current_time()` 的最长等待截止时间. 为 None 时不额外限制超时.
 
         Yields:
             QRLoginResult: 包含当前状态和凭证的结果对象.

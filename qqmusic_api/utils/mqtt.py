@@ -155,7 +155,6 @@ class Client:
             client_id=self.client_id,
             protocol=mqtt.MQTTv5,
             transport="websockets",
-            reconnect_on_failure=False,
         )
         # QQ 音乐二维码 MQTT 服务运行在 443 端口, 这里必须启用 TLS 才会走 wss.
         client.tls_set_context(ssl.create_default_context())
@@ -283,12 +282,6 @@ class Client:
             self._current_connect.error = error
         self._current_connect.event.set()
 
-    def _record_connect_failure(self, error: Exception) -> None:
-        """记录首连阶段的瞬时失败, 保留给超时路径使用."""
-        if self._current_connect is None:
-            return
-        self._current_connect.last_error = error
-
     def _dispatch_to_async(self, callback: Callable[..., Any], *args: Any) -> None:
         """从 Paho 线程切回当前事件循环."""
         if self._event_loop_token is None:
@@ -305,7 +298,9 @@ class Client:
 
     def _on_connect_fail(self, _client: mqtt.Client, _userdata: Any) -> None:
         """记录首连阶段的底层 TCP 建连失败."""
-        self._record_connect_failure(ConnectionError("MQTT TCP connect failed before CONNACK"))
+        if self._current_connect is None:
+            return
+        self._current_connect.last_error = ConnectionError("MQTT TCP connect failed before CONNACK")
 
     def _on_message(self, _client: mqtt.Client, _userdata: Any, message: "MQTTMessage") -> None:
         """处理下行消息."""
@@ -372,6 +367,7 @@ class Client:
         )
         self._fail_pending_subacks(err)
         self._dispatch_to_async(self._handle_unexpected_disconnect, _client, err)
+        _client.loop_stop()
         logger.debug(
             "MQTT unexpected disconnect, terminating session. reason_code=%s, from_server=%s, reason=%s",
             hex(code),
