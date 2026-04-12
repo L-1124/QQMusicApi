@@ -46,7 +46,8 @@ class UserApi(ApiModule):
 
         Args:
             euin: 加密后的 UIN.
-            credential: 登录凭证.
+            credential: 可选的登录凭证；未传入时优先使用客户端当前凭证，
+                若客户端凭证不可用则自动使用占位凭证.
         """
         target_credential = self._resolve_placeholder_credential(credential)
         return self._build_request(
