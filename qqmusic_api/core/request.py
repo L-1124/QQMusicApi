@@ -15,7 +15,6 @@ from ..models.request import Credential, RequestItem
 from .exceptions import (
     ApiDataError,
     ApiError,
-    PaginationNotSupportedError,
     RequestGroupResultMissingError,
     _build_api_error,
     _extract_api_error_code,
@@ -35,7 +34,7 @@ ResponseModel = TypeVar("ResponseModel", bound=BaseModel)
 RequestResultT = TypeVar("RequestResultT", bound=RequestResult)
 
 
-@dataclass
+@dataclass(kw_only=True)
 class Request(Generic[RequestResultT]):
     """请求描述符."""
 
@@ -49,8 +48,6 @@ class Request(Generic[RequestResultT]):
     preserve_bool: bool = False
     credential: Credential | None = None
     platform: Platform | None = None
-    pager_meta: "PagerMeta | None" = None
-    refresh_meta: "RefreshMeta | None" = None
 
     def __await__(self) -> Generator[Any, Any, RequestResultT]:
         """使 Request 对象可被 await 执行."""
@@ -64,25 +61,31 @@ class Request(Generic[RequestResultT]):
             changes["comm"] = copy.deepcopy(self.comm)
         return dc_replace(self, **changes)
 
+
+@dataclass
+class PaginatedRequest(Request[RequestResultT]):
+    """声明了连续翻页能力的请求描述符."""
+
+    pager_meta: PagerMeta
+
     def paginate(self, limit: int | None = None) -> ResponsePager[RequestResultT]:
         """返回响应的分页迭代器.
 
         Args:
             limit: 最大获取页数.
         """
-        if self.pager_meta is None:
-            raise PaginationNotSupportedError(f"请求 {self.module}.{self.method} 未声明 PagerMeta")
         return ResponsePager(self, limit=limit)
 
-    def refresh(self) -> "ResponseRefresher[RequestResultT]":
+
+@dataclass
+class RefreshableRequest(Request[RequestResultT]):
+    """声明了换一批能力的请求描述符."""
+
+    refresh_meta: RefreshMeta
+
+    def refresh(self) -> ResponseRefresher[RequestResultT]:
         """返回响应的换一批控制器."""
-        from .pagination import ResponseRefresher
-
         return ResponseRefresher(self)
-
-
-PaginatedRequest = Request
-RefreshableRequest = Request
 
 
 @dataclass(frozen=True, slots=True)

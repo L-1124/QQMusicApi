@@ -4,9 +4,15 @@ from typing import Any, cast
 
 import pytest
 
-from qqmusic_api.core.exceptions import PaginationNotSupportedError
-from qqmusic_api.core.pagination import PagerMeta, PageStrategy, ResponseAdapter
-from qqmusic_api.core.request import Request
+from qqmusic_api.core.pagination import (
+    BatchRefreshStrategy,
+    PagerMeta,
+    PageStrategy,
+    RefreshMeta,
+    ResponseAdapter,
+    ResponseRefresher,
+)
+from qqmusic_api.core.request import PaginatedRequest, RefreshableRequest, Request
 
 
 def test_response_adapter_extract() -> None:
@@ -64,7 +70,7 @@ async def test_request_paginate() -> None:
         strategy=PageStrategy(page_key="page_id", page_size=1),
         adapter=ResponseAdapter(total=lambda r: r["total"]),
     )
-    req = Request(_client=MockClient(), module="M", method="m", param={"page_id": 1}, pager_meta=meta)  # type: ignore
+    req = PaginatedRequest(_client=MockClient(), module="M", method="m", param={"page_id": 1}, pager_meta=meta)  # type: ignore
 
     pager = req.paginate()
     results = [resp async for resp in pager]
@@ -82,25 +88,49 @@ async def test_request_paginate_limit() -> None:
         strategy=PageStrategy(page_key="page_id", page_size=1),
         adapter=ResponseAdapter(total=lambda r: 10),  # 总共 10 页
     )
-    req = Request(_client=MockClient(), module="M", method="m", param={"page_id": 1}, pager_meta=meta)  # type: ignore
+    req = PaginatedRequest(_client=MockClient(), module="M", method="m", param={"page_id": 1}, pager_meta=meta)  # type: ignore
 
     # 设置 limit=3, 预期只获取 3 页
     pager = req.paginate(limit=3)
-    results = [resp async for resp in pager]
+    results = cast("list[dict[str, Any]]", [resp async for resp in pager])
 
     assert len(results) == 3
     assert results[0]["data"] == 1
     assert results[2]["data"] == 3
 
 
-def test_request_has_no_paginate_method() -> None:
-    """测试未声明分页元数据的 Request 调用 paginate 时报错."""
-    req = Request(
-        _client=MockClient(),  # type: ignore
+class MockRefreshClient:
+    """Mock 换一批客户端."""
+
+    async def execute(self, request: Any) -> dict:
+        """执行换一批请求."""
+        cursor = request.param.get("cursor", 0)
+        if cursor == 0:
+            return {"data": 1, "has_more": True, "next": 1}
+        return {"data": 2, "has_more": False, "next": 2}
+
+
+@pytest.mark.asyncio
+async def test_response_refresher_refresh_exhausted() -> None:
+    """测试换一批耗尽时停止推进."""
+    req = RefreshableRequest(
+        _client=MockRefreshClient(),  # type: ignore
         module="M",
         method="m",
-        param={"page_id": 1},
+        param={"cursor": 0},
+        refresh_meta=RefreshMeta(
+            strategy=BatchRefreshStrategy(refresh_key="cursor"),
+            adapter=ResponseAdapter(
+                has_more_flag=lambda r: r["has_more"],
+                cursor=lambda r: r["next"],
+            ),
+        ),
     )
 
-    with pytest.raises(PaginationNotSupportedError, match="未声明 PagerMeta"):
-        req.paginate()
+    refresher = cast("ResponseRefresher[dict[str, Any]]", req.refresh())
+    second_batch = await refresher.refresh()
+
+    assert second_batch["data"] == 2
+
+    with pytest.raises(StopAsyncIteration):
+        await refresher.refresh()

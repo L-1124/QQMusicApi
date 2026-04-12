@@ -12,7 +12,6 @@ __all__ = [
     "LoginExpiredError",
     "NetworkError",
     "NotLoginError",
-    "PaginationNotSupportedError",
     "RatelimitedError",
     "RequestGroupResultMissingError",
     "SignInvalidError",
@@ -288,17 +287,3 @@ def _build_api_error(
         data=data,
         context=merged_context or None,
     )
-
-
-class PaginationNotSupportedError(ApiError):
-    """请求缺少继续分页或换一批所需元数据时抛出的异常.
-
-    当请求声明的迭代能力与上游返回的分页信号不匹配时抛出。
-    """
-
-    def __init__(
-        self,
-        message: str = "当前请求缺少继续分页或换一批所需元数据",
-        context: dict[str, Any] | None = None,
-    ):
-        super().__init__(message, code=-1, context=context)

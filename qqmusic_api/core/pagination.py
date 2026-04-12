@@ -6,8 +6,6 @@ from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Generic, TypeAlias, TypeVar, cast
 
-from .exceptions import PaginationNotSupportedError
-
 if TYPE_CHECKING:
     from .request import PaginatedRequest, RefreshableRequest, RequestResult
 
@@ -61,7 +59,8 @@ class ResponseAdapter:
 
     def get_total(self, response: Any) -> int | None:
         """提取数据总数."""
-        return self._extract(response, self._total)
+        total = self._extract(response, self._total)
+        return total if isinstance(total, int) else None
 
     def get_cursor(self, response: Any) -> Any | None:
         """提取下一页游标或下一批刷新参数."""
@@ -186,12 +185,11 @@ class OffsetStrategy(PagerStrategy):
         if self.page_size is not None:
             return self.page_size
         current_params = cast("dict[Any, Any]", params)
+        if self.page_size_key is None:
+            raise ValueError("OffsetStrategy 配置错误: page_size_key 和 page_size 不能同时缺失")
         page_size = current_params.get(self.page_size_key)
         if not isinstance(page_size, int):
-            raise PaginationNotSupportedError(
-                "分页请求缺少有效的 page_size 参数, 无法计算下一页偏移量",
-                context={"offset_key": str(self.offset_key), "page_size_key": str(self.page_size_key)},
-            )
+            raise TypeError("分页请求缺少有效的 page_size 参数, 无法计算下一页偏移量")
         return page_size
 
     def _resolve_step(self, params: PaginationParams, response: Any, adapter: ResponseAdapter) -> int:
@@ -209,18 +207,12 @@ class OffsetStrategy(PagerStrategy):
 
         total = adapter.get_total(response)
         if total is None:
-            raise PaginationNotSupportedError(
-                "分页响应未提供 has_more_flag 或 total, 无法判断是否存在下一页",
-                context={"offset_key": str(self.offset_key)},
-            )
+            raise ValueError("分页响应未提供 has_more_flag 或 total, 无法判断是否存在下一页")
 
         current_params = cast("dict[Any, Any]", params)
         current_offset = current_params.get(self.offset_key, self.start_offset)
-        if not isinstance(current_offset, int):
-            raise PaginationNotSupportedError(
-                "分页请求缺少有效的 offset 参数, 无法计算下一页",
-                context={"offset_key": str(self.offset_key)},
-            )
+        if current_offset is None:
+            raise ValueError("分页请求缺少有效的 offset 参数, 无法计算下一页")
         step = self._resolve_step(params, response, adapter)
         if step <= 0:
             return False
@@ -235,17 +227,11 @@ class OffsetStrategy(PagerStrategy):
         """计算下一页参数."""
         new_params = cast("dict[Any, Any]", copy.deepcopy(params))
         current_offset = new_params.get(self.offset_key, self.start_offset)
-        if not isinstance(current_offset, int):
-            raise PaginationNotSupportedError(
-                "分页请求缺少有效的 offset 参数, 无法计算下一页",
-                context={"offset_key": str(self.offset_key)},
-            )
+        if current_offset is None:
+            raise ValueError("分页请求缺少有效的 offset 参数, 无法计算下一页")
         step = self._resolve_step(params, response, adapter)
         if step <= 0:
-            raise PaginationNotSupportedError(
-                "分页响应未提供有效的当前页数量, 无法计算下一页偏移量",
-                context={"offset_key": str(self.offset_key)},
-            )
+            raise ValueError("分页响应未提供有效的当前页数量, 无法计算下一页偏移量")
         new_params[self.offset_key] = current_offset + step
         return new_params
 
@@ -265,10 +251,7 @@ class BatchRefreshStrategy(RefresherStrategy):
         """提取并校验下一批请求所需的刷新参数."""
         refresh_value = adapter.get_cursor(response)
         if refresh_value is None:
-            raise PaginationNotSupportedError(
-                "响应未提供换一批所需的刷新参数",
-                context={"refresh_key": str(self.refresh_key)},
-            )
+            raise ValueError("响应未提供换一批所需的刷新参数")
         return refresh_value
 
     def has_next(self, params: PaginationParams, response: Any, adapter: ResponseAdapter) -> bool:
@@ -307,10 +290,7 @@ class CursorStrategy(PagerStrategy):
         """提取并校验下一页游标."""
         cursor = adapter.get_cursor(response)
         if cursor is None:
-            raise PaginationNotSupportedError(
-                "分页响应未提供下一页游标, 无法继续翻页",
-                context={"cursor_key": str(self.cursor_key)},
-            )
+            raise ValueError("分页响应未提供下一页游标, 无法继续翻页")
         return cursor
 
     def has_next(self, params: PaginationParams, response: Any, adapter: ResponseAdapter) -> bool:
@@ -355,10 +335,7 @@ class MultiFieldContinuationStrategy(PagerStrategy):
         """解析并校验下一页 continuation 参数."""
         next_params = self._build_next_params(copy.deepcopy(params), response, adapter)
         if next_params is None:
-            raise PaginationNotSupportedError(
-                "分页响应未提供继续翻页所需的 continuation 数据",
-                context={"strategy": self.context_name},
-            )
+            raise ValueError("分页响应未提供继续翻页所需的 continuation 数据")
         return cast("PaginationParams", next_params)
 
     def has_next(self, params: PaginationParams, response: Any, adapter: ResponseAdapter) -> bool:
@@ -456,7 +433,7 @@ class ResponsePager(_BaseResponseAdvancer[RequestResultT], AsyncIterator[Request
 
     def _get_meta(self, request: "PaginatedRequest[RequestResultT]") -> PagerMeta:
         """读取分页请求对应的连续翻页元数据."""
-        return cast("PagerMeta", request.pager_meta)
+        return request.pager_meta
 
 
 class ResponseRefresher(_BaseResponseAdvancer[RequestResultT]):
@@ -473,7 +450,7 @@ class ResponseRefresher(_BaseResponseAdvancer[RequestResultT]):
 
     def _get_meta(self, request: "RefreshableRequest[RequestResultT]") -> RefreshMeta:
         """读取刷新请求对应的换一批元数据."""
-        return cast("RefreshMeta", request.refresh_meta)
+        return request.refresh_meta
 
     async def refresh(self) -> RequestResultT:
         """请求并返回下一批结果."""

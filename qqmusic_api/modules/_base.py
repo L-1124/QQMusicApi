@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 
     from ..core.client import Client
     from ..core.pagination import PagerMeta, RefreshMeta
-    from ..core.request import Request, ResponseModel
+    from ..core.request import PaginatedRequest, RefreshableRequest, Request, ResponseModel
     from ..models.request import Credential
 
 
@@ -124,9 +124,43 @@ class ApiModule:
         preserve_bool: bool = False,
         credential: "Credential | None" = None,
         platform: Platform | None = None,
-        pager_meta: "PagerMeta | None" = None,
-        refresh_meta: "RefreshMeta | None" = None,
+        pager_meta: None = None,
+        refresh_meta: None = None,
     ) -> "Request[dict[str, Any]]": ...
+
+    @overload
+    def _build_request(
+        self,
+        module: str,
+        method: str,
+        param: dict[str, Any] | dict[int, Any],
+        response_model: None = None,
+        comm: dict[str, Any] | None = None,
+        *,
+        is_jce: bool = False,
+        preserve_bool: bool = False,
+        credential: "Credential | None" = None,
+        platform: Platform | None = None,
+        pager_meta: "PagerMeta",
+        refresh_meta: None = None,
+    ) -> "PaginatedRequest[dict[str, Any]]": ...
+
+    @overload
+    def _build_request(
+        self,
+        module: str,
+        method: str,
+        param: dict[str, Any] | dict[int, Any],
+        response_model: None = None,
+        comm: dict[str, Any] | None = None,
+        *,
+        is_jce: bool = False,
+        preserve_bool: bool = False,
+        credential: "Credential | None" = None,
+        platform: Platform | None = None,
+        pager_meta: None = None,
+        refresh_meta: "RefreshMeta",
+    ) -> "RefreshableRequest[dict[str, Any]]": ...
 
     @overload
     def _build_request(
@@ -141,9 +175,43 @@ class ApiModule:
         preserve_bool: bool = False,
         credential: "Credential | None" = None,
         platform: Platform | None = None,
-        pager_meta: "PagerMeta | None" = None,
-        refresh_meta: "RefreshMeta | None" = None,
+        pager_meta: None = None,
+        refresh_meta: None = None,
     ) -> "Request[TarsDict]": ...
+
+    @overload
+    def _build_request(
+        self,
+        module: str,
+        method: str,
+        param: dict[str, Any] | dict[int, Any],
+        response_model: None = None,
+        comm: dict[str, Any] | None = None,
+        *,
+        is_jce: bool = True,
+        preserve_bool: bool = False,
+        credential: "Credential | None" = None,
+        platform: Platform | None = None,
+        pager_meta: "PagerMeta",
+        refresh_meta: None = None,
+    ) -> "PaginatedRequest[TarsDict]": ...
+
+    @overload
+    def _build_request(
+        self,
+        module: str,
+        method: str,
+        param: dict[str, Any] | dict[int, Any],
+        response_model: None = None,
+        comm: dict[str, Any] | None = None,
+        *,
+        is_jce: bool = True,
+        preserve_bool: bool = False,
+        credential: "Credential | None" = None,
+        platform: Platform | None = None,
+        pager_meta: None = None,
+        refresh_meta: "RefreshMeta",
+    ) -> "RefreshableRequest[TarsDict]": ...
 
     @overload
     def _build_request(
@@ -158,9 +226,43 @@ class ApiModule:
         preserve_bool: bool = False,
         credential: "Credential | None" = None,
         platform: Platform | None = None,
-        pager_meta: "PagerMeta | None" = None,
-        refresh_meta: "RefreshMeta | None" = None,
+        pager_meta: None = None,
+        refresh_meta: None = None,
     ) -> "Request[ResponseModel]": ...
+
+    @overload
+    def _build_request(
+        self,
+        module: str,
+        method: str,
+        param: dict[str, Any] | dict[int, Any],
+        response_model: type["ResponseModel"],
+        comm: dict[str, Any] | None = None,
+        *,
+        is_jce: bool = False,
+        preserve_bool: bool = False,
+        credential: "Credential | None" = None,
+        platform: Platform | None = None,
+        pager_meta: "PagerMeta",
+        refresh_meta: None = None,
+    ) -> "PaginatedRequest[ResponseModel]": ...
+
+    @overload
+    def _build_request(
+        self,
+        module: str,
+        method: str,
+        param: dict[str, Any] | dict[int, Any],
+        response_model: type["ResponseModel"],
+        comm: dict[str, Any] | None = None,
+        *,
+        is_jce: bool = False,
+        preserve_bool: bool = False,
+        credential: "Credential | None" = None,
+        platform: Platform | None = None,
+        pager_meta: None = None,
+        refresh_meta: "RefreshMeta",
+    ) -> "RefreshableRequest[ResponseModel]": ...
 
     def _build_request(
         self,
@@ -176,7 +278,7 @@ class ApiModule:
         platform: Platform | None = None,
         pager_meta: "PagerMeta | None" = None,
         refresh_meta: "RefreshMeta | None" = None,
-    ) -> "Request[Any]":
+    ) -> "Request[Any] | PaginatedRequest[Any] | RefreshableRequest[Any]":
         """构建可 await 的请求描述符.
 
         Args:
@@ -191,21 +293,23 @@ class ApiModule:
             platform: 指定请求平台.
             pager_meta: 连续翻页元数据声明.
             refresh_meta: 换一批元数据声明.
-
         """
-        from ..core.request import Request
+        from ..core.request import PaginatedRequest, RefreshableRequest, Request
 
-        return Request(
-            _client=self._client,
-            module=module,
-            method=method,
-            param=param,
-            response_model=response_model,
-            comm=comm,
-            is_jce=is_jce,
-            preserve_bool=preserve_bool,
-            credential=credential,
-            platform=platform,
-            pager_meta=pager_meta,
-            refresh_meta=refresh_meta,
-        )
+        common_kwargs = {
+            "_client": self._client,
+            "module": module,
+            "method": method,
+            "param": param,
+            "response_model": response_model,
+            "comm": comm,
+            "is_jce": is_jce,
+            "preserve_bool": preserve_bool,
+            "credential": credential,
+            "platform": platform,
+        }
+        if pager_meta is not None:
+            return PaginatedRequest(**common_kwargs, pager_meta=pager_meta)
+        if refresh_meta is not None:
+            return RefreshableRequest(**common_kwargs, refresh_meta=refresh_meta)
+        return Request(**common_kwargs)
