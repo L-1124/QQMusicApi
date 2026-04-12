@@ -87,7 +87,7 @@ class RecommendApi(ApiModule):
         """获取雷达推荐.
 
         Args:
-            page: 页码。
+            page: 页码.
         """
         data = {
             "Page": page,
