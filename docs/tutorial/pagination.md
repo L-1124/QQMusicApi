@@ -1,4 +1,4 @@
-# Pager 与 Refresher
+# Pagination
 
 `paginate()` 用于按页消费已经声明连续翻页能力的请求结果。
 
@@ -63,7 +63,7 @@ asyncio.run(main())
 
 ## Refresher 基本用法
 
-“换一批”接口先按普通请求获取当前批次，再通过 `refresh()` 取得控制器，由控制器的 `refresh()` 手动拉取下一批。
+“换一批”接口先通过 `refresh()` 取得控制器，再由控制器的 `first()` 获取当前批次，随后通过 `refresh()` 手动拉取下一批。
 
 ```python
 import asyncio
@@ -73,9 +73,8 @@ from qqmusic_api import Client
 
 async def main() -> None:
     async with Client() as client:
-        request = client.song.get_related_mv(1114857)
-        current_batch = await request
-        refresher = request.refresh()
+        refresher = client.song.get_related_mv(1114857).refresh()
+        current_batch = await refresher.first()
         next_batch = await refresher.refresh()
 
         print(current_batch.mv[0].id)
@@ -83,18 +82,4 @@ async def main() -> None:
 
 
 asyncio.run(main())
-```
-
-`ResponseRefresher` 不支持 `async for`，也不接受 `limit`。是否继续请求下一批，由调用方自己决定。
-
-## 何时可以使用
-
-并不是所有模块方法返回的请求对象都支持连续翻页或换一批。
-
-* 只有声明了 `pager_meta` 的方法，返回的请求对象才会暴露 `paginate()`。
-* 只有声明了 `refresh_meta` 的方法，返回的请求对象才会暴露 `refresh()`。
-
-```python
-pager = client.search.search_by_type("周杰伦").paginate()
-refresher = client.song.get_related_mv(1114857).refresh()
 ```

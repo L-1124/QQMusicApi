@@ -461,12 +461,20 @@ class ResponseRefresher(_BaseResponseAdvancer[RequestResultT]):
             initial_request: 已声明换一批元数据的初始请求对象。
         """
         super().__init__(initial_request)
-        self._primed = False
+        self._first_response: RequestResultT | None = None
 
     def _get_meta(self, request: "RefreshableRequest[RequestResultT]") -> RefreshMeta:
         """读取刷新请求对应的换一批元数据."""
         return request.get_refresh_meta()
 
+    async def first(self) -> RequestResultT:
+        """请求并返回当前批结果."""
+        if self._first_response is None:
+            self._first_response = await self._advance()
+        return self._first_response
+
     async def refresh(self) -> RequestResultT:
         """请求并返回下一批结果."""
+        if self._first_response is None:
+            await self.first()
         return await self._advance()

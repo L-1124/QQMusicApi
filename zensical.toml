@@ -11,7 +11,7 @@ nav = [
     { "快速开始" = "tutorial/start.md" },
     { "Credential" = "tutorial/credential.md" },
     { "Client" = "tutorial/client.md" },
-    { "Pager" = "tutorial/pager.md" },
+    { "Pagination" = "tutorial/pagination.md" },
   ] },
   { "API 文档" = [
     { "Modules" = [

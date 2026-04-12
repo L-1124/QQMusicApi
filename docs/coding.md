@@ -140,8 +140,6 @@ class MyApi(ApiModule):
 
 当一个接口支持连续翻页时，应在模块方法中通过 `_build_request(..., pager_meta=...)` 显式声明连续翻页能力。声明后，该方法返回的请求对象才会暴露 `.paginate()`。
 
-当一个接口支持“换一批”时，应通过 `_build_request(..., refresh_meta=...)` 声明换一批能力。声明后，该方法返回的请求对象会暴露 `.refresh()`，并返回 `ResponseRefresher`。
-
 ```python
 from ..core.pagination import OffsetStrategy, PagerMeta, ResponseAdapter
 
@@ -170,6 +168,8 @@ class SonglistApi(ApiModule):
             ),
         )
 ```
+
+当一个接口支持“换一批”时，应通过 `_build_request(..., refresh_meta=...)` 声明换一批能力。声明后，该方法返回的请求对象会暴露 `.refresh()`，并返回 `ResponseRefresher`。
 
 ```python
 from ..core.pagination import BatchRefreshStrategy, RefreshMeta, ResponseAdapter

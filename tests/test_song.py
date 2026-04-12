@@ -72,9 +72,9 @@ async def test_get_related_mv(client: Client) -> None:
 
 async def test_get_related_songlist_refresh(client: Client) -> None:
     """测试歌曲相关歌单支持换一批."""
-    request = client.song.get_related_songlist(100)
-    first_batch = await request
-    next_batch = await request.refresh().refresh()
+    refresher = client.song.get_related_songlist(100).refresh()
+    first_batch = await refresher.first()
+    next_batch = await refresher.refresh()
 
     assert first_batch.songlist
     assert next_batch.songlist
@@ -83,9 +83,9 @@ async def test_get_related_songlist_refresh(client: Client) -> None:
 
 async def test_get_related_mv_refresh(client: Client) -> None:
     """测试歌曲相关 MV 支持换一批."""
-    request = client.song.get_related_mv(1114857)
-    first_batch = await request
-    next_batch = await request.refresh().refresh()
+    refresher = client.song.get_related_mv(1114857).refresh()
+    first_batch = await refresher.first()
+    next_batch = await refresher.refresh()
 
     assert first_batch.mv
     assert next_batch.mv
