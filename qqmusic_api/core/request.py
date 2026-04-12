@@ -1,7 +1,9 @@
 """请求描述符与批量请求容器. 提供对 API 请求的抽象与调度."""
 
+import copy
 from collections.abc import AsyncIterator, Generator
 from dataclasses import dataclass, field
+from dataclasses import replace as dc_replace
 from typing import TYPE_CHECKING, Any, Generic, Literal, TypeAlias, TypeVar
 
 import anyio
@@ -13,10 +15,12 @@ from ..models.request import Credential, RequestItem
 from .exceptions import (
     ApiDataError,
     ApiError,
+    PaginationNotSupportedError,
     RequestGroupResultMissingError,
     _build_api_error,
     _extract_api_error_code,
 )
+from .pagination import PagerMeta, RefreshMeta, ResponsePager, ResponseRefresher
 from .versioning import Platform
 
 if TYPE_CHECKING:
@@ -45,10 +49,40 @@ class Request(Generic[RequestResultT]):
     preserve_bool: bool = False
     credential: Credential | None = None
     platform: Platform | None = None
+    pager_meta: "PagerMeta | None" = None
+    refresh_meta: "RefreshMeta | None" = None
 
     def __await__(self) -> Generator[Any, Any, RequestResultT]:
         """使 Request 对象可被 await 执行."""
         return self._client.execute(self).__await__()
+
+    def replace(self, **changes: Any) -> "Request[RequestResultT]":
+        """返回一个应用了修改的新 Request 对象, 不会修改原对象."""
+        if "param" not in changes:
+            changes["param"] = copy.deepcopy(self.param)
+        if "comm" not in changes and self.comm is not None:
+            changes["comm"] = copy.deepcopy(self.comm)
+        return dc_replace(self, **changes)
+
+    def paginate(self, limit: int | None = None) -> ResponsePager[RequestResultT]:
+        """返回响应的分页迭代器.
+
+        Args:
+            limit: 最大获取页数.
+        """
+        if self.pager_meta is None:
+            raise PaginationNotSupportedError(f"请求 {self.module}.{self.method} 未声明 PagerMeta")
+        return ResponsePager(self, limit=limit)
+
+    def refresh(self) -> "ResponseRefresher[RequestResultT]":
+        """返回响应的换一批控制器."""
+        from .pagination import ResponseRefresher
+
+        return ResponseRefresher(self)
+
+
+PaginatedRequest = Request
+RefreshableRequest = Request
 
 
 @dataclass(frozen=True, slots=True)

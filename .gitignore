@@ -13,6 +13,7 @@ device.json
 
 # AI
 .ccb/
+docs/superpowers/
 
 # Distribution / packaging
 .Python

@@ -11,6 +11,7 @@ if TYPE_CHECKING:
     from tarsio import TarsDict
 
     from ..core.client import Client
+    from ..core.pagination import PagerMeta, RefreshMeta
     from ..core.request import Request, ResponseModel
     from ..models.request import Credential
 
@@ -123,6 +124,8 @@ class ApiModule:
         preserve_bool: bool = False,
         credential: "Credential | None" = None,
         platform: Platform | None = None,
+        pager_meta: "PagerMeta | None" = None,
+        refresh_meta: "RefreshMeta | None" = None,
     ) -> "Request[dict[str, Any]]": ...
 
     @overload
@@ -138,6 +141,8 @@ class ApiModule:
         preserve_bool: bool = False,
         credential: "Credential | None" = None,
         platform: Platform | None = None,
+        pager_meta: "PagerMeta | None" = None,
+        refresh_meta: "RefreshMeta | None" = None,
     ) -> "Request[TarsDict]": ...
 
     @overload
@@ -153,6 +158,8 @@ class ApiModule:
         preserve_bool: bool = False,
         credential: "Credential | None" = None,
         platform: Platform | None = None,
+        pager_meta: "PagerMeta | None" = None,
+        refresh_meta: "RefreshMeta | None" = None,
     ) -> "Request[ResponseModel]": ...
 
     def _build_request(
@@ -167,6 +174,8 @@ class ApiModule:
         preserve_bool: bool = False,
         credential: "Credential | None" = None,
         platform: Platform | None = None,
+        pager_meta: "PagerMeta | None" = None,
+        refresh_meta: "RefreshMeta | None" = None,
     ) -> "Request[Any]":
         """构建可 await 的请求描述符.
 
@@ -180,6 +189,8 @@ class ApiModule:
             preserve_bool: 是否保留 JSON 参数中的布尔字面量.
             credential: 指定请求凭证.
             platform: 指定请求平台.
+            pager_meta: 连续翻页元数据声明.
+            refresh_meta: 换一批元数据声明.
 
         """
         from ..core.request import Request
@@ -195,4 +206,6 @@ class ApiModule:
             preserve_bool=preserve_bool,
             credential=credential,
             platform=platform,
+            pager_meta=pager_meta,
+            refresh_meta=refresh_meta,
         )
