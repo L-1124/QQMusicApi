@@ -333,6 +333,15 @@ class MultiFieldContinuationStrategy(PagerStrategy):
         self._build_next_params = build_next_params
         self.context_name = context_name
 
+    def _build_next_params_candidate(
+        self,
+        params: PaginationParams,
+        response: Any,
+        adapter: ResponseAdapter,
+    ) -> PaginationParams | None:
+        """尝试解析下一页 continuation 参数."""
+        return self._build_next_params(copy.deepcopy(params), response, adapter)
+
     def _resolve_next_params(
         self,
         params: PaginationParams,
@@ -340,7 +349,7 @@ class MultiFieldContinuationStrategy(PagerStrategy):
         adapter: ResponseAdapter,
     ) -> PaginationParams:
         """解析并校验下一页 continuation 参数."""
-        next_params = self._build_next_params(copy.deepcopy(params), response, adapter)
+        next_params = self._build_next_params_candidate(params, response, adapter)
         if next_params is None:
             raise ValueError("分页响应未提供继续翻页所需的 continuation 数据")
         return cast("PaginationParams", next_params)
@@ -350,8 +359,7 @@ class MultiFieldContinuationStrategy(PagerStrategy):
         explicit_flag = adapter.get_has_more_flag(response)
         if explicit_flag is False:
             return False
-        self._resolve_next_params(params, response, adapter)
-        return True
+        return self._build_next_params_candidate(params, response, adapter) is not None
 
     def next_params(
         self,
