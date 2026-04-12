@@ -136,6 +136,214 @@ class MyApi(ApiModule):
         )
 ```
 
+## 声明连续翻页与换一批能力
+
+当一个接口支持连续翻页时，应在模块方法中通过 `_build_request(..., pager_meta=...)` 显式声明连续翻页能力。声明后，该方法返回的请求对象才会暴露 `.paginate()`。
+
+当一个接口支持“换一批”时，应通过 `_build_request(..., refresh_meta=...)` 声明换一批能力。声明后，该方法返回的请求对象会暴露 `.refresh()`，并返回 `ResponseRefresher`。
+
+```python
+from ..core.pagination import OffsetStrategy, PagerMeta, ResponseAdapter
+
+
+class SonglistApi(ApiModule):
+    """歌单相关 API."""
+
+    def get_detail(self, songlist_id: int, num: int = 10, page: int = 1):
+        """获取歌单详情."""
+        return self._build_request(
+            module="music.srfDissInfo.DissInfo",
+            method="CgiGetDiss",
+            param={
+                "disstid": songlist_id,
+                "song_begin": num * (page - 1),
+                "song_num": num,
+            },
+            response_model=GetSonglistDetailResponse,
+            pager_meta=PagerMeta(
+                strategy=OffsetStrategy(offset_key="song_begin", page_size_key="song_num"),
+                adapter=ResponseAdapter(
+                    has_more_flag="hasmore",
+                    total="total",
+                    count=lambda response: len(response.songs),
+                ),
+            ),
+        )
+```
+
+```python
+from ..core.pagination import BatchRefreshStrategy, RefreshMeta, ResponseAdapter
+
+
+class SongApi(ApiModule):
+    """歌曲相关 API."""
+
+    def get_related_mv(self, songid: int, last_mvid: str | None = None):
+        """获取歌曲相关 MV."""
+        return self._build_request(
+            module="MvService.MvInfoProServer",
+            method="GetSongRelatedMv",
+            param={"songid": str(songid), "songtype": 1, "lastmvid": last_mvid or 0},
+            response_model=GetRelatedMvResponse,
+            refresh_meta=RefreshMeta(
+                strategy=BatchRefreshStrategy(refresh_key="lastmvid"),
+                adapter=ResponseAdapter(
+                    has_more_flag="has_more",
+                    cursor=lambda response: response.mv[-1].id if response.mv else None,
+                ),
+            ),
+        )
+```
+
+### 内置连续翻页策略
+
+#### `PageStrategy`
+
+适用于请求参数里有明确页码字段，且下一页只需要把该字段加一的接口。
+
+```python
+from ..core.pagination import PageStrategy, PagerMeta, ResponseAdapter
+
+pager_meta = PagerMeta(
+    strategy=PageStrategy(page_key="PageNum", page_size=num, start_page=page - 1),
+    adapter=ResponseAdapter(has_more_flag="has_more"),
+)
+```
+
+#### `OffsetStrategy`
+
+适用于请求参数里有 `offset`、`begin`、`song_begin` 这类偏移量字段的接口。
+
+```python
+from ..core.pagination import OffsetStrategy, PagerMeta, ResponseAdapter
+
+pager_meta = PagerMeta(
+    strategy=OffsetStrategy(offset_key="song_begin", page_size_key="song_num"),
+    adapter=ResponseAdapter(
+        has_more_flag="hasmore",
+        total="total",
+        count=lambda response: len(response.songs),
+    ),
+)
+```
+
+如果上游尾页可能返回少量结果或重叠窗口，应优先提供 `count`。
+
+#### `CursorStrategy`
+
+适用于响应里能直接拿到下一页游标，并且下一次请求只需要回写这一个字段的接口。
+
+```python
+from ..core.pagination import CursorStrategy, PagerMeta, ResponseAdapter
+
+pager_meta = PagerMeta(
+    strategy=CursorStrategy(cursor_key="lastmvid"),
+    adapter=ResponseAdapter(
+        has_more_flag="has_more",
+        cursor=lambda response: response.mv[-1].id if response.mv else None,
+    ),
+)
+```
+
+#### `MultiFieldContinuationStrategy`
+
+适用于下一页请求需要同时更新多个字段的接口，例如页码加额外上下文。
+
+```python
+from ..core.pagination import MultiFieldContinuationStrategy, PagerMeta, ResponseAdapter
+
+pager_meta = PagerMeta(
+    strategy=MultiFieldContinuationStrategy(
+        lambda params, response, adapter: {
+            **params,
+            "page_id": response.nextpage,
+            "page_start": adapter.get_cursor(response),
+        },
+        context_name="general_search",
+    ),
+    adapter=ResponseAdapter(
+        has_more_flag=lambda response: response.nextpage != -1,
+        cursor="nextpage_start",
+    ),
+)
+```
+
+#### `BatchRefreshStrategy`
+
+适用于“换一批”接口。它不会把结果视为同一个连续窗口，而是根据上一批响应提取新的刷新参数，再请求下一批候选结果。
+
+```python
+from ..core.pagination import BatchRefreshStrategy, RefreshMeta, ResponseAdapter
+
+refresh_meta = RefreshMeta(
+    strategy=BatchRefreshStrategy(refresh_key="vecPlaylist"),
+    adapter=ResponseAdapter(
+        has_more_flag="has_more",
+        cursor=lambda response: [playlist.id for playlist in response.songlist] if response.songlist else None,
+    ),
+)
+```
+
+### `ResponseAdapter`
+
+`ResponseAdapter` 用于从响应中提取分页决策所需信息。常见字段包括：
+
+* `has_more_flag`: 显式是否还有下一页
+* `total`: 总量
+* `cursor`: 下一页游标
+* `count`: 当前页实际返回数量
+
+对偏移量分页，优先提供 `count`，因为上游尾页可能返回少于请求数量的结果，甚至返回重叠窗口；仅依赖请求页大小会导致尾页重复获取。
+
+`ResponseAdapter` 的每个字段都用于告诉分页器“应该从哪里读取分页信号”。常见写法如下。
+
+#### 只依赖显式 `has_more`
+
+```python
+adapter = ResponseAdapter(has_more_flag="has_more")
+```
+
+#### 使用总量判断是否还有下一页
+
+```python
+adapter = ResponseAdapter(total="total_num")
+```
+
+#### 从响应中提取下一页游标
+
+```python
+adapter = ResponseAdapter(cursor="nextpage_start")
+```
+
+也可以在字段需要转换时使用函数：
+
+```python
+adapter = ResponseAdapter(
+    cursor=lambda response: response.mv[-1].id if response.mv else None,
+ )
+```
+
+#### 为偏移量分页提供当前页实际数量
+
+```python
+adapter = ResponseAdapter(
+    has_more_flag="hasmore",
+    total="total",
+    count=lambda response: len(response.songs),
+)
+```
+
+如果接口需要多个信号，也可以组合使用：
+
+```python
+adapter = ResponseAdapter(
+    has_more_flag="has_more",
+    total="total",
+    cursor="nextpage_start",
+    count=lambda response: len(response.items),
+)
+```
+
 ## 在 `Client` 中注册模块
 
 新增模块后，在 `Client` 中注册该模块属性:
@@ -148,40 +356,6 @@ class Client:
 
         return MyApi(self)
 ```
-
-## 编写组合型异步接口
-
-当一个公开方法需要发起多次请求、合并分页结果或处理原始响应时，可以直接写成 `async def`。
-
-```python
-class MyApi(ApiModule):
-    """组合型接口示例."""
-
-    async def get_all_items(self, ids: list[int]) -> dict[int, dict]:
-        """批量获取并聚合结果."""
-        group = self._client.request_group(batch_size=20, max_inflight_batches=4)
-        for item_id in ids:
-            group.add(
-                self._build_request(
-                    module="music.myModule",
-                    method="GetInfo",
-                    param={"id": item_id},
-                )
-            )
-
-        merged: dict[int, dict] = {}
-        for raw in await group.execute():
-            if isinstance(raw, Exception):
-                raise raw
-            merged[int(raw["id"])] = raw
-        return merged
-```
-
-这种写法适用于:
-
-* 自动翻页取全量数据
-* 批量聚合多个 `Request`
-* 对原始响应做二次整理后再返回
 
 ## 批量请求 `RequestGroup`
 
@@ -202,7 +376,7 @@ async def batch_query(song_ids: list[int]):
         return await group.execute()
 ```
 
-`execute_iter()` 会按完成顺序流式返回 `RequestGroupResult`，不保证与添加顺序一致:
+`execute_iter()` 会按完成顺序流式返回 [`RequestGroupResult`][core.request.RequestGroupResult]，不保证与添加顺序一致:
 
 ```python
 from qqmusic_api import Client
@@ -217,21 +391,3 @@ async def batch_query_stream(song_ids: list[int]):
         async for result in group.execute_iter():
             print(result.index, result.module, result.method, result.success)
 ```
-
-`RequestGroupResult` 包含这些字段:
-
-* `index`: 原始添加顺序
-* `module`: 请求模块名
-* `method`: 请求方法名
-* `success`: 是否成功
-* `data`: 成功时的返回数据
-* `error`: 失败时的异常对象
-
-## 编写文档和测试
-
-新增或调整 API 时，请同步更新这些内容:
-
-* public API 的 docstring
-* 对应模块测试
-* 用户可见行为变更涉及的文档页
-* `zensical.toml` 的 `nav`（如果新增或移动了文档页面）

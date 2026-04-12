@@ -11,6 +11,7 @@ nav = [
     { "快速开始" = "tutorial/start.md" },
     { "Credential" = "tutorial/credential.md" },
     { "Client" = "tutorial/client.md" },
+    { "Pager" = "tutorial/pager.md" },
   ] },
   { "API 文档" = [
     { "Modules" = [
@@ -45,6 +46,7 @@ nav = [
     { "Core" = [
       { "client" = "reference/core/client.md" },
       { "request" = "reference/core/request.md" },
+      {"pagination" = "reference/core/pagination.md" },
       { "versioning" = "reference/core/versioning.md" },
       { "exception" = "reference/core/exception.md" },
     ] },
@@ -131,6 +133,8 @@ url_download = true
 [project.plugins]
 search = { lang = "zh" }
 
+[project.plugins.autorefs]
+
 [project.plugins.mkdocstrings.handlers.python]
 paths = [".", "qqmusic_api"]
 load_external_modules = true
@@ -141,6 +145,8 @@ members_order = "source"
 separate_signature = true
 show_root_heading = true
 show_symbol_type_heading = true
+show_root_toc_entry = true
+show_symbol_type_toc = true
 heading_level = 2
 filters = ["!^_"]
 show_signature_annotations = true
