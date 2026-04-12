@@ -2,6 +2,7 @@
 
 from typing import ClassVar
 
+from ..core.pagination import OffsetStrategy, PagerMeta, PageStrategy, ResponseAdapter
 from ..models.request import Credential
 from ..models.songlist import GetSonglistDetailResponse
 from ..models.user import (
@@ -45,7 +46,7 @@ class UserApi(ApiModule):
 
         Args:
             euin: 加密后的 UIN.
-            credential: 登录凭证 (可选).
+            credential: 登录凭证.
         """
         target_credential = self._resolve_placeholder_credential(credential)
         return self._build_request(
@@ -94,6 +95,14 @@ class UserApi(ApiModule):
             param={"HostUin": euin, "From": (page - 1) * num, "Size": num},
             credential=target_credential,
             response_model=UserRelationListResponse,
+            pager_meta=PagerMeta(
+                strategy=OffsetStrategy(offset_key="From", page_size_key="Size"),
+                adapter=ResponseAdapter(
+                    has_more_flag="has_more",
+                    total="total",
+                    count=lambda response: len(response.users),
+                ),
+            ),
         )
 
     def get_fans(
@@ -119,6 +128,14 @@ class UserApi(ApiModule):
             param={"HostUin": euin, "From": (page - 1) * num, "Size": num},
             credential=target_credential,
             response_model=UserRelationListResponse,
+            pager_meta=PagerMeta(
+                strategy=OffsetStrategy(offset_key="From", page_size_key="Size"),
+                adapter=ResponseAdapter(
+                    has_more_flag="has_more",
+                    total="total",
+                    count=lambda response: len(response.users),
+                ),
+            ),
         )
 
     def get_friend(
@@ -142,6 +159,10 @@ class UserApi(ApiModule):
             param={"PageSize": num, "Page": page - 1},
             credential=target_credential,
             response_model=UserFriendListResponse,
+            pager_meta=PagerMeta(
+                strategy=PageStrategy(page_key="Page", page_size=num, start_page=page - 1),
+                adapter=ResponseAdapter(has_more_flag="has_more"),
+            ),
         )
 
     def get_follow_user(
@@ -167,6 +188,14 @@ class UserApi(ApiModule):
             param={"HostUin": euin, "From": (page - 1) * num, "Size": num},
             credential=target_credential,
             response_model=UserRelationListResponse,
+            pager_meta=PagerMeta(
+                strategy=OffsetStrategy(offset_key="From", page_size_key="Size"),
+                adapter=ResponseAdapter(
+                    has_more_flag="has_more",
+                    total="total",
+                    count=lambda response: len(response.users),
+                ),
+            ),
         )
 
     def get_created_songlist(self, uin: int, *, credential: Credential | None = None):
@@ -174,7 +203,7 @@ class UserApi(ApiModule):
 
         Args:
             uin: 用户 UIN.
-            credential: 登录凭证 (可选).
+            credential: 登录凭证.
         """
         return self._build_request(
             module="music.musicasset.PlaylistBaseRead",
@@ -198,7 +227,7 @@ class UserApi(ApiModule):
             euin: 加密后的 UIN.
             page: 页码.
             num: 返回数量.
-            credential: 登录凭证 (可选).
+            credential: 登录凭证.
         """
         return self._build_request(
             module="music.srfDissInfo.DissInfo",
@@ -215,6 +244,14 @@ class UserApi(ApiModule):
             },
             credential=credential,
             response_model=GetSonglistDetailResponse,
+            pager_meta=PagerMeta(
+                strategy=OffsetStrategy(offset_key="song_begin", page_size_key="song_num"),
+                adapter=ResponseAdapter(
+                    has_more_flag="hasmore",
+                    total="total",
+                    count=lambda response: len(response.songs),
+                ),
+            ),
         )
 
     def get_fav_songlist(
@@ -231,7 +268,7 @@ class UserApi(ApiModule):
             euin: 加密后的 UIN.
             page: 页码.
             num: 每页数量.
-            credential: 登录凭证 (可选).
+            credential: 登录凭证.
         """
         return self._build_request(
             module="music.musicasset.PlaylistFavRead",
@@ -239,6 +276,14 @@ class UserApi(ApiModule):
             param={"uin": euin, "offset": (page - 1) * num, "size": num},
             credential=credential,
             response_model=UserFavSonglistResponse,
+            pager_meta=PagerMeta(
+                strategy=OffsetStrategy(offset_key="offset", page_size_key="size"),
+                adapter=ResponseAdapter(
+                    has_more_flag="hasmore",
+                    total="total",
+                    count=lambda response: len(response.playlists),
+                ),
+            ),
         )
 
     def get_fav_album(
@@ -255,7 +300,7 @@ class UserApi(ApiModule):
             euin: 加密后的 UIN.
             page: 页码.
             num: 每页数量.
-            credential: 登录凭证 (可选).
+            credential: 登录凭证.
         """
         return self._build_request(
             module="music.musicasset.AlbumFavRead",
@@ -263,6 +308,14 @@ class UserApi(ApiModule):
             param={"euin": euin, "offset": (page - 1) * num, "size": num},
             credential=credential,
             response_model=UserFavAlbumResponse,
+            pager_meta=PagerMeta(
+                strategy=OffsetStrategy(offset_key="offset", page_size_key="size"),
+                adapter=ResponseAdapter(
+                    has_more_flag="hasmore",
+                    total="total",
+                    count=lambda response: len(response.albums),
+                ),
+            ),
         )
 
     def get_fav_mv(
@@ -295,7 +348,7 @@ class UserApi(ApiModule):
 
         Args:
             euin: 加密后的 UIN.
-            credential: 登录凭证 (可选).
+            credential: 登录凭证.
         """
         return self._build_request(
             module="music.recommend.UserProfileSettingSvr",

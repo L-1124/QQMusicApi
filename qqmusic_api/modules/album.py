@@ -2,6 +2,7 @@
 
 from typing import Any
 
+from ..core.pagination import OffsetStrategy, PagerMeta, ResponseAdapter
 from ..models.album import GetAlbumDetailResponse, GetAlbumSongResponse
 from ._base import ApiModule
 
@@ -50,4 +51,8 @@ class AlbumApi(ApiModule):
             method="GetAlbumSongList",
             param=param,
             response_model=GetAlbumSongResponse,
+            pager_meta=PagerMeta(
+                strategy=OffsetStrategy(offset_key="begin", page_size_key="num"),
+                adapter=ResponseAdapter(total="total_num", count=lambda response: len(response.song_list)),
+            ),
         )

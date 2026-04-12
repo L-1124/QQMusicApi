@@ -262,7 +262,7 @@ class BatchRefreshStrategy(RefresherStrategy):
     def has_next(self, params: PaginationParams, response: Any, adapter: ResponseAdapter) -> bool:
         """判断是否还能继续换一批."""
         explicit_flag = adapter.get_has_more_flag(response)
-        if explicit_flag is False:
+        if not explicit_flag:
             return False
         next_refresh_value = self._extract_refresh_value(response, adapter)
         current_params = cast("dict[Any, Any]", params)
