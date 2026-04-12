@@ -46,7 +46,7 @@ nav = [
     { "Core" = [
       { "client" = "reference/core/client.md" },
       { "request" = "reference/core/request.md" },
-      {"pagination" = "reference/core/pagination.md" },
+      { "pagination" = "reference/core/pagination.md" },
       { "versioning" = "reference/core/versioning.md" },
       { "exception" = "reference/core/exception.md" },
     ] },
