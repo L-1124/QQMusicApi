@@ -1,7 +1,42 @@
 """评论模块."""
 
+from typing import Any, cast
+
+from ..core.pagination import (
+    CursorStrategy,
+    MultiFieldContinuationStrategy,
+    PagerMeta,
+    PaginationParams,
+    ResponseAdapter,
+)
 from ..models.comment import CommentCountResponse, CommentListResponse, MomentCommentResponse
 from ._base import ApiModule
+
+
+def _build_comment_pager_meta() -> PagerMeta:
+    """构建评论列表接口使用的 continuation 策略."""
+
+    def build_next_params(
+        params: PaginationParams,
+        response: CommentListResponse,
+        adapter: ResponseAdapter,
+    ) -> PaginationParams | None:
+        next_seq_no = adapter.get_cursor(response)
+        if next_seq_no is None:
+            return None
+        next_params = cast("dict[str, Any]", params.copy())
+        next_params["PageNum"] = next_params["PageNum"] + 1
+        next_params["LastCommentSeqNo"] = next_seq_no
+        return next_params
+
+    return PagerMeta(
+        strategy=MultiFieldContinuationStrategy(build_next_params, context_name="comment_list"),
+        adapter=ResponseAdapter(
+            has_more_flag="has_more",
+            total="total",
+            cursor=lambda response: response.comments[-1].seq_no if response.comments else None,
+        ),
+    )
 
 
 class CommentApi(ApiModule):
@@ -57,6 +92,7 @@ class CommentApi(ApiModule):
             "GetHotCommentList",
             params,
             response_model=CommentListResponse,
+            pager_meta=_build_comment_pager_meta(),
         )
 
     def get_new_comments(
@@ -90,6 +126,7 @@ class CommentApi(ApiModule):
             "GetNewCommentList",
             params,
             response_model=CommentListResponse,
+            pager_meta=_build_comment_pager_meta(),
         )
 
     def get_recommend_comments(
@@ -123,6 +160,7 @@ class CommentApi(ApiModule):
             "GetRecCommentList",
             params,
             response_model=CommentListResponse,
+            pager_meta=_build_comment_pager_meta(),
         )
 
     def get_moment_comments(
@@ -151,4 +189,8 @@ class CommentApi(ApiModule):
             "GetSongTsCmList",
             params,
             response_model=MomentCommentResponse,
+            pager_meta=PagerMeta(
+                strategy=CursorStrategy(cursor_key="LastPos"),
+                adapter=ResponseAdapter(has_more_flag="has_more", cursor="next_pos"),
+            ),
         )

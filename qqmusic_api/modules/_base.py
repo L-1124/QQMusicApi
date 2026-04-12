@@ -296,6 +296,9 @@ class ApiModule:
         """
         from ..core.request import PaginatedRequest, RefreshableRequest, Request
 
+        if pager_meta is not None and refresh_meta is not None:
+            raise ValueError("pager_meta 与 refresh_meta 不能同时声明")
+
         common_kwargs = {
             "_client": self._client,
             "module": module,

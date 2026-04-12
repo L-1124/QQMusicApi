@@ -68,6 +68,10 @@ class PaginatedRequest(Request[RequestResultT]):
 
     pager_meta: PagerMeta
 
+    def get_pager_meta(self) -> PagerMeta:
+        """返回连续翻页元数据."""
+        return self.pager_meta
+
     def paginate(self, limit: int | None = None) -> ResponsePager[RequestResultT]:
         """返回响应的分页迭代器.
 
@@ -82,6 +86,10 @@ class RefreshableRequest(Request[RequestResultT]):
     """声明了换一批能力的请求描述符."""
 
     refresh_meta: RefreshMeta
+
+    def get_refresh_meta(self) -> RefreshMeta:
+        """返回换一批元数据."""
+        return self.refresh_meta
 
     def refresh(self) -> ResponseRefresher[RequestResultT]:
         """返回响应的换一批控制器."""

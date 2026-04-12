@@ -5,6 +5,7 @@ from typing import Any
 
 from qqmusic_api import Platform
 
+from ..core.pagination import BatchRefreshStrategy, RefreshMeta, ResponseAdapter
 from ..models.request import Credential
 from ..models.song import (
     GetCdnDispatchResponse,
@@ -277,17 +278,27 @@ class SongApi(ApiModule):
             response_model=GetSongLabelsResponse,
         )
 
-    def get_related_songlist(self, songid: int):
+    def get_related_songlist(self, songid: int, last: list[int] | None = None):
         """获取歌曲相关歌单.
 
         Args:
             songid: 歌曲 ID.
+            last: 上次请求的相关歌单 ID 列表, 用于换一批歌单.
         """
         return self._build_request(
             module="music.recommend.TrackRelationServer",
             method="GetRelatedPlaylist",
-            param={"songid": songid},
+            param={"songid": songid, "vecPlaylist": last or []},
             response_model=GetRelatedSonglistResponse,
+            refresh_meta=RefreshMeta(
+                strategy=BatchRefreshStrategy(refresh_key="vecPlaylist"),
+                adapter=ResponseAdapter(
+                    has_more_flag="has_more",
+                    cursor=lambda response: (
+                        [playlist.id for playlist in response.songlist] if response.songlist else None
+                    ),
+                ),
+            ),
         )
 
     def get_related_mv(self, songid: int, last_mvid: str | None = None):
@@ -302,6 +313,13 @@ class SongApi(ApiModule):
             method="GetSongRelatedMv",
             param={"songid": str(songid), "songtype": 1, "lastmvid": last_mvid or 0},
             response_model=GetRelatedMvResponse,
+            refresh_meta=RefreshMeta(
+                strategy=BatchRefreshStrategy(refresh_key="lastmvid"),
+                adapter=ResponseAdapter(
+                    has_more_flag="has_more",
+                    cursor=lambda response: response.mv[-1].id if response.mv else None,
+                ),
+            ),
         )
 
     def get_other_version(self, value: str | int):
@@ -345,15 +363,15 @@ class SongApi(ApiModule):
             response_model=GetSheetResponse,
         )
 
-    def get_fav_num(self, songid: list[int]):
+    def get_fav_num(self, song_ids: list[int]):
         """获取歌曲收藏数量原始数据.
 
         Args:
-            songid: 歌曲 ID 列表.
+            song_ids: 歌曲 ID 列表.
         """
         return self._build_request(
             module="music.musicasset.SongFavRead",
             method="GetSongFansNumberById",
-            param={"v_songId": songid},
+            param={"v_songId": song_ids},
             response_model=GetFavNumResponse,
         )

@@ -136,6 +136,8 @@ class PageStrategy(PagerStrategy):
 
         current_params = cast("dict[Any, Any]", params)
         current_page = current_params.get(self.page_key, self.start_page)
+        if not isinstance(current_page, int):
+            raise TypeError("分页请求缺少有效的页码参数, 无法判断是否存在下一页")
         consumed_pages = current_page - self.start_page + 1
         return consumed_pages * self.page_size < total
 
@@ -147,7 +149,10 @@ class PageStrategy(PagerStrategy):
     ) -> PaginationParams:
         """计算下一页参数."""
         new_params = cast("dict[Any, Any]", copy.deepcopy(params))
-        new_params[self.page_key] = new_params.get(self.page_key, self.start_page) + 1
+        current_page = new_params.get(self.page_key, self.start_page)
+        if not isinstance(current_page, int):
+            raise TypeError("分页请求缺少有效的页码参数, 无法计算下一页")
+        new_params[self.page_key] = current_page + 1
         return new_params
 
 
@@ -296,10 +301,12 @@ class CursorStrategy(PagerStrategy):
     def has_next(self, params: PaginationParams, response: Any, adapter: ResponseAdapter) -> bool:
         """判断是否还有下一页."""
         explicit_flag = adapter.get_has_more_flag(response)
-        if explicit_flag is False:
+        if explicit_flag is not None and not bool(explicit_flag):
             return False
-        self._extract_cursor(response, adapter)
-        return True
+
+        next_cursor = self._extract_cursor(response, adapter)
+        current_params = cast("dict[Any, Any]", params)
+        return current_params.get(self.cursor_key) != next_cursor
 
     def next_params(
         self,
@@ -433,7 +440,7 @@ class ResponsePager(_BaseResponseAdvancer[RequestResultT], AsyncIterator[Request
 
     def _get_meta(self, request: "PaginatedRequest[RequestResultT]") -> PagerMeta:
         """读取分页请求对应的连续翻页元数据."""
-        return request.pager_meta
+        return request.get_pager_meta()
 
 
 class ResponseRefresher(_BaseResponseAdvancer[RequestResultT]):
@@ -450,11 +457,8 @@ class ResponseRefresher(_BaseResponseAdvancer[RequestResultT]):
 
     def _get_meta(self, request: "RefreshableRequest[RequestResultT]") -> RefreshMeta:
         """读取刷新请求对应的换一批元数据."""
-        return request.refresh_meta
+        return request.get_refresh_meta()
 
     async def refresh(self) -> RequestResultT:
         """请求并返回下一批结果."""
-        if not self._primed:
-            await self._advance()
-            self._primed = True
         return await self._advance()

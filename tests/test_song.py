@@ -70,6 +70,28 @@ async def test_get_related_mv(client: Client) -> None:
     assert result.mv is not None
 
 
+async def test_get_related_songlist_refresh(client: Client) -> None:
+    """测试歌曲相关歌单支持换一批."""
+    request = client.song.get_related_songlist(100)
+    first_batch = await request
+    next_batch = await request.refresh().refresh()
+
+    assert first_batch.songlist
+    assert next_batch.songlist
+    assert first_batch.songlist[0].id != next_batch.songlist[0].id
+
+
+async def test_get_related_mv_refresh(client: Client) -> None:
+    """测试歌曲相关 MV 支持换一批."""
+    request = client.song.get_related_mv(1114857)
+    first_batch = await request
+    next_batch = await request.refresh().refresh()
+
+    assert first_batch.mv
+    assert next_batch.mv
+    assert first_batch.mv[-1].id != next_batch.mv[0].id
+
+
 @pytest.mark.parametrize("value", [100, "003w2xz20QlUZt"])
 async def test_get_other_version(client: Client, value: int | str) -> None:
     """测试获取歌曲其他版本."""
