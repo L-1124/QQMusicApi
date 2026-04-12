@@ -197,19 +197,14 @@ class QRCodeLoginSession:
                     return
 
         async def iter_mobile_qrcode_login(deadline: float) -> QRLoginStream:
-            timeout_left = deadline - anyio.current_time()
-            if timeout_left <= 0:
+            if deadline <= anyio.current_time():
                 yield QRLoginResult(event=QRCodeLoginEvents.TIMEOUT)
                 return
 
-            try:
-                with anyio.fail_after(timeout_left):
-                    async for event_item in self.api.checking_mobile_qrcode(qrcode):
-                        yield event_item
-                        if event_item.event in terminal_events:
-                            return
-            except TimeoutError:
-                yield QRLoginResult(event=QRCodeLoginEvents.TIMEOUT)
+            async for event_item in self.api.checking_mobile_qrcode(qrcode, deadline=deadline):
+                yield event_item
+                if event_item.event in terminal_events:
+                    return
 
         deadline = anyio.current_time() + self.timeout_seconds
         event_iter = (

@@ -9,7 +9,7 @@ import pytest
 import pytest_asyncio
 
 from qqmusic_api import Client, Credential
-from qqmusic_api.core.exceptions import LoginExpiredError, NotLoginError, RatelimitedError
+from qqmusic_api.core.exceptions import LoginExpiredError, NetworkError, NotLoginError, RatelimitedError
 
 TEST_CREDENTIAL_ENV_PREFIX = "QQMUSIC_"
 
@@ -68,8 +68,8 @@ def pytest_runtest_call(item: pytest.Item) -> Generator[None, Any, Any]:
         return
 
     exc = excinfo[1]
-    if isinstance(exc, (NotLoginError, LoginExpiredError)):
-        pytest.skip(str(exc))
+    if isinstance(exc, (NotLoginError, LoginExpiredError, NetworkError)):
+        outcome.force_exception(pytest.skip.Exception(str(exc)))
     elif isinstance(exc, RatelimitedError):
         _rerun_test_call_with_rate_limit_retry(item, RATE_LIMIT_RETRY_DELAYS)
         outcome.force_result(None)

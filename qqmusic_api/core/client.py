@@ -3,17 +3,17 @@
 import logging
 import sys
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from http.cookiejar import CookieJar
 from typing import TYPE_CHECKING, Any, TypedDict, TypeVar, cast, overload
 
+from httpx_retries import Retry, RetryTransport
 from typing_extensions import override
 
 if sys.version_info >= (3, 11):
     from typing import Unpack
 else:
     from typing_extensions import Unpack
-
 
 import anyio
 import httpx
@@ -30,7 +30,6 @@ from ..models.request import (
 )
 from ..utils.common import bool_to_int
 from ..utils.qimei import QimeiResult, get_qimei
-from ..utils.retry import AsyncRetrying
 from .exceptions import ApiDataError, ApiError, HTTPError, NetworkError, _build_api_error, _extract_api_error_code
 from .request import Request, RequestGroup, RequestResult, RequestResultT, ResponseModel
 from .versioning import DEFAULT_VERSION_POLICY, Platform, VersionPolicy
@@ -53,6 +52,15 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger("qqmusicapi.client")
 ModuleT = TypeVar("ModuleT")
+_HTTP_RETRYABLE_EXCEPTIONS = (
+    httpx.ConnectError,
+    httpx.ReadError,
+    httpx.ReadTimeout,
+    httpx.RemoteProtocolError,
+    httpx.WriteError,
+    httpx.WriteTimeout,
+)
+_HTTP_RETRYABLE_METHODS = ("DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT")
 
 
 class ClientConfig(TypedDict, total=False):
@@ -136,29 +144,85 @@ class Client:
         self._version_policy: VersionPolicy = DEFAULT_VERSION_POLICY
 
         self._limiter = anyio.CapacityLimiter(max_concurrency)
-
-        self._session = httpx.AsyncClient(
-            follow_redirects=False,
-            limits=httpx.Limits(
-                max_connections=max_connections,
-                max_keepalive_connections=max_connections,
-            ),
-            http2=True,
-            cookies=_NullCookieJar(),
-            timeout=httpx.Timeout(5.0, read=10.0, write=5.0, pool=10.0),
+        limits = httpx.Limits(
+            max_connections=max_connections,
+            max_keepalive_connections=max_connections,
+        )
+        retry_policy = Retry(
+            total=2,
+            allowed_methods=_HTTP_RETRYABLE_METHODS,
+            status_forcelist=[],
+            retry_on_exceptions=_HTTP_RETRYABLE_EXCEPTIONS,
+            backoff_factor=0.5,
+            backoff_jitter=0.0,
+        )
+        transport = self._build_retry_transport(
+            retry_policy,
+            transport=client_config.get("transport"),
             proxy=client_config.get("proxy"),
             trust_env=client_config.get("trust_env", True),
             verify=client_config.get("verify", True),
             cert=client_config.get("cert"),
+            limits=limits,
+            http2=True,
+        )
+        mounts = self._wrap_mount_transports(client_config.get("mounts"), retry_policy)
+
+        self._session = httpx.AsyncClient(
+            follow_redirects=False,
+            cookies=_NullCookieJar(),
+            timeout=httpx.Timeout(5.0, read=10.0, write=5.0, pool=10.0),
             event_hooks=client_config.get("event_hooks"),
-            transport=client_config.get("transport"),
-            mounts=client_config.get("mounts"),
+            transport=transport,
+            mounts=mounts,
         )
 
         self._qimei_lock = anyio.Lock()
         self._qimei_loaded = False
         self._qimei_cache: QimeiResult | None = None
         self._module_cache: dict[str, Any] = {}
+
+    @staticmethod
+    def _build_retry_transport(
+        retry_policy: Retry,
+        *,
+        transport: httpx.AsyncBaseTransport | None,
+        proxy: Any,
+        trust_env: bool,
+        verify: Any,
+        cert: Any,
+        limits: httpx.Limits,
+        http2: bool,
+    ) -> RetryTransport:
+        """构造带重试能力的底层 transport."""
+        if transport is not None and not isinstance(transport, httpx.AsyncBaseTransport):
+            raise TypeError("client_config.transport must be an httpx.AsyncBaseTransport")
+        if transport is None:
+            transport = httpx.AsyncHTTPTransport(
+                verify=verify,
+                cert=cert,
+                trust_env=trust_env,
+                http2=http2,
+                limits=limits,
+                proxy=proxy,
+            )
+        return RetryTransport(transport=transport, retry=retry_policy)
+
+    @staticmethod
+    def _wrap_mount_transports(
+        mounts: Mapping[str, httpx.AsyncBaseTransport | None] | None,
+        retry_policy: Retry,
+    ) -> Mapping[str, httpx.AsyncBaseTransport | None] | None:
+        """为 mounted transport 补上与默认请求一致的重试策略."""
+        if mounts is None:
+            return None
+
+        wrapped_mounts: dict[str, httpx.AsyncBaseTransport | None] = {}
+        for key, transport in mounts.items():
+            if transport is not None and not isinstance(transport, httpx.AsyncBaseTransport):
+                raise TypeError(f"client_config.mounts[{key!r}] must be an httpx.AsyncBaseTransport")
+            wrapped_mounts[key] = None if transport is None else RetryTransport(transport=transport, retry=retry_policy)
+        return wrapped_mounts
 
     def _get_module(self, name: str, factory: Callable[[], ModuleT]) -> ModuleT:
         """获取并缓存模块实例."""
@@ -269,16 +333,10 @@ class Client:
             NetworkError: 网络请求在重试耗尽后仍然失败.
         """
         logger.debug("HTTP 请求开始: %s %s", method, url)
-        retrying = AsyncRetrying(
-            max_attempts=3,
-            wait_multiplier=0.5,
-            wait_exp_base=2.0,
-            log=logger,
-        )
 
         await self._limiter.acquire()
         try:
-            resp = await retrying(self._session.request, method, url, **kwargs)
+            resp = await self._session.request(method, url, **kwargs)
             logger.debug("HTTP 请求完成: %s %s -> %s", method, url, resp.status_code)
             return resp
         except httpx.RequestError as exc:

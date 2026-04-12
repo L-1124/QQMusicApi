@@ -1,5 +1,6 @@
 """登录模块测试."""
 
+import anyio
 import pytest
 
 from qqmusic_api import Client, LoginError
@@ -87,6 +88,28 @@ async def test_checking_mobile_qrcode_yields_scan_first(client: Client) -> None:
     assert first_event is not None
     assert first_event.event == QRCodeLoginEvents.SCAN
     assert first_event.done is False
+
+
+async def test_checking_mobile_qrcode_timeout_when_deadline_passed(client: Client) -> None:
+    """测试手机二维码流在过期 deadline 下立即超时."""
+    qrcode = await client.login.get_qrcode(login_type=QRLoginType.MOBILE)
+    results = [item async for item in client.login.checking_mobile_qrcode(qrcode, deadline=anyio.current_time() - 1)]
+
+    assert [item.event for item in results] == [QRCodeLoginEvents.TIMEOUT]
+
+
+async def test_checking_mobile_qrcode_short_deadline_closes_cleanly(client: Client) -> None:
+    """测试手机二维码流短 deadline 超时后可安全关闭."""
+    qrcode = await client.login.get_qrcode(login_type=QRLoginType.MOBILE)
+    stream = client.login.checking_mobile_qrcode(qrcode, deadline=anyio.current_time() + 0.001)
+
+    first_event = await anext(stream)
+    assert first_event.event == QRCodeLoginEvents.TIMEOUT
+
+    with pytest.raises(StopAsyncIteration):
+        await anext(stream)
+
+    await stream.aclose()
 
 
 async def test_phone_authorize_returns_controlled_error(client: Client) -> None:
