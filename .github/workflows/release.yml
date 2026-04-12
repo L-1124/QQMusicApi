@@ -55,7 +55,7 @@ jobs:
         with:
           token: ${{ secrets.GH_TOKEN }}
       - name: Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           body: ${{ needs.generate-release-body.outputs.release_body }}
           tag_name: ${{ github.ref_name }}
