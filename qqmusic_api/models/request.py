@@ -53,6 +53,10 @@ class CommonParams(BaseModel):
     format: str | None = Field(default=None)
     in_charset: str | None = Field(default=None, alias="inCharset")
     out_charset: str | None = Field(default=None, alias="outCharset")
+    # [Web] 通知开关
+    notice: int | None = Field(default=None)
+    # [Web] 新设备码开关
+    need_new_code: int | None = Field(default=None)
 
 
 class Credential(BaseModel):

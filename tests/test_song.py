@@ -46,9 +46,9 @@ async def test_get_similar_song(client: Client) -> None:
     assert result.song
 
 
-async def test_get_lables(client: Client) -> None:
+async def test_get_labels(client: Client) -> None:
     """测试获取歌曲标签."""
-    result = await client.song.get_lables(100)
+    result = await client.song.get_labels(100)
     assert result.labels is not None
 
 

@@ -3,6 +3,7 @@
 import hashlib
 import random
 import time
+import uuid
 from functools import lru_cache
 from typing import Any
 
@@ -38,7 +39,7 @@ def get_guid() -> str:
     Returns:
         str: 32 位随机 GUID 字符串.
     """
-    return "".join(random.choices("abcdef1234567890", k=32))
+    return uuid.uuid4().hex
 
 
 def hash33(s: str, h: int = 0) -> int:

@@ -128,7 +128,7 @@ class SpecialSongFileType(BaseSongFileType):
 
     + TRY: 歌曲试听. vs[0].
     + ACCOM: 纯人声/伴奏轨道. vs[9].
-    + MUILT: 多轨文件. vs[18].
+    + MULTI: 多轨文件. vs[18].
     + PIANO: AI演奏-钢琴. vs[13].
     + BAYIN: AI演奏-八音盒. vs[17].
     + GUZHENG: AI演奏-古筝. vs[14].
@@ -144,7 +144,7 @@ class SpecialSongFileType(BaseSongFileType):
 
     TRY = ("RS02", ".mp3")
     ACCOM = ("O801", ".ogg")
-    MULIT = ("O601", ".ogg")
+    MULTI = ("O601", ".ogg")
     PIANO = ("AI01", ".ogg")
     BAYIN = ("AI02", ".ogg")
     GUZHENG = ("AI03", ".ogg")
@@ -298,7 +298,7 @@ class SongApi(ApiModule):
             response_model=GetSimilarSongResponse,
         )
 
-    def get_lables(self, songid: int):
+    def get_labels(self, songid: int):
         """获取歌曲标签.
 
         Args:

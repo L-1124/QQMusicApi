@@ -30,7 +30,7 @@ class VersionProfile:
     qimei_sdk_version: str | None = None
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(slots=True)
 class VersionPolicy:
     """请求版本策略."""
 
