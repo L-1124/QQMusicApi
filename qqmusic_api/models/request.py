@@ -99,7 +99,7 @@ class Credential(BaseModel):
         if not isinstance(data, dict):
             return data
 
-        if data.get("loginType") or data.get("login_type"):
+        if "loginType" in data or "login_type" in data:
             return data
 
         musickey = data.get("musickey", "")

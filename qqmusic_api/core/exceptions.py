@@ -8,8 +8,18 @@ __all__ = [
     "BaseError",
     "CredentialError",
     "HTTPError",
+    "LoginAccountBannedError",
+    "LoginAccountRestrictedError",
+    "LoginApiError",
+    "LoginAuthCodeError",
+    "LoginAuthFailedError",
+    "LoginBindRequiredError",
+    "LoginCredentialExpiredError",
+    "LoginDeviceLimitError",
     "LoginError",
     "LoginExpiredError",
+    "LoginRateLimitedError",
+    "LoginSecurityRequiredError",
     "NetworkError",
     "NotLoginError",
     "RatelimitedError",
@@ -166,8 +176,74 @@ class LoginError(BaseError):
     通常在扫码登录流程中断、超时或网络失败时抛出。
     """
 
-    def __init__(self, message: str = "登录失败", cause: BaseException | None = None):
-        super().__init__(message, cause=cause)
+    def __init__(
+        self,
+        message: str = "登录失败",
+        cause: BaseException | None = None,
+        context: dict[str, Any] | None = None,
+    ):
+        super().__init__(message, context=context, cause=cause)
+
+
+class LoginApiError(LoginError):
+    """登录接口返回的业务错误基类."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: int,
+        data: dict[str, Any] | None = None,
+        action_url: str = "",
+        cause: BaseException | None = None,
+        context: dict[str, Any] | None = None,
+    ):
+        merged_context = dict(context or {})
+        merged_context["code"] = code
+        if data:
+            merged_context["data"] = data
+        if action_url:
+            merged_context["url"] = action_url
+        super().__init__(message, context=merged_context, cause=cause)
+        self.code = code
+        self.data = data or {}
+        self.action_url = action_url
+
+
+class LoginCredentialExpiredError(LoginApiError):
+    """登录刷新凭证不可用或登录态过期."""
+
+
+class LoginAuthFailedError(LoginApiError):
+    """登录认证失败或上游票据不可用."""
+
+
+class LoginSecurityRequiredError(LoginApiError):
+    """登录需要安全验证或人工交互."""
+
+
+class LoginAccountRestrictedError(LoginApiError):
+    """账号登录受限."""
+
+
+class LoginAccountBannedError(LoginApiError):
+    """账号被封禁导致无法登录."""
+
+
+class LoginBindRequiredError(LoginApiError):
+    """登录需要完成账号绑定或设备确认."""
+
+
+class LoginDeviceLimitError(LoginApiError):
+    """登录设备数量超限."""
+
+
+class LoginAuthCodeError(LoginApiError):
+    """手机验证码错误或已失效."""
+
+
+class LoginRateLimitedError(LoginApiError):
+    """登录操作触发频率限制."""
 
 
 class RequestGroupResultMissingError(ApiError):
