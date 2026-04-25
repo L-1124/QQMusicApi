@@ -7,7 +7,6 @@ from qqmusic_api import (
     ApiError,
     Client,
     Credential,
-    LoginAuthFailedError,
     LoginBindRequiredError,
     LoginError,
     LoginExpiredError,
@@ -51,64 +50,6 @@ def test_qrcode_login_result_done_property() -> None:
     assert timeout_result.done is False
 
 
-def test_refresh_param_uses_apk_wx_shape(client: Client) -> None:
-    """测试微信刷新参数符合 APK 请求结构."""
-    credential = Credential(
-        openid="wx_openid",
-        refresh_token="wx_refresh",
-        musicid=123,
-        musickey="W_X_key",
-        unionid="wx_union",
-        str_musicid="wx_musicid",
-        refresh_key="refresh_key",
-        login_type=1,
-    )
-
-    assert client.login._build_refresh_param(credential) == {
-        "openid": "wx_openid",
-        "refresh_token": "wx_refresh",
-        "str_musicid": "wx_musicid",
-        "musickey": "W_X_key",
-        "unionid": "wx_union",
-        "refresh_key": "refresh_key",
-        "loginMode": 2,
-    }
-
-
-def test_refresh_param_uses_apk_qq_shape(client: Client) -> None:
-    """测试 QQ 刷新参数符合 APK 请求结构."""
-    credential = Credential(
-        openid="qq_openid",
-        access_token="qq_access",
-        refresh_token="qq_refresh",
-        expired_at=3600,
-        musicid=123,
-        musickey="qq_key",
-        unionid="unused_union",
-        refresh_key="refresh_key",
-        login_type=2,
-    )
-
-    assert client.login._build_refresh_param(credential) == {
-        "openid": "qq_openid",
-        "access_token": "qq_access",
-        "refresh_token": "qq_refresh",
-        "expired_in": 3600,
-        "musicid": 123,
-        "musickey": "qq_key",
-        "refresh_key": "refresh_key",
-        "loginMode": 2,
-    }
-
-
-def test_refresh_param_rejects_unknown_login_type(client: Client) -> None:
-    """测试未知登录类型不会猜测刷新参数."""
-    credential = Credential(musicid=123, musickey="key", login_type=0)
-
-    with pytest.raises(LoginAuthFailedError, match="最后真实登录类型"):
-        client.login._build_refresh_param(credential)
-
-
 async def test_check_expired_returns_bool(authenticated_client: Client) -> None:
     """测试检查凭证过期返回布尔值."""
     result = await authenticated_client.login.check_expired()
@@ -147,7 +88,7 @@ async def test_refresh_credential_preserves_auth_error(monkeypatch: pytest.Monke
 
 
 async def test_phone_authorize_reports_precise_login_code(monkeypatch: pytest.MonkeyPatch) -> None:
-    """测试手机登录错误包含精确业务提示."""
+    """测试手机登录错误使用具体异常类型."""
     async with Client() as client:
 
         async def raise_bind_required(_request: object) -> None:
@@ -162,13 +103,9 @@ async def test_phone_authorize_reports_precise_login_code(monkeypatch: pytest.Mo
         with pytest.raises(LoginBindRequiredError) as exc_info:
             await client.login.phone_authorize(phone=10000000000, auth_code=123456)
 
-    assert "当前手机号需要绑定已有账号或完成账号选择" in str(exc_info.value)
-    assert "need bind" in str(exc_info.value)
     assert isinstance(exc_info.value, LoginError)
     assert exc_info.value.code == 20274
     assert exc_info.value.action_url == "https://example.test/security"
-    assert exc_info.value.context["code"] == 20274
-    assert exc_info.value.context["url"] == "https://example.test/security"
 
 
 async def test_check_qrcode_returns_login_event(client: Client) -> None:

@@ -74,39 +74,39 @@ class _LoginErrorSpec:
     error_type: type[LoginApiError] = LoginAuthFailedError
 
 
-_DEFAULT_LOGIN_ERROR_SPEC = _LoginErrorSpec("登录请求返回业务错误")
+_DEFAULT_LOGIN_ERROR_SPEC = _LoginErrorSpec("登录失败")
 _COMMON_LOGIN_ERROR_SPECS: dict[int, _LoginErrorSpec] = {
-    1000: _LoginErrorSpec("登录凭证不可用或已失效", LoginCredentialExpiredError),
-    2001: _LoginErrorSpec("全局认证失败或触发安全验证", LoginSecurityRequiredError),
-    20254: _LoginErrorSpec("需要完成账号安全验证", LoginSecurityRequiredError),
-    20261: _LoginErrorSpec("手机号登录参数异常"),
-    20271: _LoginErrorSpec("验证码错误或已鉴权", LoginAuthCodeError),
-    20272: _LoginErrorSpec("账号绑定状态异常", LoginBindRequiredError),
-    20274: _LoginErrorSpec("需要完成账号绑定或设备确认", LoginBindRequiredError),
-    20276: _LoginErrorSpec("需要完成验证码安全校验", LoginSecurityRequiredError),
-    20277: _LoginErrorSpec("账号登录受限, 需要访问限制说明页", LoginAccountRestrictedError),
-    20278: _LoginErrorSpec("账号登录受限, 需要访问限制说明页", LoginAccountRestrictedError),
-    20279: _LoginErrorSpec("登录设备数量超限", LoginDeviceLimitError),
-    20450: _LoginErrorSpec("账号被封禁, 无法登录", LoginAccountBannedError),
-    104400: _LoginErrorSpec("登录态已过期", LoginCredentialExpiredError),
-    104401: _LoginErrorSpec("登录态已过期", LoginCredentialExpiredError),
-    104604: _LoginErrorSpec("登录验证过于频繁或环境异常", LoginRateLimitedError),
+    1000: _LoginErrorSpec("凭证失效", LoginCredentialExpiredError),
+    2001: _LoginErrorSpec("需要安全验证", LoginSecurityRequiredError),
+    20254: _LoginErrorSpec("需要安全验证", LoginSecurityRequiredError),
+    20261: _LoginErrorSpec("登录参数错误"),
+    20271: _LoginErrorSpec("验证码错误", LoginAuthCodeError),
+    20272: _LoginErrorSpec("账号绑定异常", LoginBindRequiredError),
+    20274: _LoginErrorSpec("需要账号绑定", LoginBindRequiredError),
+    20276: _LoginErrorSpec("需要验证码校验", LoginSecurityRequiredError),
+    20277: _LoginErrorSpec("账号受限", LoginAccountRestrictedError),
+    20278: _LoginErrorSpec("账号受限", LoginAccountRestrictedError),
+    20279: _LoginErrorSpec("设备超限", LoginDeviceLimitError),
+    20450: _LoginErrorSpec("账号封禁", LoginAccountBannedError),
+    104400: _LoginErrorSpec("登录过期", LoginCredentialExpiredError),
+    104401: _LoginErrorSpec("登录过期", LoginCredentialExpiredError),
+    104604: _LoginErrorSpec("操作频繁", LoginRateLimitedError),
 }
 _SCOPED_LOGIN_ERROR_SPECS: dict[str, dict[int, _LoginErrorSpec]] = {
     "PhoneLogin": {
-        20261: _LoginErrorSpec("手机号或验证码参数异常"),
-        20271: _LoginErrorSpec("验证码错误或已鉴权", LoginAuthCodeError),
-        20274: _LoginErrorSpec("当前手机号需要绑定已有账号或完成账号选择", LoginBindRequiredError),
-        100001: _LoginErrorSpec("操作过于频繁, 请稍后再试", LoginRateLimitedError),
+        20261: _LoginErrorSpec("登录参数错误"),
+        20271: _LoginErrorSpec("验证码错误", LoginAuthCodeError),
+        20274: _LoginErrorSpec("需要账号绑定", LoginBindRequiredError),
+        100001: _LoginErrorSpec("操作频繁", LoginRateLimitedError),
     },
     "QQLogin": {
-        20274: _LoginErrorSpec("设备数量限制", LoginDeviceLimitError),
+        20274: _LoginErrorSpec("设备超限", LoginDeviceLimitError),
     },
     "RefreshCredential": {
-        1000: _LoginErrorSpec("刷新凭证已失效, 需要重新登录", LoginCredentialExpiredError),
-        2001: _LoginErrorSpec("刷新凭证触发全局认证失败或安全验证", LoginSecurityRequiredError),
-        104400: _LoginErrorSpec("刷新凭证对应登录态已过期", LoginCredentialExpiredError),
-        104401: _LoginErrorSpec("刷新凭证对应登录态已过期", LoginCredentialExpiredError),
+        1000: _LoginErrorSpec("凭证失效", LoginCredentialExpiredError),
+        2001: _LoginErrorSpec("需要安全验证", LoginSecurityRequiredError),
+        104400: _LoginErrorSpec("登录过期", LoginCredentialExpiredError),
+        104401: _LoginErrorSpec("登录过期", LoginCredentialExpiredError),
     },
 }
 
@@ -140,7 +140,7 @@ def _find_first_string(data: dict[str, Any], keys: tuple[str, ...]) -> str:
     return ""
 
 
-def _build_api_login_error(scope: str, fallback: str, exc: ApiError) -> LoginError:
+def _build_api_login_error(scope: str, exc: ApiError) -> LoginError:
     """根据 API 错误构造登录异常."""
     data = exc.data if isinstance(exc.data, dict) else {}
     code = exc.code
@@ -148,33 +148,28 @@ def _build_api_login_error(scope: str, fallback: str, exc: ApiError) -> LoginErr
     server_message = _find_first_string(data, _SERVER_MESSAGE_KEYS)
     action_url = _find_first_string(data, _SERVER_URL_KEYS)
 
-    message_parts = [fallback, spec.message]
-    if server_message and server_message not in spec.message:
-        message_parts.append(server_message)
-    if action_url:
-        message_parts.append(f"处理地址: {action_url}")
-
     context: dict[str, Any] = {"code": code}
     if data:
         context["data"] = data
     if action_url:
         context["url"] = action_url
 
-    message = f"[{scope}] {'; '.join(message_parts)} (code={code})"
+    reason = server_message or spec.message
+    message = f"[{scope}] {reason} (code={code})"
     return spec.error_type(message, code=code, data=data or None, action_url=action_url, cause=exc, context=context)
 
 
 class LoginApi(ApiModule):
     """登录相关的 API."""
 
-    async def _execute_login_request(self, request: Request, scope: str, fallback: str) -> Any:
+    async def _execute_login_request(self, request: Request, scope: str) -> Any:
         """执行登录请求并统一转换业务异常."""
         try:
             return await request
         except CredentialError:
             raise
         except ApiError as exc:
-            raise _build_api_login_error(scope, fallback, exc) from exc
+            raise _build_api_login_error(scope, exc) from exc
 
     @staticmethod
     def _build_refresh_param(target: Credential) -> dict[str, Any]:
@@ -202,8 +197,12 @@ class LoginApi(ApiModule):
                 "loginMode": 2,
             }
 
-        message = f"[RefreshCredential] 缺少 APK 刷新链路所需的最后真实登录类型 (login_type={target.login_type})"
-        raise LoginAuthFailedError(message, code=-1, data={"login_type": target.login_type, "musicid": target.musicid})
+        message = f"[RefreshCredential] 无法刷新 (login_type={target.login_type})"
+        raise LoginAuthFailedError(
+            message,
+            code=-1,
+            data={"login_type": target.login_type, "musicid": target.musicid},
+        )
 
     async def check_expired(self, credential: Credential | None = None) -> bool:
         """检查登录凭证是否已过期.
@@ -247,7 +246,6 @@ class LoginApi(ApiModule):
                 credential=target,
             ),
             "RefreshCredential",
-            "刷新凭证失败",
         )
 
         return Credential.model_validate(data)
@@ -406,7 +404,7 @@ class LoginApi(ApiModule):
                 return PhoneAuthCodeResult(event=PhoneLoginEvents.CAPTCHA)
             if exc.code == PhoneLoginEvents.FREQUENCY.value:
                 return PhoneAuthCodeResult(event=PhoneLoginEvents.FREQUENCY)
-            raise _build_api_login_error("PhoneLogin", "发送验证码失败", exc) from exc
+            raise _build_api_login_error("PhoneLogin", exc) from exc
 
         return PhoneAuthCodeResult(event=PhoneLoginEvents.SEND)
 
@@ -435,7 +433,6 @@ class LoginApi(ApiModule):
                 platform=Platform.ANDROID,
             ),
             "PhoneLogin",
-            "鉴权失败",
         )
 
         return Credential.model_validate(data)
@@ -501,7 +498,6 @@ class LoginApi(ApiModule):
                 platform=Platform.ANDROID if self._client.platform == Platform.WEB else None,
             ),
             "MobileLogin",
-            "获取二维码失败",
         )
 
         if data is None:
@@ -746,7 +742,6 @@ class LoginApi(ApiModule):
                 comm={"tmeLoginType": 2},
             ),
             "QQLogin",
-            "鉴权失败",
         )
 
         return Credential.model_validate(data)
@@ -761,7 +756,6 @@ class LoginApi(ApiModule):
                 comm={"tmeLoginType": 1},
             ),
             "WXLogin",
-            "鉴权失败",
         )
         return Credential.model_validate(data)
 
