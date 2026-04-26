@@ -57,6 +57,7 @@ dev = [
   { include-group = "docs" },
   { include-group = "linting" },
   { include-group = "testing" },
+  { include-group = "web" },
 ]
 docs = [
   "docstring-inheritance>=3.0.0",
@@ -75,6 +76,10 @@ testing = [
     "pytest>=9.0.2",
     "pytest-asyncio>=1.3.0",
     "pytest-sugar>=1.1.1",
+]
+web = [
+    "fastapi>=0.136.1",
+    "uvicorn>=0.46.0",
 ]
 
 [build-system]
@@ -96,7 +101,7 @@ python-version = "3.10"
 [tool.pytest]
 addopts = ["-rxXs"]
 pythonpath = ["."]
-testpaths = ["tests"]
+testpaths = ["tests", "web"]
 asyncio_mode = "auto"
 
 [tool.ruff]

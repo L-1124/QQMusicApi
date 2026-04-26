@@ -17,7 +17,7 @@ class QuerySongResponse(Response):
 
 
 class UrlinfoItem(Response):
-    """表示 GetEVkey/GetVkey 返回的单个文件授权结果.
+    """单个文件授权结果.
 
     Attributes:
         mid: 歌曲 mid.
@@ -39,8 +39,6 @@ class UrlinfoItem(Response):
 
 class GetSongUrlsResponse(Response):
     """歌曲播放地址响应.
-
-    同一次请求可能返回多个码率或文件名对应的授权结果,调用方需逐项判断是否可播放.
 
     Attributes:
         expiration: 链接过期时间 (秒).
