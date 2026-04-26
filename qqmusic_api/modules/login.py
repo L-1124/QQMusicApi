@@ -377,22 +377,35 @@ class LoginApi(ApiModule):
             except ConnectionError as exc:
                 raise NetworkError(f"MQTT network error: {exc}", original_exc=exc) from exc
 
-    async def send_authcode(self, phone: int, country_code: int = 86) -> PhoneAuthCodeResult:
+    async def send_authcode(
+        self,
+        phone: int,
+        country_code: int = 86,
+        *,
+        encrypted_phone_no: str | None = None,
+    ) -> PhoneAuthCodeResult:
         """发送手机验证码.
 
         Args:
             phone: 手机号.
             country_code: 国家代码, 默认为 86 (中国).
+            encrypted_phone_no: 加密的手机号, 与 phone 二选一传入.
 
         Returns:
             PhoneAuthCodeResult: 包含发送状态及附加信息的结果对象.
         """
+        param: dict[str, str] = {"tmeAppid": "qqmusic", "areaCode": str(country_code)}
+        if encrypted_phone_no:
+            param["encryptedPhoneNo"] = encrypted_phone_no
+        else:
+            param["phoneNo"] = str(phone)
+
         try:
             await self._client.execute(
                 self._build_request(
                     module="music.login.LoginServer",
                     method="SendPhoneAuthCode",
-                    param={"tmeAppid": "qqmusic", "phoneNo": str(phone), "areaCode": str(country_code)},
+                    param=param,
                     comm={"tmeLoginMethod": 3},
                     platform=Platform.ANDROID,
                 ),
@@ -408,27 +421,34 @@ class LoginApi(ApiModule):
 
         return PhoneAuthCodeResult(event=PhoneLoginEvents.SEND)
 
-    async def phone_authorize(self, phone: int, auth_code: int, country_code: int = 86) -> Credential:
+    async def phone_authorize(
+        self,
+        phone: int,
+        auth_code: int,
+        *,
+        encrypted_phone_no: str | None = None,
+    ) -> Credential:
         """使用手机验证码鉴权.
 
         Args:
             phone: 手机号.
             auth_code: 验证码.
-            country_code: 国家代码, 默认为 86.
+            encrypted_phone_no: 加密的手机号, 与 phone 二选一传入.
 
         Returns:
             Credential: 登录成功后的凭证对象.
         """
+        param: dict[str, str | int] = {"code": str(auth_code), "loginMode": 1}
+        if encrypted_phone_no:
+            param["encryptedPhoneNo"] = encrypted_phone_no
+        else:
+            param["phoneNo"] = str(phone)
+
         data = await self._execute_login_request(
             self._build_request(
                 module="music.login.LoginServer",
                 method="Login",
-                param={
-                    "code": str(auth_code),
-                    "phoneNo": str(phone),
-                    "areaCode": str(country_code),
-                    "loginMode": 1,
-                },
+                param=param,
                 comm={"tmeLoginMethod": 3, "tmeLoginType": 0},
                 platform=Platform.ANDROID,
             ),
