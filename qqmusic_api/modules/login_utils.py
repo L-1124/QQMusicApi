@@ -21,34 +21,24 @@ class PhoneLoginSession:
 
     Args:
         api: 用于发起手机验证码登录请求的 LoginApi 实例.
-        phone: 手机号.
+        phone: 手机号 (int) 或加密手机号 (str).
         country_code: 国家代码, 默认为 86.
-        encrypted_phone_no: 加密的手机号, 与 phone 二选一传入.
     """
 
     api: "LoginApi"
-    phone: int
+    phone: int | str
     country_code: int = 86
-    encrypted_phone_no: str | None = None
     last_result: PhoneAuthCodeResult | None = None
 
     async def send_authcode(self) -> PhoneAuthCodeResult:
         """发送当前会话手机号对应的验证码."""
-        result = await self.api.send_authcode(
-            self.phone,
-            self.country_code,
-            encrypted_phone_no=self.encrypted_phone_no,
-        )
+        result = await self.api.send_authcode(self.phone, self.country_code)
         self.last_result = result
         return result
 
     async def authorize(self, auth_code: int) -> Credential:
         """使用验证码完成当前会话的登录鉴权."""
-        return await self.api.phone_authorize(
-            self.phone,
-            auth_code,
-            encrypted_phone_no=self.encrypted_phone_no,
-        )
+        return await self.api.phone_authorize(self.phone, auth_code)
 
 
 @dataclass(frozen=True)

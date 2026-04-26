@@ -58,12 +58,15 @@ async def test_check_expired_returns_bool(authenticated_client: Client) -> None:
 
 async def test_refresh_credential_returns_controlled_result(authenticated_client: Client) -> None:
     """测试刷新凭证返回受控结果."""
+    error_type: type | None = None
     error_message: str | None = None
     try:
         result = await authenticated_client.login.refresh_credential()
     except CredentialError as exc:
+        error_type = type(exc)
         error_message = str(exc)
     except LoginError as exc:
+        error_type = type(exc)
         error_message = str(exc)
     else:
         assert result.musicid
@@ -71,7 +74,11 @@ async def test_refresh_credential_returns_controlled_result(authenticated_client
         return
 
     assert error_message is not None
-    assert any(keyword in error_message for keyword in ("[RefreshCredential]", "登录", "风控", "认证"))
+    assert error_type is not None
+    assert "code=" in error_message, f"异常缺少错误码: {error_message}"
+    assert any(keyword in error_message for keyword in ("登录", "凭证", "过期", "安全", "风控", "认证")), (
+        f"错误信息不包含预期关键词: {error_message}"
+    )
 
 
 async def test_refresh_credential_preserves_auth_error(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -157,7 +164,7 @@ async def test_checking_mobile_qrcode_short_deadline_closes_cleanly(client: Clie
 
 async def test_phone_authorize_returns_controlled_error(client: Client) -> None:
     """测试手机验证码鉴权返回受控错误."""
-    with pytest.raises(LoginError, match=r"\[PhoneLogin\]") as exc_info:
+    with pytest.raises(LoginError, match=r"code=") as exc_info:
         await client.login.phone_authorize(phone=10000000000, auth_code=123456)
 
     assert any(keyword in str(exc_info.value) for keyword in ("设备数量限制", "验证码错误或已鉴权", "鉴权失败"))
