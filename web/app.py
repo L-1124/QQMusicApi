@@ -17,6 +17,8 @@ from qqmusic_api.core.exceptions import BaseError, NotLoginError
 from .cache import MemoryBackend
 from .modules.login import OPENAPI_RESPONSE_MODELS as LOGIN_RESPONSE_MODELS
 from .modules.login import router as login_router
+from .modules.mv import OPENAPI_RESPONSE_MODELS as MV_RESPONSE_MODELS
+from .modules.mv import router as mv_router
 from .modules.song import OPENAPI_RESPONSE_MODELS as SONG_RESPONSE_MODELS
 from .modules.song import router as song_router
 from .modules.songlist import OPENAPI_RESPONSE_MODELS as SONGLIST_RESPONSE_MODELS
@@ -25,6 +27,13 @@ from .response import ApiResponse, ErrorResponse, error_response
 from .route_registry import RouteSpec, get_route_specs
 from .routing import make_endpoint, uses_complex_query
 from .schema import COOKIE_SECURITY_REQUIREMENT, get_response_model, install_openapi_schema
+
+_EXPLICIT_ROUTE_KEYS = {
+    ("song", "get_song_urls"),
+    ("mv", "get_mv_urls"),
+    ("songlist", "add_songs"),
+    ("songlist", "del_songs"),
+}
 
 _ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
     400: {"model": ErrorResponse},
@@ -41,8 +50,8 @@ async def _lifespan(app: FastAPI):
             credential = Credential.model_validate_json(await f.read())
 
     app.state.client = Client(credential=credential)
-    app.state.cache = MemoryBackend()
     yield
+    await app.state.cache.close()
     await app.state.client.close()
 
 
@@ -61,7 +70,7 @@ def _include_dynamic_routers(
     """按模块分组注册动态路由."""
     routers: dict[str, APIRouter] = defaultdict(lambda: APIRouter())
     for spec in route_specs:
-        if uses_complex_query(spec.method):
+        if uses_complex_query(spec.method) or (spec.module_attr, spec.method_name) in _EXPLICIT_ROUTE_KEYS:
             continue
 
         response_model = spec.response_model or get_response_model(spec.method)
@@ -95,6 +104,9 @@ def _include_explicit_routers(
     if ("song", "get_song_urls") in route_keys:
         app.include_router(song_router)
         response_models.update(SONG_RESPONSE_MODELS)
+    if ("mv", "get_mv_urls") in route_keys:
+        app.include_router(mv_router)
+        response_models.update(MV_RESPONSE_MODELS)
     if {("songlist", "add_songs"), ("songlist", "del_songs")} & route_keys:
         app.include_router(songlist_router)
         response_models.update(SONGLIST_RESPONSE_MODELS)
@@ -123,6 +135,7 @@ def create_app() -> FastAPI:
 需要登录凭证的接口请通过 Cookie 提供上述字段。
 """,
     )
+    app.state.cache = MemoryBackend()
 
     @app.exception_handler(BaseError)
     async def _handle_base_error(_request: Request, exc: BaseError):

@@ -200,14 +200,14 @@ def make_endpoint(
 
         if cache_ttl is not None:
             cache_key = make_cache_key(f"/{module_attr}/{method_name}", kwargs)
-            hit = request.app.state.cache.get(cache_key)
+            hit = await request.app.state.cache.get(cache_key)
             if hit is not None:
                 return cached_response(hit, cache_ttl)
 
             if accepts_credential:
                 kwargs["credential"] = credential_for_request(client, credential or client.credential)
             result = success_response(await _call_bound_method(bound_method, kwargs))
-            request.app.state.cache.set(cache_key, result, cache_ttl)
+            await request.app.state.cache.set(cache_key, result, cache_ttl)
             return cached_response(result, cache_ttl)
 
         if accepts_credential:

@@ -1,7 +1,8 @@
-"""Web 层缓存抽象与内存实现."""
+"""Web 层缓存抽象与内存/Redis 实现."""
 
 import hashlib
 import json
+import logging
 import time
 from dataclasses import dataclass, field
 from typing import Any, Protocol
@@ -9,18 +10,22 @@ from typing import Any, Protocol
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 
-from .response import ApiResponse
+logger = logging.getLogger(__name__)
 
 
 class CacheBackend(Protocol):
     """缓存后端协议."""
 
-    def get(self, key: str) -> Any | None:
+    async def get(self, key: str) -> Any | None:
         """获取缓存值."""
         ...
 
-    def set(self, key: str, data: Any, ttl: int) -> None:
+    async def set(self, key: str, data: Any, ttl: int) -> None:
         """写入缓存条目."""
+        ...
+
+    async def close(self) -> None:
+        """关闭后端连接."""
         ...
 
 
@@ -39,7 +44,7 @@ class MemoryBackend:
     _store: dict[str, _CacheEntry] = field(default_factory=dict)
     _max_size: int = 1024
 
-    def get(self, key: str) -> Any | None:
+    async def get(self, key: str) -> Any | None:
         """获取未过期的缓存值."""
         entry = self._store.get(key)
         if entry is None:
@@ -49,11 +54,15 @@ class MemoryBackend:
             return None
         return entry.data
 
-    def set(self, key: str, data: Any, ttl: int) -> None:
+    async def set(self, key: str, data: Any, ttl: int) -> None:
         """写入缓存条目."""
         if len(self._store) >= self._max_size:
             self._evict()
         self._store[key] = _CacheEntry(data=data, expires_at=time.monotonic() + ttl)
+
+    async def close(self) -> None:
+        """清空内存缓存."""
+        self._store.clear()
 
     def _evict(self) -> None:
         """淘汰过期条目; 若仍满则移除最早的条目."""
@@ -66,6 +75,36 @@ class MemoryBackend:
             del self._store[oldest]
 
 
+class RedisBackend:
+    """Redis 异步缓存后端."""
+
+    def __init__(self, url: str, prefix: str = "qqapi:") -> None:
+        """初始化 Redis 缓存后端."""
+        from redis.asyncio import Redis
+
+        self._client: Redis = Redis.from_url(url, decode_responses=True)
+        self._prefix = prefix
+
+    async def get(self, key: str) -> Any | None:
+        """从 Redis 获取缓存值."""
+        raw = await self._client.get(self._prefix + key)
+        if raw is None:
+            return None
+        try:
+            return json.loads(raw)
+        except (json.JSONDecodeError, TypeError):
+            return None
+
+    async def set(self, key: str, data: Any, ttl: int) -> None:
+        """写入 Redis 缓存条目."""
+        value = json.dumps(jsonable_encoder(data), ensure_ascii=False)
+        await self._client.setex(self._prefix + key, ttl, value)
+
+    async def close(self) -> None:
+        """关闭 Redis 连接."""
+        await self._client.aclose()
+
+
 def make_cache_key(path: str, kwargs: dict[str, Any]) -> str:
     """生成缓存键."""
     sorted_params = "&".join(f"{k}={v}" for k, v in sorted(kwargs.items()))
@@ -73,9 +112,9 @@ def make_cache_key(path: str, kwargs: dict[str, Any]) -> str:
     return f"{path}:{param_hash}"
 
 
-def cached_response(data: ApiResponse, ttl: int) -> JSONResponse:
+def cached_response(data: Any, ttl: int) -> JSONResponse:
     """构造带 Cache-Control 头的缓存响应."""
-    content = jsonable_encoder(data)
+    content = data if isinstance(data, dict) else jsonable_encoder(data)
     etag = hashlib.md5(json.dumps(content, sort_keys=True).encode()).hexdigest()[:16]
     return JSONResponse(
         content=content,
