@@ -7,13 +7,13 @@ from pydantic.json_schema import SkipJsonSchema
 from qqmusic_api import Client, Credential
 from qqmusic_api.models.song import GetSongUrlsResponse
 from qqmusic_api.modules.song import BaseSongFileType, SongFileInfo, SongFileType
-from web.auth import _credential_from_cookies
-from web.response import response_model_for, success_response
-from web.routing import _coerce_enum_value
+from web.auth import credential_for_request, credential_from_cookies
+from web.response import ApiResponse, success_response
+from web.routing import coerce_enum_value
 from web.schema import COOKIE_SECURITY_REQUIREMENT, _format_enum_values
 
 router = APIRouter(prefix="/song", tags=["song"])
-credential_dependency = Depends(_credential_from_cookies)
+credential_dependency = Depends(credential_from_cookies)
 OPENAPI_RESPONSE_MODELS = {
     ("/song/get_song_urls", "get"): GetSongUrlsResponse,
     ("/song/get_song_urls", "post"): GetSongUrlsResponse,
@@ -42,7 +42,7 @@ SONG_FILE_TYPE_DESCRIPTION = f"歌曲文件类型.\n\n{_format_enum_values(BaseS
 def _parse_song_file_type(value: str) -> BaseSongFileType:
     """解析歌曲文件类型名称."""
     try:
-        file_type = _coerce_enum_value(value, BaseSongFileType)
+        file_type = coerce_enum_value(value, BaseSongFileType)
     except (KeyError, ValueError) as exc:
         raise HTTPException(status_code=422, detail=f"未知歌曲文件类型: {value}") from exc
     if not isinstance(file_type, BaseSongFileType):
@@ -50,16 +50,11 @@ def _parse_song_file_type(value: str) -> BaseSongFileType:
     return file_type
 
 
-def _credential_for_request(client: Client, credential: Credential) -> Credential:
-    """返回当前请求可用的登录凭证."""
-    return credential if credential.musicid else client.credential
-
-
 @router.get(
     "/get_song_urls",
     summary="获取单个歌曲文件链接",
     description="获取单个歌曲文件链接.",
-    response_model=response_model_for(GetSongUrlsResponse),
+    response_model=ApiResponse,
     openapi_extra={"security": [COOKIE_SECURITY_REQUIREMENT]},
 )
 async def song_get_song_urls_get(
@@ -77,7 +72,7 @@ async def song_get_song_urls_get(
         await client.song.get_song_urls(
             [SongFileInfo(mid=mid, file_type=target_file_type, song_type=song_type, media_mid=media_mid)],
             file_type=target_file_type,
-            credential=_credential_for_request(client, credential),
+            credential=credential_for_request(client, credential),
         )
     )
 
@@ -86,7 +81,7 @@ async def song_get_song_urls_get(
     "/get_song_urls",
     summary="批量获取歌曲文件链接",
     description="批量获取歌曲文件链接.",
-    response_model=response_model_for(GetSongUrlsResponse),
+    response_model=ApiResponse,
     openapi_extra={"security": [COOKIE_SECURITY_REQUIREMENT]},
 )
 async def song_get_song_urls_post(
@@ -109,6 +104,6 @@ async def song_get_song_urls_post(
                 for item in body.file_info
             ],
             file_type=default_file_type,
-            credential=_credential_for_request(client, credential),
+            credential=credential_for_request(client, credential),
         )
     )

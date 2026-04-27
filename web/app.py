@@ -1,7 +1,5 @@
 """QQMusic API Web 应用工厂."""
 
-from __future__ import annotations
-
 import inspect
 from collections import defaultdict
 from contextlib import asynccontextmanager
@@ -16,14 +14,16 @@ import qqmusic_api
 from qqmusic_api import Client, Credential
 from qqmusic_api.core.exceptions import BaseError, NotLoginError
 
+from .modules.login import OPENAPI_RESPONSE_MODELS as LOGIN_RESPONSE_MODELS
+from .modules.login import router as login_router
 from .modules.song import OPENAPI_RESPONSE_MODELS as SONG_RESPONSE_MODELS
 from .modules.song import router as song_router
 from .modules.songlist import OPENAPI_RESPONSE_MODELS as SONGLIST_RESPONSE_MODELS
 from .modules.songlist import router as songlist_router
-from .response import ErrorResponse, error_response, response_model_for
+from .response import ApiResponse, ErrorResponse, error_response
 from .route_registry import RouteSpec, get_route_specs
-from .routing import _make_endpoint, _uses_complex_query
-from .schema import COOKIE_SECURITY_REQUIREMENT, _get_response_model, install_openapi_schema
+from .routing import make_endpoint, uses_complex_query
+from .schema import COOKIE_SECURITY_REQUIREMENT, get_response_model, install_openapi_schema
 
 _ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
     400: {"model": ErrorResponse},
@@ -59,11 +59,11 @@ def _include_dynamic_routers(
     """按模块分组注册动态路由."""
     routers: dict[str, APIRouter] = defaultdict(lambda: APIRouter())
     for spec in route_specs:
-        if _uses_complex_query(spec.method):
+        if uses_complex_query(spec.method):
             continue
 
-        response_model = _get_response_model(spec.method)
-        endpoint, doc = _make_endpoint(spec.module_attr, spec.method_name, spec.method)
+        response_model = spec.response_model or get_response_model(spec.method)
+        endpoint, doc = make_endpoint(spec.module_attr, spec.method_name, spec.method)
         requires_credential = "credential" in inspect.signature(spec.method).parameters
         for method in spec.methods:
             response_models[(spec.path, method.lower())] = response_model
@@ -73,7 +73,7 @@ def _include_dynamic_routers(
             methods=list(spec.methods),
             summary=doc["summary"] or f"{spec.module_cls.__name__}.{spec.method_name}",
             description=doc["description"],
-            response_model=response_model_for(response_model),
+            response_model=ApiResponse,
             openapi_extra={"security": [COOKIE_SECURITY_REQUIREMENT]} if requires_credential else None,
         )
 
@@ -88,6 +88,8 @@ def _include_explicit_routers(
 ) -> None:
     """注册需要显式请求体或特例参数处理的模块路由."""
     route_keys = {(spec.module_attr, spec.method_name) for spec in route_specs}
+    app.include_router(login_router)
+    response_models.update(LOGIN_RESPONSE_MODELS)
     if ("song", "get_song_urls") in route_keys:
         app.include_router(song_router)
         response_models.update(SONG_RESPONSE_MODELS)
@@ -122,33 +124,15 @@ def create_app() -> FastAPI:
 
     @app.exception_handler(BaseError)
     async def _handle_base_error(_request: Request, exc: BaseError):
+        if isinstance(exc, NotLoginError):
+            return error_response(
+                status_code=401,
+                code="NotLoginError",
+                message=str(exc),
+            )
         return error_response(
             status_code=400,
             code=type(exc).__name__,
-            message=str(exc),
-        )
-
-    @app.exception_handler(NotLoginError)
-    async def _handle_not_login(_request: Request, exc: NotLoginError):
-        return error_response(
-            status_code=401,
-            code="NotLoginError",
-            message=str(exc),
-        )
-
-    @app.exception_handler(TypeError)
-    async def _handle_type_error(_request: Request, exc: TypeError):
-        return error_response(
-            status_code=422,
-            code="TypeError",
-            message=str(exc),
-        )
-
-    @app.exception_handler(ValueError)
-    async def _handle_value_error(_request: Request, exc: ValueError):
-        return error_response(
-            status_code=400,
-            code="ValueError",
             message=str(exc),
         )
 
@@ -179,6 +163,7 @@ def create_app() -> FastAPI:
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
     <title>QQMusic API 文档</title>
+    <link rel="icon" type="image/svg+xml" href="https://github.com/L-1124/QQMusicApi/raw/refs/heads/main/assets/qq-music.svg">
     <script src="https://unpkg.com/@stoplight/elements/web-components.min.js"></script>
     <link rel="stylesheet" href="https://unpkg.com/@stoplight/elements/styles.min.css">
     <style>

@@ -73,13 +73,13 @@ linting = [
   "ruff>=0.15.6",
 ]
 testing = [
-    "pytest>=9.0.2",
-    "pytest-asyncio>=1.3.0",
-    "pytest-sugar>=1.1.1",
+  "pytest>=9.0.2",
+  "pytest-asyncio>=1.3.0",
+  "pytest-sugar>=1.1.1",
 ]
 web = [
-    "fastapi>=0.136.1",
-    "uvicorn>=0.46.0",
+  "fastapi>=0.136.1",
+  "uvicorn>=0.46.0",
 ]
 
 [build-system]
@@ -98,6 +98,10 @@ path = "qqmusic_api/__init__.py"
 [tool.pyrefly]
 python-version = "3.10"
 
+[tool.pyright]
+venv = ".venv"
+typeCheckingMode = "basic"
+
 [tool.pytest]
 addopts = ["-rxXs"]
 pythonpath = ["."]
@@ -107,9 +111,6 @@ asyncio_mode = "auto"
 [tool.ruff]
 line-length = 120
 extend-exclude = ["docs"]
-
-[tool.pyright]
-typeCheckingMode  = "basic"
 
 [tool.ruff.lint]
 extend-select = [
@@ -137,15 +138,7 @@ extend-select = [
   "TRY",
   "UP",
 ]
-ignore = [
-  "TRY003",
-  "BLE001",
-  "TRY300",
-  "TRY301",
-  "TID252",
-  "C901",
-  "COM81"
-]
+ignore = ["TRY003", "BLE001", "TRY300", "TRY301", "TID252", "C901", "COM81"]
 extend-per-file-ignores = { "qqmusic_api/core/exceptions.py" = ["D107"] }
 pydocstyle = { convention = "google" }
 

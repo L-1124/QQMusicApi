@@ -9,15 +9,15 @@ from fastapi import Depends, HTTPException, Query, Request
 
 from qqmusic_api import Client, Credential
 
-from .auth import _credential_from_cookies
+from .auth import credential_for_request, credential_from_cookies
 from .response import success_response
 from .schema import (
     _enum_query_values,
     _first_enum_type,
     _format_enum_values,
     _merge_description,
-    _parse_docstring,
     _sanitize_default,
+    parse_docstring,
 )
 
 _SIMPLE_QUERY_TYPES = {str, int, float, bool}
@@ -52,7 +52,7 @@ def _is_simple_query_annotation(tp: Any) -> bool:
     return False
 
 
-def _uses_complex_query(method: Any) -> bool:
+def uses_complex_query(method: Any) -> bool:
     """判断方法是否包含需要请求体承载的复杂参数."""
     sig = inspect.signature(method)
     hints = _resolve_type_hints(method)
@@ -72,7 +72,7 @@ def _iter_enum_members(target_type: type[Enum]) -> list[Enum]:
     return members
 
 
-def _coerce_enum_value(value: Any, target_type: type[Enum]) -> Any:
+def coerce_enum_value(value: Any, target_type: type[Enum]) -> Any:
     """将枚举名称或简单枚举值转换为枚举成员."""
     if isinstance(value, target_type):
         return value
@@ -116,7 +116,7 @@ def _signature_for_endpoint(
     """构造 FastAPI 可见的端点签名."""
     sig = inspect.signature(method)
     hints = _resolve_type_hints(method)
-    doc = _parse_docstring(method)
+    doc = parse_docstring(method)
 
     parameters = [
         inspect.Parameter(
@@ -145,7 +145,7 @@ def _signature_for_endpoint(
             inspect.Parameter(
                 "credential",
                 inspect.Parameter.KEYWORD_ONLY,
-                default=Depends(_credential_from_cookies),
+                default=Depends(credential_from_cookies),
                 annotation=Credential,
             )
         )
@@ -160,7 +160,7 @@ def _coerce_enum_kwargs(kwargs: dict[str, Any], hints: dict[str, Any]) -> dict[s
         for key, value in kwargs.items():
             enum_type = _first_enum_type(hints.get(key))
             if enum_type is not None:
-                coerced[key] = _coerce_enum_value(value, enum_type)
+                coerced[key] = coerce_enum_value(value, enum_type)
     except (KeyError, TypeError, ValueError) as exc:
         raise HTTPException(status_code=422, detail=f"查询参数类型转换失败: {exc}") from exc
     return coerced
@@ -174,7 +174,7 @@ async def _call_bound_method(bound_method: Any, kwargs: dict[str, Any]) -> Any:
     return result
 
 
-def _make_endpoint(
+def make_endpoint(
     module_attr: str,
     method_name: str,
     method: Any,
@@ -183,7 +183,7 @@ def _make_endpoint(
     sig = inspect.signature(method)
     accepts_credential = "credential" in sig.parameters
     hints = _resolve_type_hints(method)
-    doc = _parse_docstring(method)
+    doc = parse_docstring(method)
 
     async def endpoint(
         request: Request,
@@ -195,9 +195,7 @@ def _make_endpoint(
         bound_method = getattr(module, method_name)
         kwargs = _coerce_enum_kwargs(query_kwargs, hints)
         if accepts_credential:
-            if credential is None:
-                credential = client.credential
-            kwargs["credential"] = credential if credential.musicid else client.credential
+            kwargs["credential"] = credential_for_request(client, credential or client.credential)
         return success_response(await _call_bound_method(bound_method, kwargs))
 
     endpoint.__name__ = f"{module_attr}_{method_name}"

@@ -26,11 +26,6 @@ class ApiResponse(BaseModel):
 ErrorResponse = ApiResponse
 
 
-def response_model_for(_data_model: Any) -> type[ApiResponse]:
-    """返回统一标准响应模型."""
-    return ApiResponse
-
-
 def success_response(data: Any) -> ApiResponse:
     """构造标准成功响应."""
     return ApiResponse(success=True, data=data, error=None)

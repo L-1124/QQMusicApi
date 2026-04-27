@@ -11,18 +11,13 @@ from typing import Any, get_type_hints
 from fastapi import FastAPI
 from pydantic import BaseModel, TypeAdapter
 
-logger = logging.getLogger("qqmusicapi.web")
+logger = logging.getLogger(__name__)
 
 _DOCSTRING_SECTIONS = frozenset({"Args:", "Attributes:", "Returns:", "Raises:", "Yields:", "Note:", "Notes:"})
 COOKIE_SECURITY_REQUIREMENT = {"MusicId": [], "MusicKey": []}
 
 
-# ---------------------------------------------------------------------------
-# Docstring parsing
-# ---------------------------------------------------------------------------
-
-
-def _parse_docstring(method: Any) -> dict[str, Any]:
+def parse_docstring(method: Any) -> dict[str, Any]:
     """从 Google 风格 docstring 中提取 summary / description / 参数描述."""
     doc = inspect.cleandoc(method.__doc__ or "")
     lines = doc.split("\n")
@@ -58,11 +53,6 @@ def _strip_docstring_sections(description: str) -> str:
     return "\n".join(visible_lines).strip()
 
 
-# ---------------------------------------------------------------------------
-# Enum helpers
-# ---------------------------------------------------------------------------
-
-
 def _iter_enum_types(tp: Any) -> list[type[Enum]]:
     """从类型标注中递归收集枚举类型."""
     if isinstance(tp, type) and issubclass(tp, Enum):
@@ -84,11 +74,6 @@ def _enum_members(tp: Any) -> list[Enum]:
                 members.append(member)
                 seen.add(key)
     return members
-
-
-def _enum_names(tp: Any) -> list[str]:
-    """返回类型标注中枚举成员名称."""
-    return [member.name for member in _enum_members(tp)]
 
 
 def _enum_query_values(tp: Any) -> list[str]:
@@ -148,12 +133,7 @@ def _sanitize_default(default: Any) -> Any:
     return default
 
 
-# ---------------------------------------------------------------------------
-# Response model extraction
-# ---------------------------------------------------------------------------
-
-
-def _get_response_model(method: Any) -> type[BaseModel] | None:
+def get_response_model(method: Any) -> type[BaseModel] | None:
     """从方法返回标注或源码 AST 提取 Pydantic 响应模型."""
     try:
         hints = get_type_hints(method)
@@ -167,21 +147,21 @@ def _get_response_model(method: Any) -> type[BaseModel] | None:
                         return arg
             if isinstance(ret, type) and issubclass(ret, BaseModel) and ret is not BaseModel:
                 return ret
-    except Exception as exc:
+    except Exception:
         logger.debug(
-            "type-hint response model failed: method=%s error=%s",
+            "type-hint response model extraction failed: method=%s",
             getattr(method, "__qualname__", method),
-            exc,
+            exc_info=True,
         )
 
     try:
         source = inspect.getsource(method)
         tree = ast.parse(textwrap.dedent(source))
-    except Exception as exc:
+    except Exception:
         logger.debug(
-            "AST response model failed: method=%s error=%s",
+            "AST response model extraction failed: method=%s",
             getattr(method, "__qualname__", method),
-            exc,
+            exc_info=True,
         )
         return None
 
@@ -199,11 +179,6 @@ def _get_response_model(method: Any) -> type[BaseModel] | None:
                     if isinstance(model, type) and issubclass(model, BaseModel) and model is not BaseModel:
                         return model
     return None
-
-
-# ---------------------------------------------------------------------------
-# OpenAPI schema cleanup
-# ---------------------------------------------------------------------------
 
 
 def _strip_schema_descriptions(obj: Any) -> None:
@@ -229,6 +204,40 @@ def _normalize_cookie_security(schema: dict[str, Any]) -> None:
             security = operation.get("security")
             if isinstance(security, list) and COOKIE_SECURITY_REQUIREMENT in security:
                 operation["security"] = [COOKIE_SECURITY_REQUIREMENT]
+
+
+def _collapse_nullable_parameter_anyof(schema: dict[str, Any]) -> None:
+    """将可选参数 schema 的 anyOf 展示收敛为单类型."""
+    for path_item in schema.get("paths", {}).values():
+        if not isinstance(path_item, dict):
+            continue
+        for operation in path_item.values():
+            if not isinstance(operation, dict):
+                continue
+            parameters = operation.get("parameters")
+            if not isinstance(parameters, list):
+                continue
+            for parameter in parameters:
+                if not isinstance(parameter, dict):
+                    continue
+                parameter_schema = parameter.get("schema")
+                if not isinstance(parameter_schema, dict):
+                    continue
+                any_of = parameter_schema.get("anyOf")
+                if not isinstance(any_of, list) or len(any_of) != 2:
+                    continue
+                non_null = [item for item in any_of if isinstance(item, dict) and item.get("type") != "null"]
+                has_null = any(isinstance(item, dict) and item.get("type") == "null" for item in any_of)
+                if len(non_null) != 1 or not has_null:
+                    continue
+                title = parameter_schema.get("title")
+                description = parameter_schema.get("description")
+                parameter_schema.clear()
+                parameter_schema.update(non_null[0])
+                if title is not None:
+                    parameter_schema["title"] = title
+                if description is not None:
+                    parameter_schema["description"] = description
 
 
 def _schema_for_response_data(data_model: Any, components: dict[str, Any]) -> dict[str, Any]:
@@ -288,6 +297,7 @@ def install_openapi_schema(app: FastAPI, response_models: dict[tuple[str, str], 
         schema = original_openapi()
         _normalize_cookie_security(schema)
         _install_precise_response_schemas(schema, response_models or {})
+        _collapse_nullable_parameter_anyof(schema)
         _strip_schema_descriptions(schema)
         app.openapi_schema = schema
         return schema

@@ -4,6 +4,8 @@ import inspect
 from dataclasses import dataclass
 from typing import Any, Literal
 
+from pydantic import BaseModel
+
 from qqmusic_api import Client
 from qqmusic_api.modules._base import ApiModule
 from qqmusic_api.modules.album import AlbumApi
@@ -31,6 +33,7 @@ class RouteDeclaration:
     method_name: str
     path: str
     methods: tuple[str, ...] = ("GET",)
+    response_model: type[BaseModel] | None = None
 
     @property
     def key(self) -> RouteKey:
@@ -48,6 +51,7 @@ class RouteSpec:
     method: Any
     path: str
     methods: tuple[str, ...]
+    response_model: type[BaseModel] | None
 
 
 ROUTE_CANDIDATES: tuple[RouteDeclaration, ...] = (
@@ -166,6 +170,7 @@ def get_route_specs(
                 method=method,
                 path=route.path,
                 methods=route.methods,
+                response_model=route.response_model,
             )
         )
 

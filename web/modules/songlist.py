@@ -4,12 +4,12 @@ from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
 
 from qqmusic_api import Client, Credential
-from web.auth import _credential_from_cookies
-from web.response import response_model_for, success_response
+from web.auth import credential_for_request, credential_from_cookies
+from web.response import ApiResponse, success_response
 from web.schema import COOKIE_SECURITY_REQUIREMENT
 
 router = APIRouter(prefix="/songlist", tags=["songlist"])
-credential_dependency = Depends(_credential_from_cookies)
+credential_dependency = Depends(credential_from_cookies)
 OPENAPI_RESPONSE_MODELS = {
     ("/songlist/add_songs", "get"): bool,
     ("/songlist/add_songs", "post"): bool,
@@ -31,11 +31,6 @@ class SonglistSongsRequest(BaseModel):
     dirid: int = Field(description="歌单目录 ID.")
     song_info: list[SonglistSongItem] = Field(description="歌曲信息列表.")
     tid: int = Field(default=0, description="歌单 TID.")
-
-
-def _credential_for_request(client: Client, credential: Credential) -> Credential:
-    """返回当前请求可用的登录凭证."""
-    return credential if credential.musicid else client.credential
 
 
 def _song_info_tuples(song_info: list[SonglistSongItem]) -> list[tuple[int, int]]:
@@ -60,7 +55,7 @@ async def _write_songlist_songs(
             dirid=dirid,
             song_info=song_info,
             tid=tid,
-            credential=_credential_for_request(client, credential),
+            credential=credential_for_request(client, credential),
         )
     )
 
@@ -69,7 +64,7 @@ async def _write_songlist_songs(
     "/add_songs",
     summary="添加单首歌曲到歌单",
     description="添加单首歌曲到歌单.",
-    response_model=response_model_for(bool),
+    response_model=ApiResponse,
     openapi_extra={"security": [COOKIE_SECURITY_REQUIREMENT]},
 )
 async def songlist_add_song_get(
@@ -95,7 +90,7 @@ async def songlist_add_song_get(
     "/add_songs",
     summary="添加歌曲到歌单",
     description="添加歌曲到歌单.",
-    response_model=response_model_for(bool),
+    response_model=ApiResponse,
     openapi_extra={"security": [COOKIE_SECURITY_REQUIREMENT]},
 )
 async def songlist_add_songs(
@@ -118,7 +113,7 @@ async def songlist_add_songs(
     "/del_songs",
     summary="删除歌单中的单首歌曲",
     description="删除歌单中的单首歌曲.",
-    response_model=response_model_for(bool),
+    response_model=ApiResponse,
     openapi_extra={"security": [COOKIE_SECURITY_REQUIREMENT]},
 )
 async def songlist_del_song_get(
@@ -144,7 +139,7 @@ async def songlist_del_song_get(
     "/del_songs",
     summary="删除歌单中的歌曲",
     description="删除歌单中的歌曲.",
-    response_model=response_model_for(bool),
+    response_model=ApiResponse,
     openapi_extra={"security": [COOKIE_SECURITY_REQUIREMENT]},
 )
 async def songlist_del_songs(
