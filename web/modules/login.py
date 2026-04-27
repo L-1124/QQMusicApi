@@ -6,7 +6,14 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field, model_validator
 
 from qqmusic_api import Client, Credential
-from qqmusic_api.models.login import QR, PhoneAuthCodeResult, QRCodeLoginEvents, QRLoginResult, QRLoginType
+from qqmusic_api.models.login import (
+    QR,
+    PhoneAuthCodeResult,
+    PhoneLoginEvents,
+    QRCodeLoginEvents,
+    QRLoginResult,
+    QRLoginType,
+)
 from web.auth import credential_for_request, credential_from_cookies
 from web.response import ApiResponse, success_response
 from web.routing import coerce_enum_value
@@ -53,7 +60,18 @@ class QRCodeStatusData(BaseModel):
 class PhoneAuthCodeData(BaseModel):
     """手机验证码发送结果数据."""
 
-    event: str = Field(description="验证码发送结果事件名称.")
+    event: int = Field(
+        description=(
+            """
+            验证码发送状态码
+            - SEND=0: 验证码已发送
+            - CAPTCHA=1: 需要滑块验证
+            - FREQUENCY=2: 发送过于频繁
+            - OTHER=-1: 其他错误
+        """
+        ),
+        json_schema_extra={"enum": [-1, 0, 1, 2]},
+    )
     info: str | None = Field(default=None, description="附加说明信息.")
 
 
@@ -99,12 +117,18 @@ QR_CODE_EVENT_CODES = {
     QRCodeLoginEvents.REFUSE: 4,
     QRCodeLoginEvents.OTHER: -1,
 }
+PHONE_EVENT_CODES = {
+    PhoneLoginEvents.SEND: 0,
+    PhoneLoginEvents.CAPTCHA: 1,
+    PhoneLoginEvents.FREQUENCY: 2,
+    PhoneLoginEvents.OTHER: -1,
+}
 OPENAPI_RESPONSE_MODELS = {
     ("/login/check_expired", "get"): bool,
     ("/login/refresh_credential", "get"): Credential,
     ("/login/qrcode", "get"): QRCodeData,
     ("/login/qrcode/status", "get"): QRCodeStatusData,
-    ("/login/phone/authcode", "post"): PhoneAuthCodeData,
+    ("/login/phone/authcode", "get"): PhoneAuthCodeData,
     ("/login/phone/authorize", "get"): Credential,
 }
 
@@ -150,7 +174,8 @@ def _serialize_qrcode_status(result: QRLoginResult, qrcode: QR) -> QRCodeStatusD
 
 def _serialize_phone_authcode(result: PhoneAuthCodeResult) -> PhoneAuthCodeData:
     """序列化手机验证码发送结果."""
-    return PhoneAuthCodeData(event=result.event.name, info=result.info)
+    event_code = PHONE_EVENT_CODES.get(result.event, -1)
+    return PhoneAuthCodeData(event=event_code, info=result.info)
 
 
 def _build_qrcode_placeholder(identifier: str, login_type: QRLoginType) -> QR:
@@ -225,7 +250,7 @@ async def login_check_qrcode(
     return success_response(_serialize_qrcode_status(result, qrcode))
 
 
-@router.post(
+@router.get(
     "/phone/authcode",
     summary="发送手机验证码",
     description="向明文手机号或加密手机号发送登录验证码.",
