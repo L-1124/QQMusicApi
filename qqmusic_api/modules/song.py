@@ -197,8 +197,8 @@ class SongApi(ApiModule):
             "ctx": 0,
             "client": 1,
         }
-        if isinstance(value[0], int):
-            params["ids"] = value
+        if isinstance(value[0], int) or (isinstance(value[0], str) and value[0].isdigit()):
+            params["ids"] = [int(v) for v in value]
         else:
             params["mids"] = value
         return self._build_request(
@@ -270,13 +270,17 @@ class SongApi(ApiModule):
             response_model=GetSongUrlsResponse,
         )
 
-    def get_detail(self, value: str | int):
+    def get_detail(self, value: int | str):
         """获取歌曲详细信息.
 
         Args:
             value: 歌曲 ID 或 MID.
         """
-        param = {"song_id": value} if isinstance(value, int) else {"song_mid": value}
+        param = (
+            {"song_id": int(value)}
+            if isinstance(value, int) or (isinstance(value, str) and value.isdigit())
+            else {"song_mid": value}
+        )
         return self._build_request(
             module="music.pf_song_detail_svr",
             method="get_song_detail_yqq",
@@ -355,13 +359,17 @@ class SongApi(ApiModule):
             ),
         )
 
-    def get_other_version(self, value: str | int):
+    def get_other_version(self, value: int | str):
         """获取歌曲其他版本.
 
         Args:
             value: 歌曲 ID 或 MID.
         """
-        param = {"songid": value} if isinstance(value, int) else {"songmid": value}
+        param = (
+            {"songid": int(value)}
+            if isinstance(value, int) or (isinstance(value, str) and value.isdigit())
+            else {"songmid": value}
+        )
         return self._build_request(
             module="music.musichallSong.OtherVersionServer",
             method="GetOtherVersionSongs",
@@ -369,13 +377,17 @@ class SongApi(ApiModule):
             response_model=GetOtherVersionResponse,
         )
 
-    def get_producer(self, value: str | int):
+    def get_producer(self, value: int | str):
         """获取歌曲制作人信息.
 
         Args:
             value: 歌曲 ID 或 MID.
         """
-        param = {"songid": value} if isinstance(value, int) else {"songmid": value}
+        param = (
+            {"songid": int(value)}
+            if isinstance(value, int) or (isinstance(value, str) and value.isdigit())
+            else {"songmid": value}
+        )
         return self._build_request(
             module="music.sociality.KolWorksTag",
             method="SongProducer",

@@ -11,7 +11,7 @@ class LyricApi(ApiModule):
 
     def get_lyric(
         self,
-        value: str | int,
+        value: int | str,
         *,
         qrc: bool = False,
         trans: bool = False,
@@ -37,8 +37,8 @@ class LyricApi(ApiModule):
             "type": 1,
         }
         params.update(self._build_query_common_params())
-        if isinstance(value, int):
-            params["songId"] = value
+        if isinstance(value, int) or (isinstance(value, str) and value.isdigit()):
+            params["songId"] = int(value)
         else:
             params["songMid"] = value
 

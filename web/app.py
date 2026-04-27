@@ -30,6 +30,7 @@ from .schema import COOKIE_SECURITY_REQUIREMENT, get_response_model, install_ope
 
 _EXPLICIT_ROUTE_KEYS = {
     ("song", "get_song_urls"),
+    ("song", "query_song"),
     ("mv", "get_mv_urls"),
     ("songlist", "add_songs"),
     ("songlist", "del_songs"),

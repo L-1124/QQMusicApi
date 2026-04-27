@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 from pydantic.json_schema import SkipJsonSchema
 
 from qqmusic_api import Client, Credential
-from qqmusic_api.models.song import GetSongUrlsResponse
+from qqmusic_api.models.song import GetSongUrlsResponse, QuerySongResponse
 from qqmusic_api.modules.song import BaseSongFileType, SongFileInfo, SongFileType
 from web.auth import credential_for_request, credential_from_cookies
 from web.response import ApiResponse, success_response
@@ -17,6 +17,8 @@ credential_dependency = Depends(credential_from_cookies)
 OPENAPI_RESPONSE_MODELS = {
     ("/song/get_song_urls", "get"): GetSongUrlsResponse,
     ("/song/get_song_urls", "post"): GetSongUrlsResponse,
+    ("/song/query_song", "get"): QuerySongResponse,
+    ("/song/query_song", "post"): QuerySongResponse,
 }
 
 
@@ -34,6 +36,12 @@ class SongUrlsRequest(BaseModel):
 
     file_info: list[SongUrlItem] = Field(description="歌曲文件信息列表.")
     file_type: str = Field(default=SongFileType.MP3_128.name, description="默认歌曲文件类型.")
+
+
+class QuerySongRequest(BaseModel):
+    """批量查询歌曲请求体."""
+
+    value: list[int] | list[str] = Field(description="歌曲 ID 列表或 MID 列表.")
 
 
 SONG_FILE_TYPE_DESCRIPTION = f"歌曲文件类型.\n\n{_format_enum_values(BaseSongFileType)}"
@@ -107,3 +115,40 @@ async def song_get_song_urls_post(
             credential=credential_for_request(client, credential),
         )
     )
+
+
+@router.get(
+    "/query_song",
+    summary="查询单首歌曲",
+    description="根据 id 或 mid 查询单首歌曲.",
+    response_model=ApiResponse,
+)
+async def song_query_song_get(
+    request: Request,
+    song_id: int | None = Query(default=None, alias="id", description="歌曲 ID."),
+    mid: str | None = Query(default=None, description="歌曲 MID."),
+):
+    """查询单首歌曲."""
+    if song_id is None and mid is None:
+        raise HTTPException(status_code=422, detail="必须提供 id 或 mid")
+    client: Client = request.app.state.client
+    if song_id is not None:
+        return success_response(await client.song.query_song([song_id]))
+
+    assert mid is not None
+    return success_response(await client.song.query_song([mid]))
+
+
+@router.post(
+    "/query_song",
+    summary="批量查询歌曲",
+    description="根据 id 或 mid 列表批量查询歌曲.",
+    response_model=ApiResponse,
+)
+async def song_query_song_post(
+    request: Request,
+    body: QuerySongRequest,
+):
+    """批量查询歌曲."""
+    client: Client = request.app.state.client
+    return success_response(await client.song.query_song(body.value))

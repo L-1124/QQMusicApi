@@ -10,15 +10,15 @@ from ._base import ApiModule
 class AlbumApi(ApiModule):
     """专辑相关 API."""
 
-    def get_detail(self, value: str | int):
+    def get_detail(self, value: int | str):
         """获取专辑详细信息.
 
         Args:
             value: 专辑 ID 或 MID.
         """
         param: dict[str, Any] = {}
-        if isinstance(value, int):
-            param["albumId"] = value
+        if isinstance(value, int) or (isinstance(value, str) and value.isdigit()):
+            param["albumId"] = int(value)
         else:
             param["albumMId"] = value
 
@@ -29,7 +29,7 @@ class AlbumApi(ApiModule):
             response_model=GetAlbumDetailResponse,
         )
 
-    def get_song(self, value: str | int, num: int = 10, page: int = 1):
+    def get_song(self, value: int | str, num: int = 10, page: int = 1):
         """获取专辑歌曲列表.
 
         Args:
@@ -41,8 +41,8 @@ class AlbumApi(ApiModule):
             "begin": num * (page - 1),
             "num": num,
         }
-        if isinstance(value, int):
-            param["albumId"] = value
+        if isinstance(value, int) or (isinstance(value, str) and value.isdigit()):
+            param["albumId"] = int(value)
         else:
             param["albumMid"] = value
 
