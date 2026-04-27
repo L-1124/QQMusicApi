@@ -133,7 +133,7 @@ class SearchApi(ApiModule):
         *,
         highlight: bool = True,
     ):
-        """按类型搜索结果.
+        """类型搜索.
 
         Args:
             keyword: 关键词.
