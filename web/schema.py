@@ -5,9 +5,8 @@ import inspect
 import logging
 import re
 import textwrap
-import types
 from enum import Enum
-from typing import Any, Protocol, TypeGuard, get_type_hints
+from typing import Any, get_type_hints
 
 from fastapi import FastAPI
 from pydantic import BaseModel, TypeAdapter
@@ -15,30 +14,7 @@ from pydantic import BaseModel, TypeAdapter
 logger = logging.getLogger("qqmusicapi.web")
 
 _DOCSTRING_SECTIONS = frozenset({"Args:", "Attributes:", "Returns:", "Raises:", "Yields:", "Note:", "Notes:"})
-
-
-class _NamedTupleSchemaType(Protocol):
-    """NamedTuple class attributes used for OpenAPI schema generation."""
-
-    _fields: tuple[str, ...]
-    _field_defaults: dict[str, Any]
-
-
 COOKIE_SECURITY_REQUIREMENT = {"MusicId": [], "MusicKey": []}
-COOKIE_SECURITY_SCHEMES = {
-    "MusicId": {
-        "type": "apiKey",
-        "in": "cookie",
-        "name": "musicid",
-        "description": "QQ 音乐用户 ID.",
-    },
-    "MusicKey": {
-        "type": "apiKey",
-        "in": "cookie",
-        "name": "musickey",
-        "description": "QQ 音乐密钥.",
-    },
-}
 
 
 # ---------------------------------------------------------------------------
@@ -83,31 +59,8 @@ def _strip_docstring_sections(description: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Type sanitization & enum helpers
+# Enum helpers
 # ---------------------------------------------------------------------------
-
-
-def _sanitize_type(tp: Any) -> Any:
-    """将 NamedTuple / Enum 替换为 Pydantic 可从 JSON 解析的类型."""
-    origin = getattr(tp, "__origin__", None)
-    args = getattr(tp, "__args__", ())
-
-    if origin is not None and args:
-        safe_args = tuple(_sanitize_type(a) for a in args)
-        return origin[safe_args] if safe_args != args else tp
-
-    if isinstance(tp, type):
-        if issubclass(tp, Enum):
-            return str
-        if hasattr(tp, "_fields") and tp is not tuple:
-            return dict
-
-    return tp
-
-
-def _is_namedtuple_type(tp: Any) -> TypeGuard[_NamedTupleSchemaType]:
-    """判断类型是否为 NamedTuple 子类."""
-    return isinstance(tp, type) and hasattr(tp, "_fields") and tp is not tuple
 
 
 def _iter_enum_types(tp: Any) -> list[type[Enum]]:
@@ -131,6 +84,32 @@ def _enum_members(tp: Any) -> list[Enum]:
                 members.append(member)
                 seen.add(key)
     return members
+
+
+def _enum_names(tp: Any) -> list[str]:
+    """返回类型标注中枚举成员名称."""
+    return [member.name for member in _enum_members(tp)]
+
+
+def _enum_query_values(tp: Any) -> list[str]:
+    """返回 Web query 接收的枚举名称和值文本."""
+    values: list[str] = []
+    seen: set[str] = set()
+    for member in _enum_members(tp):
+        candidates = [member.name]
+        if isinstance(member.value, int | str):
+            candidates.append(str(member.value))
+        for candidate in candidates:
+            if candidate not in seen:
+                values.append(candidate)
+                seen.add(candidate)
+    return values
+
+
+def _first_enum_type(tp: Any) -> type[Enum] | None:
+    """返回类型标注中的第一个枚举类型."""
+    enum_types = _iter_enum_types(tp)
+    return enum_types[0] if enum_types else None
 
 
 def _format_enum_member(member: Enum) -> str:
@@ -169,110 +148,6 @@ def _sanitize_default(default: Any) -> Any:
     return default
 
 
-def _enum_schema_extra(tp: Any) -> dict[str, Any] | None:
-    """构造枚举查询参数的 JSON Schema enum 约束."""
-    members = _enum_members(tp)
-    if not members:
-        return None
-    names = [m.name for m in members]
-    return {"enum": names} if len(names) == len(set(names)) else None
-
-
-def _schema_for_annotation(tp: Any, *, omit_none: bool = False) -> dict[str, Any]:
-    """为查询参数类型构造 OpenAPI JSON Schema."""
-    origin = getattr(tp, "__origin__", None)
-    args = getattr(tp, "__args__", ())
-
-    if isinstance(tp, types.UnionType) and args:
-        union_args = [arg for arg in args if not (omit_none and arg is type(None))]
-        if len(union_args) == 1:
-            return _schema_for_annotation(union_args[0], omit_none=omit_none)
-        return {"anyOf": [_schema_for_annotation(arg, omit_none=omit_none) for arg in union_args]}
-
-    if tp is type(None):
-        return {"type": "null"}
-
-    if origin is list and args:
-        return {"type": "array", "items": _schema_for_annotation(args[0])}
-
-    if _is_namedtuple_type(tp):
-        try:
-            hints = get_type_hints(tp)
-        except Exception:
-            hints = {}
-        defaults = getattr(tp, "_field_defaults", {})
-        properties = {
-            name: _schema_for_annotation(hints.get(name, Any), omit_none=name in defaults) for name in tp._fields
-        }
-        return {
-            "type": "object",
-            "properties": properties,
-            "required": [name for name in tp._fields if name not in defaults],
-        }
-
-    if isinstance(tp, type) and issubclass(tp, Enum):
-        schema = {"type": "string"}
-        if schema_extra := _enum_schema_extra(tp):
-            schema.update(schema_extra)
-        return schema
-
-    annotation = _sanitize_type(tp)
-    schema = TypeAdapter(annotation).json_schema()
-    if schema_extra := _enum_schema_extra(tp):
-        schema.update(schema_extra)
-    return schema
-
-
-def _requires_json_query_content(schema: dict[str, Any]) -> bool:
-    """判断查询参数是否应以 JSON 字符串传递."""
-    if schema.get("type") == "object":
-        return True
-    if schema.get("type") == "array" and isinstance(schema.get("items"), dict):
-        return _requires_json_query_content(schema["items"])
-    return False
-
-
-# ---------------------------------------------------------------------------
-# Query parameter building
-# ---------------------------------------------------------------------------
-
-
-def _build_query_parameter(param: inspect.Parameter, raw_annotation: Any, description: str | None) -> dict[str, Any]:
-    """构造单个 OpenAPI 查询参数."""
-    schema = _schema_for_annotation(raw_annotation)
-    if param.default is not inspect.Parameter.empty:
-        schema["default"] = _sanitize_default(param.default)
-
-    query_parameter: dict[str, Any] = {"name": param.name, "in": "query"}
-    if _requires_json_query_content(schema):
-        query_parameter["content"] = {"application/json": {"schema": schema}}
-    else:
-        query_parameter["schema"] = schema
-    if description:
-        query_parameter["description"] = description
-    if param.default is inspect.Parameter.empty:
-        query_parameter["required"] = True
-    return query_parameter
-
-
-def _build_query_parameters(method: Any) -> list[dict[str, Any]]:
-    """从方法签名构造 OpenAPI 查询参数."""
-    sig = inspect.signature(method)
-    try:
-        hints = get_type_hints(method)
-    except Exception:
-        hints = {}
-    doc = _parse_docstring(method)
-    parameters: list[dict[str, Any]] = []
-    for param_name, param in sig.parameters.items():
-        if param_name in ("self", "credential"):
-            continue
-        raw_annotation = hints.get(param_name, Any)
-        description = _merge_description(doc["params"].get(param_name), _format_enum_values(raw_annotation))
-        parameters.append(_build_query_parameter(param, raw_annotation, description))
-    return parameters
-
-
 # ---------------------------------------------------------------------------
 # Response model extraction
 # ---------------------------------------------------------------------------
@@ -280,7 +155,6 @@ def _build_query_parameters(method: Any) -> list[dict[str, Any]]:
 
 def _get_response_model(method: Any) -> type[BaseModel] | None:
     """从方法返回标注或源码 AST 提取 Pydantic 响应模型."""
-    # 1. get_type_hints
     try:
         hints = get_type_hints(method)
         ret = hints.get("return")
@@ -300,7 +174,6 @@ def _get_response_model(method: Any) -> type[BaseModel] | None:
             exc,
         )
 
-    # 2. AST 解析 _build_request(response_model=...)
     try:
         source = inspect.getsource(method)
         tree = ast.parse(textwrap.dedent(source))
@@ -329,20 +202,8 @@ def _get_response_model(method: Any) -> type[BaseModel] | None:
 
 
 # ---------------------------------------------------------------------------
-# OpenAPI schema injection
+# OpenAPI schema cleanup
 # ---------------------------------------------------------------------------
-
-
-def _rewrite_refs(obj: Any) -> None:
-    """将 JSON Schema $defs $ref 替换为 OpenAPI components/schemas."""
-    if isinstance(obj, dict):
-        if "$ref" in obj and obj["$ref"].startswith("#/$defs/"):
-            obj["$ref"] = obj["$ref"].replace("#/$defs/", "#/components/schemas/")
-        for v in obj.values():
-            _rewrite_refs(v)
-    elif isinstance(obj, list):
-        for v in obj:
-            _rewrite_refs(v)
 
 
 def _strip_schema_descriptions(obj: Any) -> None:
@@ -357,24 +218,77 @@ def _strip_schema_descriptions(obj: Any) -> None:
             _strip_schema_descriptions(value)
 
 
-def _install_cookie_security_schemes(schema: dict[str, Any]) -> None:
-    """安装 Cookie 凭证 OpenAPI 安全方案."""
-    schema.setdefault("components", {}).setdefault("securitySchemes", {}).update(COOKIE_SECURITY_SCHEMES)
+def _normalize_cookie_security(schema: dict[str, Any]) -> None:
+    """将 Cookie 凭证操作安全声明收敛为同时需要两个 Cookie."""
+    for path_item in schema.get("paths", {}).values():
+        if not isinstance(path_item, dict):
+            continue
+        for operation in path_item.values():
+            if not isinstance(operation, dict):
+                continue
+            security = operation.get("security")
+            if isinstance(security, list) and COOKIE_SECURITY_REQUIREMENT in security:
+                operation["security"] = [COOKIE_SECURITY_REQUIREMENT]
 
 
-def install_openapi_schema(app: FastAPI, query_parameters: dict[str, list[dict[str, Any]]]) -> None:
-    """安装查询参数 OpenAPI schema 后处理."""
+def _schema_for_response_data(data_model: Any, components: dict[str, Any]) -> dict[str, Any]:
+    """生成标准响应 data 字段的精确 schema."""
+    if data_model is None:
+        return {}
+    schema = TypeAdapter(data_model).json_schema(ref_template="#/components/schemas/{model}")
+    definitions = schema.pop("$defs", None)
+    if isinstance(definitions, dict):
+        components.update(definitions)
+    if isinstance(data_model, type) and issubclass(data_model, BaseModel):
+        components[data_model.__name__] = schema
+        return {"$ref": f"#/components/schemas/{data_model.__name__}"}
+    return schema
+
+
+def _api_response_schema(data_schema: dict[str, Any]) -> dict[str, Any]:
+    """生成带精确 data schema 的标准响应 schema."""
+    return {
+        "title": "ApiResponse",
+        "type": "object",
+        "properties": {
+            "success": {"type": "boolean", "description": "请求是否成功."},
+            "data": {**data_schema, "description": "成功响应数据."},
+            "error": {
+                "anyOf": [{"$ref": "#/components/schemas/ApiErrorBody"}, {"type": "null"}],
+                "description": "失败错误信息.",
+            },
+        },
+        "required": ["success"],
+    }
+
+
+def _install_precise_response_schemas(
+    schema: dict[str, Any],
+    response_models: dict[tuple[str, str], Any],
+) -> None:
+    """将 200 响应替换为保留业务 data 结构的标准响应 schema."""
+    components = schema.setdefault("components", {}).setdefault("schemas", {})
+    for (path, method), data_model in response_models.items():
+        operation = schema.get("paths", {}).get(path, {}).get(method)
+        if not isinstance(operation, dict):
+            continue
+        content = operation.setdefault("responses", {}).setdefault("200", {}).setdefault("content", {})
+        json_content = content.setdefault("application/json", {})
+        data_schema = _schema_for_response_data(data_model, components)
+        json_content["schema"] = _api_response_schema(data_schema)
+
+
+def install_openapi_schema(app: FastAPI, response_models: dict[tuple[str, str], Any] | None = None) -> None:
+    """安装 OpenAPI schema 后处理."""
     original_openapi = app.openapi
 
     def custom_openapi():
         if app.openapi_schema:
             return app.openapi_schema
         schema = original_openapi()
-        _install_cookie_security_schemes(schema)
+        _normalize_cookie_security(schema)
+        _install_precise_response_schemas(schema, response_models or {})
         _strip_schema_descriptions(schema)
-        for path, methods in schema.get("paths", {}).items():
-            if path in query_parameters:
-                methods.get("get", {})["parameters"] = query_parameters[path]
         app.openapi_schema = schema
         return schema
 

@@ -1,8 +1,12 @@
 """Web 认证辅助函数."""
 
-from fastapi import HTTPException, Request
+from fastapi import HTTPException, Request, Security
+from fastapi.security import APIKeyCookie
 
 from qqmusic_api import Credential
+
+musicid_cookie = APIKeyCookie(name="musicid", scheme_name="MusicId", description="QQ 音乐用户 ID.", auto_error=False)
+musickey_cookie = APIKeyCookie(name="musickey", scheme_name="MusicKey", description="QQ 音乐密钥.", auto_error=False)
 
 
 def _parse_cookie_int(value: str) -> int:
@@ -28,10 +32,12 @@ def _credential_from_cookie_values(cookies: dict[str, str], *, musicid: str, mus
     )
 
 
-async def _credential_from_cookies(request: Request) -> Credential:
+async def _credential_from_cookies(
+    request: Request,
+    musicid: str | None = Security(musicid_cookie),
+    musickey: str | None = Security(musickey_cookie),
+) -> Credential:
     """从请求 Cookie 中提取 Credential."""
-    musicid = request.cookies.get("musicid")
-    musickey = request.cookies.get("musickey")
     if musicid and musickey:
         return _credential_from_cookie_values(request.cookies, musicid=musicid, musickey=musickey)
     return request.app.state.client.credential

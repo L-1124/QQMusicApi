@@ -3,83 +3,33 @@
 from __future__ import annotations
 
 import inspect
+from collections import defaultdict
 from contextlib import asynccontextmanager
 from typing import Any
 
 import anyio
-from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi import APIRouter, FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import HTMLResponse
 
 import qqmusic_api
 from qqmusic_api import Client, Credential
 from qqmusic_api.core.exceptions import BaseError, NotLoginError
 
-from .modules.song import register_song_routes
-from .route_registry import get_route_specs
-from .routing import _make_endpoint
-from .schema import (
-    COOKIE_SECURITY_REQUIREMENT,
-    _build_query_parameters,
-    _get_response_model,
-    install_openapi_schema,
-)
+from .modules.song import OPENAPI_RESPONSE_MODELS as SONG_RESPONSE_MODELS
+from .modules.song import router as song_router
+from .modules.songlist import OPENAPI_RESPONSE_MODELS as SONGLIST_RESPONSE_MODELS
+from .modules.songlist import router as songlist_router
+from .response import ErrorResponse, error_response, response_model_for
+from .route_registry import RouteSpec, get_route_specs
+from .routing import _make_endpoint, _uses_complex_query
+from .schema import COOKIE_SECURITY_REQUIREMENT, _get_response_model, install_openapi_schema
 
-CREDENTIAL_BADGE_SCRIPT = """
-<script>
-(() => {
-  const badgeClass = "qqmusic-credential-badge";
-  const credentialSchemes = new Set(["MusicId", "MusicKey"]);
-
-  const makeBadge = () => {
-    const badge = document.createElement("span");
-    badge.className = badgeClass;
-    badge.textContent = "需要登录";
-    return badge;
-  };
-
-  const requiresCredential = operation => {
-    return Array.isArray(operation?.security) && operation.security.some(requirement => {
-      return Object.keys(requirement || {}).some(name => credentialSchemes.has(name));
-    });
-  };
-
-  const collectCredentialOperations = schema => {
-    const operations = [];
-    for (const [path, pathItem] of Object.entries(schema.paths || {})) {
-      for (const [method, operation] of Object.entries(pathItem || {})) {
-        if (requiresCredential(operation)) {
-          operations.push({ method: method.toUpperCase(), path });
-        }
-      }
-    }
-    return operations;
-  };
-
-  const mountBadges = operations => {
-    for (const { method, path } of operations) {
-      for (const el of document.querySelectorAll("[title]")) {
-        if (!el.title.endsWith(path) || !el.textContent.includes(method) || el.querySelector(`.${badgeClass}`)) {
-          continue;
-        }
-        el.appendChild(makeBadge());
-      }
-    }
-  };
-
-  const loadDocs = async () => {
-    const docs = document.getElementById("qqmusic-api-docs");
-    const response = await fetch(docs.dataset.apiDescriptionUrl);
-    const schema = await response.json();
-    docs.apiDescriptionDocument = schema;
-    const operations = collectCredentialOperations(schema);
-    mountBadges(operations);
-    new MutationObserver(() => mountBadges(operations)).observe(document.body, { childList: true, subtree: true });
-  };
-
-  loadDocs();
-})();
-</script>
-"""
+_ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
+    400: {"model": ErrorResponse},
+    401: {"model": ErrorResponse},
+    422: {"model": ErrorResponse},
+}
 
 
 @asynccontextmanager
@@ -94,6 +44,58 @@ async def _lifespan(app: FastAPI):
     await app.state.client.close()
 
 
+def _route_path_for_module(spec: RouteSpec) -> str:
+    """返回模块 APIRouter 内部路径."""
+    prefix = f"/{spec.module_attr}"
+    route_path = spec.path.removeprefix(prefix)
+    return route_path or "/"
+
+
+def _include_dynamic_routers(
+    app: FastAPI,
+    route_specs: tuple[RouteSpec, ...],
+    response_models: dict[tuple[str, str], Any],
+) -> None:
+    """按模块分组注册动态路由."""
+    routers: dict[str, APIRouter] = defaultdict(lambda: APIRouter())
+    for spec in route_specs:
+        if _uses_complex_query(spec.method):
+            continue
+
+        response_model = _get_response_model(spec.method)
+        endpoint, doc = _make_endpoint(spec.module_attr, spec.method_name, spec.method)
+        requires_credential = "credential" in inspect.signature(spec.method).parameters
+        for method in spec.methods:
+            response_models[(spec.path, method.lower())] = response_model
+        routers[spec.module_attr].add_api_route(
+            _route_path_for_module(spec),
+            endpoint,
+            methods=list(spec.methods),
+            summary=doc["summary"] or f"{spec.module_cls.__name__}.{spec.method_name}",
+            description=doc["description"],
+            response_model=response_model_for(response_model),
+            openapi_extra={"security": [COOKIE_SECURITY_REQUIREMENT]} if requires_credential else None,
+        )
+
+    for module_attr, router in routers.items():
+        app.include_router(router, prefix=f"/{module_attr}", tags=[module_attr])
+
+
+def _include_explicit_routers(
+    app: FastAPI,
+    route_specs: tuple[RouteSpec, ...],
+    response_models: dict[tuple[str, str], Any],
+) -> None:
+    """注册需要显式请求体或特例参数处理的模块路由."""
+    route_keys = {(spec.module_attr, spec.method_name) for spec in route_specs}
+    if ("song", "get_song_urls") in route_keys:
+        app.include_router(song_router)
+        response_models.update(SONG_RESPONSE_MODELS)
+    if {("songlist", "add_songs"), ("songlist", "del_songs")} & route_keys:
+        app.include_router(songlist_router)
+        response_models.update(SONGLIST_RESPONSE_MODELS)
+
+
 def create_app() -> FastAPI:
     """创建 QQMusic API Web 应用."""
     app = FastAPI(
@@ -102,6 +104,7 @@ def create_app() -> FastAPI:
         lifespan=_lifespan,
         docs_url=None,
         redoc_url=None,
+        responses=_ERROR_RESPONSES,
         description="""QQMusic REST API。
 
 ## 认证方式
@@ -118,31 +121,53 @@ def create_app() -> FastAPI:
     )
 
     @app.exception_handler(BaseError)
-    async def _handle_base_error(request: Request, exc: BaseError):
-        return JSONResponse(
+    async def _handle_base_error(_request: Request, exc: BaseError):
+        return error_response(
             status_code=400,
-            content={"error": type(exc).__name__, "detail": str(exc)},
+            code=type(exc).__name__,
+            message=str(exc),
         )
 
     @app.exception_handler(NotLoginError)
-    async def _handle_not_login(request: Request, exc: NotLoginError):
-        return JSONResponse(
+    async def _handle_not_login(_request: Request, exc: NotLoginError):
+        return error_response(
             status_code=401,
-            content={"error": "NotLoginError", "detail": str(exc)},
+            code="NotLoginError",
+            message=str(exc),
         )
 
     @app.exception_handler(TypeError)
-    async def _handle_type_error(request: Request, exc: TypeError):
-        return JSONResponse(
+    async def _handle_type_error(_request: Request, exc: TypeError):
+        return error_response(
             status_code=422,
-            content={"error": "TypeError", "detail": str(exc)},
+            code="TypeError",
+            message=str(exc),
         )
 
     @app.exception_handler(ValueError)
-    async def _handle_value_error(request: Request, exc: ValueError):
-        return JSONResponse(
+    async def _handle_value_error(_request: Request, exc: ValueError):
+        return error_response(
             status_code=400,
-            content={"error": "ValueError", "detail": str(exc)},
+            code="ValueError",
+            message=str(exc),
+        )
+
+    @app.exception_handler(HTTPException)
+    async def _handle_http_exception(_request: Request, exc: HTTPException):
+        return error_response(
+            status_code=exc.status_code,
+            code="HTTP_ERROR",
+            message=str(exc.detail),
+            detail=exc.detail,
+        )
+
+    @app.exception_handler(RequestValidationError)
+    async def _handle_validation_error(_request: Request, exc: RequestValidationError):
+        return error_response(
+            status_code=422,
+            code="VALIDATION_ERROR",
+            message="请求参数校验失败",
+            detail=exc.errors(),
         )
 
     @app.get("/docs", include_in_schema=False)
@@ -159,61 +184,25 @@ def create_app() -> FastAPI:
     <style>
       body {{ margin: 0; }}
       elements-api {{ min-height: 100vh; }}
-      .qqmusic-credential-badge {{
-        display: inline-block;
-        padding: 2px 8px;
-        border-radius: 999px;
-        background: #fff3cd;
-        color: #7a4b00;
-        font-family: sans-serif;
-        font-size: 12px;
-        font-weight: 600;
-        line-height: 18px;
-        white-space: nowrap;
-      }}
     </style>
   </head>
   <body>
     <elements-api
       id="qqmusic-api-docs"
-      data-api-description-url="{app.openapi_url}"
+      apiDescriptionUrl="{app.openapi_url}"
       router="hash"
       layout="sidebar"
       tryItCredentialsPolicy="same-origin"
     />
-    {CREDENTIAL_BADGE_SCRIPT}
   </body>
 </html>"""
         )
 
-    query_parameters: dict[str, list[dict[str, Any]]] = {}
-
     route_specs = get_route_specs()
-    for spec in route_specs:
-        if spec.module_attr == "song" and spec.method_name == "get_song_urls":
-            continue
-        parameters = _build_query_parameters(spec.method)
-        response_model = _get_response_model(spec.method)
-        endpoint, doc = _make_endpoint(spec.module_attr, spec.method_name, spec.method)
-        requires_credential = "credential" in inspect.signature(spec.method).parameters
-
-        query_parameters[spec.path] = parameters
-
-        app.add_api_route(
-            spec.path,
-            endpoint,
-            methods=list(spec.methods),
-            tags=[spec.module_attr],
-            summary=doc["summary"] or f"{spec.module_cls.__name__}.{spec.method_name}",
-            description=doc["description"],
-            response_model=response_model,
-            openapi_extra={"security": [COOKIE_SECURITY_REQUIREMENT]} if requires_credential else None,
-        )
-
-    if any(spec.module_attr == "song" and spec.method_name == "get_song_urls" for spec in route_specs):
-        register_song_routes(app)
-
-    install_openapi_schema(app, query_parameters)
+    response_models: dict[tuple[str, str], Any] = {}
+    _include_dynamic_routers(app, route_specs, response_models)
+    _include_explicit_routers(app, route_specs, response_models)
+    install_openapi_schema(app, response_models)
 
     return app
 

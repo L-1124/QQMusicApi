@@ -1,6 +1,6 @@
 """歌曲模块 Web 路由适配."""
 
-from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from pydantic.json_schema import SkipJsonSchema
 
@@ -8,10 +8,16 @@ from qqmusic_api import Client, Credential
 from qqmusic_api.models.song import GetSongUrlsResponse
 from qqmusic_api.modules.song import BaseSongFileType, SongFileInfo, SongFileType
 from web.auth import _credential_from_cookies
+from web.response import response_model_for, success_response
 from web.routing import _coerce_enum_value
 from web.schema import COOKIE_SECURITY_REQUIREMENT, _format_enum_values
 
+router = APIRouter(prefix="/song", tags=["song"])
 credential_dependency = Depends(_credential_from_cookies)
+OPENAPI_RESPONSE_MODELS = {
+    ("/song/get_song_urls", "get"): GetSongUrlsResponse,
+    ("/song/get_song_urls", "post"): GetSongUrlsResponse,
+}
 
 
 class SongUrlItem(BaseModel):
@@ -49,47 +55,50 @@ def _credential_for_request(client: Client, credential: Credential) -> Credentia
     return credential if credential.musicid else client.credential
 
 
-def register_song_routes(app: FastAPI) -> None:
-    """注册歌曲模块 Web 适配路由."""
-
-    @app.get(
-        "/song/get_song_urls",
-        tags=["song"],
-        summary="获取单个歌曲文件链接",
-        description="获取单个歌曲文件链接.",
-        response_model=GetSongUrlsResponse,
-        openapi_extra={"security": [COOKIE_SECURITY_REQUIREMENT]},
-    )
-    async def song_get_song_urls_get(
-        mid: str,
-        file_type: str = Query(default=SongFileType.MP3_128.name, description=SONG_FILE_TYPE_DESCRIPTION),
-        song_type: int | None = None,
-        media_mid: str | None = None,
-        credential: Credential = credential_dependency,
-    ):
-        client: Client = app.state.client
-        target_file_type = _parse_song_file_type(file_type)
-        return await client.song.get_song_urls(
+@router.get(
+    "/get_song_urls",
+    summary="获取单个歌曲文件链接",
+    description="获取单个歌曲文件链接.",
+    response_model=response_model_for(GetSongUrlsResponse),
+    openapi_extra={"security": [COOKIE_SECURITY_REQUIREMENT]},
+)
+async def song_get_song_urls_get(
+    request: Request,
+    mid: str,
+    file_type: str = Query(default=SongFileType.MP3_128.name, description=SONG_FILE_TYPE_DESCRIPTION),
+    song_type: int | None = None,
+    media_mid: str | None = None,
+    credential: Credential = credential_dependency,
+):
+    """获取单个歌曲文件链接."""
+    client: Client = request.app.state.client
+    target_file_type = _parse_song_file_type(file_type)
+    return success_response(
+        await client.song.get_song_urls(
             [SongFileInfo(mid=mid, file_type=target_file_type, song_type=song_type, media_mid=media_mid)],
             file_type=target_file_type,
             credential=_credential_for_request(client, credential),
         )
-
-    @app.post(
-        "/song/get_song_urls",
-        tags=["song"],
-        summary="批量获取歌曲文件链接",
-        description="批量获取歌曲文件链接.",
-        response_model=GetSongUrlsResponse,
-        openapi_extra={"security": [COOKIE_SECURITY_REQUIREMENT]},
     )
-    async def song_get_song_urls_post(
-        body: SongUrlsRequest,
-        credential: Credential = credential_dependency,
-    ):
-        client: Client = app.state.client
-        default_file_type = _parse_song_file_type(body.file_type)
-        return await client.song.get_song_urls(
+
+
+@router.post(
+    "/get_song_urls",
+    summary="批量获取歌曲文件链接",
+    description="批量获取歌曲文件链接.",
+    response_model=response_model_for(GetSongUrlsResponse),
+    openapi_extra={"security": [COOKIE_SECURITY_REQUIREMENT]},
+)
+async def song_get_song_urls_post(
+    request: Request,
+    body: SongUrlsRequest,
+    credential: Credential = credential_dependency,
+):
+    """批量获取歌曲文件链接."""
+    client: Client = request.app.state.client
+    default_file_type = _parse_song_file_type(body.file_type)
+    return success_response(
+        await client.song.get_song_urls(
             [
                 SongFileInfo(
                     mid=item.mid,
@@ -102,3 +111,4 @@ def register_song_routes(app: FastAPI) -> None:
             file_type=default_file_type,
             credential=_credential_for_request(client, credential),
         )
+    )
