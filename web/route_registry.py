@@ -34,6 +34,7 @@ class RouteDeclaration:
     path: str
     methods: tuple[str, ...] = ("GET",)
     response_model: type[BaseModel] | None = None
+    cache_ttl: int | None = None
 
     @property
     def key(self) -> RouteKey:
@@ -52,57 +53,62 @@ class RouteSpec:
     path: str
     methods: tuple[str, ...]
     response_model: type[BaseModel] | None
+    cache_ttl: int | None
 
 
 ROUTE_CANDIDATES: tuple[RouteDeclaration, ...] = (
-    RouteDeclaration("album", AlbumApi, "get_detail", "/album/get_detail"),
-    RouteDeclaration("album", AlbumApi, "get_song", "/album/get_song"),
-    RouteDeclaration("comment", CommentApi, "get_comment_count", "/comment/get_comment_count"),
-    RouteDeclaration("comment", CommentApi, "get_hot_comments", "/comment/get_hot_comments"),
-    RouteDeclaration("comment", CommentApi, "get_moment_comments", "/comment/get_moment_comments"),
-    RouteDeclaration("comment", CommentApi, "get_new_comments", "/comment/get_new_comments"),
-    RouteDeclaration("comment", CommentApi, "get_recommend_comments", "/comment/get_recommend_comments"),
-    RouteDeclaration("lyric", LyricApi, "get_lyric", "/lyric/get_lyric"),
-    RouteDeclaration("mv", MvApi, "get_detail", "/mv/get_detail"),
+    RouteDeclaration("album", AlbumApi, "get_detail", "/album/get_detail", cache_ttl=300),
+    RouteDeclaration("album", AlbumApi, "get_song", "/album/get_song", cache_ttl=300),
+    RouteDeclaration("comment", CommentApi, "get_comment_count", "/comment/get_comment_count", cache_ttl=60),
+    RouteDeclaration("comment", CommentApi, "get_hot_comments", "/comment/get_hot_comments", cache_ttl=60),
+    RouteDeclaration("comment", CommentApi, "get_moment_comments", "/comment/get_moment_comments", cache_ttl=60),
+    RouteDeclaration("comment", CommentApi, "get_new_comments", "/comment/get_new_comments", cache_ttl=60),
+    RouteDeclaration("comment", CommentApi, "get_recommend_comments", "/comment/get_recommend_comments", cache_ttl=60),
+    RouteDeclaration("lyric", LyricApi, "get_lyric", "/lyric/get_lyric", cache_ttl=300),
+    RouteDeclaration("mv", MvApi, "get_detail", "/mv/get_detail", cache_ttl=300),
     RouteDeclaration("mv", MvApi, "get_mv_urls", "/mv/get_mv_urls"),
-    RouteDeclaration("recommend", RecommendApi, "get_guess_recommend", "/recommend/get_guess_recommend"),
-    RouteDeclaration("recommend", RecommendApi, "get_home_feed", "/recommend/get_home_feed"),
-    RouteDeclaration("recommend", RecommendApi, "get_radar_recommend", "/recommend/get_radar_recommend"),
-    RouteDeclaration("recommend", RecommendApi, "get_recommend_newsong", "/recommend/get_recommend_newsong"),
-    RouteDeclaration("recommend", RecommendApi, "get_recommend_songlist", "/recommend/get_recommend_songlist"),
-    RouteDeclaration("search", SearchApi, "complete", "/search/complete"),
-    RouteDeclaration("search", SearchApi, "general_search", "/search/general_search"),
-    RouteDeclaration("search", SearchApi, "get_hotkey", "/search/get_hotkey"),
-    RouteDeclaration("search", SearchApi, "quick_search", "/search/quick_search"),
-    RouteDeclaration("search", SearchApi, "search_by_type", "/search/search_by_type"),
-    RouteDeclaration("singer", SingerApi, "get_album_list", "/singer/get_album_list"),
-    RouteDeclaration("singer", SingerApi, "get_desc", "/singer/get_desc"),
-    RouteDeclaration("singer", SingerApi, "get_info", "/singer/get_info"),
-    RouteDeclaration("singer", SingerApi, "get_mv_list", "/singer/get_mv_list"),
-    RouteDeclaration("singer", SingerApi, "get_similar", "/singer/get_similar"),
-    RouteDeclaration("singer", SingerApi, "get_singer_list", "/singer/get_singer_list"),
-    RouteDeclaration("singer", SingerApi, "get_singer_list_index", "/singer/get_singer_list_index"),
-    RouteDeclaration("singer", SingerApi, "get_songs_list", "/singer/get_songs_list"),
-    RouteDeclaration("singer", SingerApi, "get_tab_detail", "/singer/get_tab_detail"),
+    RouteDeclaration("recommend", RecommendApi, "get_guess_recommend", "/recommend/get_guess_recommend", cache_ttl=60),
+    RouteDeclaration("recommend", RecommendApi, "get_home_feed", "/recommend/get_home_feed", cache_ttl=60),
+    RouteDeclaration("recommend", RecommendApi, "get_radar_recommend", "/recommend/get_radar_recommend", cache_ttl=60),
+    RouteDeclaration(
+        "recommend", RecommendApi, "get_recommend_newsong", "/recommend/get_recommend_newsong", cache_ttl=60
+    ),
+    RouteDeclaration(
+        "recommend", RecommendApi, "get_recommend_songlist", "/recommend/get_recommend_songlist", cache_ttl=60
+    ),
+    RouteDeclaration("search", SearchApi, "complete", "/search/complete", cache_ttl=60),
+    RouteDeclaration("search", SearchApi, "general_search", "/search/general_search", cache_ttl=60),
+    RouteDeclaration("search", SearchApi, "get_hotkey", "/search/get_hotkey", cache_ttl=600),
+    RouteDeclaration("search", SearchApi, "quick_search", "/search/quick_search", cache_ttl=60),
+    RouteDeclaration("search", SearchApi, "search_by_type", "/search/search_by_type", cache_ttl=60),
+    RouteDeclaration("singer", SingerApi, "get_album_list", "/singer/get_album_list", cache_ttl=300),
+    RouteDeclaration("singer", SingerApi, "get_desc", "/singer/get_desc", cache_ttl=300),
+    RouteDeclaration("singer", SingerApi, "get_info", "/singer/get_info", cache_ttl=300),
+    RouteDeclaration("singer", SingerApi, "get_mv_list", "/singer/get_mv_list", cache_ttl=600),
+    RouteDeclaration("singer", SingerApi, "get_similar", "/singer/get_similar", cache_ttl=600),
+    RouteDeclaration("singer", SingerApi, "get_singer_list", "/singer/get_singer_list", cache_ttl=300),
+    RouteDeclaration("singer", SingerApi, "get_singer_list_index", "/singer/get_singer_list_index", cache_ttl=300),
+    RouteDeclaration("singer", SingerApi, "get_songs_list", "/singer/get_songs_list", cache_ttl=300),
+    RouteDeclaration("singer", SingerApi, "get_tab_detail", "/singer/get_tab_detail", cache_ttl=600),
     RouteDeclaration("song", SongApi, "get_cdn_dispatch", "/song/get_cdn_dispatch"),
-    RouteDeclaration("song", SongApi, "get_detail", "/song/get_detail"),
-    RouteDeclaration("song", SongApi, "get_fav_num", "/song/get_fav_num"),
-    RouteDeclaration("song", SongApi, "get_labels", "/song/get_labels"),
-    RouteDeclaration("song", SongApi, "get_other_version", "/song/get_other_version"),
-    RouteDeclaration("song", SongApi, "get_producer", "/song/get_producer"),
-    RouteDeclaration("song", SongApi, "get_related_mv", "/song/get_related_mv"),
-    RouteDeclaration("song", SongApi, "get_related_songlist", "/song/get_related_songlist"),
-    RouteDeclaration("song", SongApi, "get_sheet", "/song/get_sheet"),
-    RouteDeclaration("song", SongApi, "get_similar_song", "/song/get_similar_song"),
+    RouteDeclaration("song", SongApi, "get_detail", "/song/get_detail", cache_ttl=300),
+    RouteDeclaration("song", SongApi, "get_fav_num", "/song/get_fav_num", cache_ttl=60),
+    RouteDeclaration("song", SongApi, "get_labels", "/song/get_labels", cache_ttl=300),
+    RouteDeclaration("song", SongApi, "get_other_version", "/song/get_other_version", cache_ttl=600),
+    RouteDeclaration("song", SongApi, "get_producer", "/song/get_producer", cache_ttl=300),
+    RouteDeclaration("song", SongApi, "get_related_mv", "/song/get_related_mv", cache_ttl=600),
+    RouteDeclaration("song", SongApi, "get_related_songlist", "/song/get_related_songlist", cache_ttl=600),
+    RouteDeclaration("song", SongApi, "get_sheet", "/song/get_sheet", cache_ttl=300),
+    RouteDeclaration("song", SongApi, "get_similar_song", "/song/get_similar_song", cache_ttl=600),
     RouteDeclaration("song", SongApi, "get_song_urls", "/song/get_song_urls"),
-    RouteDeclaration("song", SongApi, "query_song", "/song/query_song"),
+    RouteDeclaration("song", SongApi, "query_song", "/song/query_song", cache_ttl=300),
     RouteDeclaration("songlist", SonglistApi, "add_songs", "/songlist/add_songs", ("POST",)),
     RouteDeclaration("songlist", SonglistApi, "create", "/songlist/create"),
     RouteDeclaration("songlist", SonglistApi, "del_songs", "/songlist/del_songs", ("POST",)),
     RouteDeclaration("songlist", SonglistApi, "delete", "/songlist/delete"),
     RouteDeclaration("songlist", SonglistApi, "get_detail", "/songlist/get_detail"),
-    RouteDeclaration("top", TopApi, "get_category", "/top/get_category"),
-    RouteDeclaration("top", TopApi, "get_detail", "/top/get_detail"),
+    RouteDeclaration("top", TopApi, "get_category", "/top/get_category", cache_ttl=300),
+    RouteDeclaration("top", TopApi, "get_detail", "/top/get_detail", cache_ttl=60),
     RouteDeclaration("user", UserApi, "get_created_songlist", "/user/get_created_songlist"),
     RouteDeclaration("user", UserApi, "get_fans", "/user/get_fans"),
     RouteDeclaration("user", UserApi, "get_fav_album", "/user/get_fav_album"),
@@ -171,6 +177,7 @@ def get_route_specs(
                 path=route.path,
                 methods=route.methods,
                 response_model=route.response_model,
+                cache_ttl=route.cache_ttl,
             )
         )
 

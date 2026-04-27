@@ -10,6 +10,7 @@ from fastapi import Depends, HTTPException, Query, Request
 from qqmusic_api import Client, Credential
 
 from .auth import credential_for_request, credential_from_cookies
+from .cache import cached_response, make_cache_key
 from .response import success_response
 from .schema import (
     _enum_query_values,
@@ -178,6 +179,8 @@ def make_endpoint(
     module_attr: str,
     method_name: str,
     method: Any,
+    *,
+    cache_ttl: int | None = None,
 ):
     """为模块方法动态创建端点."""
     sig = inspect.signature(method)
@@ -194,6 +197,19 @@ def make_endpoint(
         module = getattr(client, module_attr)
         bound_method = getattr(module, method_name)
         kwargs = _coerce_enum_kwargs(query_kwargs, hints)
+
+        if cache_ttl is not None:
+            cache_key = make_cache_key(f"/{module_attr}/{method_name}", kwargs)
+            hit = request.app.state.cache.get(cache_key)
+            if hit is not None:
+                return cached_response(hit, cache_ttl)
+
+            if accepts_credential:
+                kwargs["credential"] = credential_for_request(client, credential or client.credential)
+            result = success_response(await _call_bound_method(bound_method, kwargs))
+            request.app.state.cache.set(cache_key, result, cache_ttl)
+            return cached_response(result, cache_ttl)
+
         if accepts_credential:
             kwargs["credential"] = credential_for_request(client, credential or client.credential)
         return success_response(await _call_bound_method(bound_method, kwargs))

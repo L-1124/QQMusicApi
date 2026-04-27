@@ -14,6 +14,7 @@ import qqmusic_api
 from qqmusic_api import Client, Credential
 from qqmusic_api.core.exceptions import BaseError, NotLoginError
 
+from .cache import MemoryBackend
 from .modules.login import OPENAPI_RESPONSE_MODELS as LOGIN_RESPONSE_MODELS
 from .modules.login import router as login_router
 from .modules.song import OPENAPI_RESPONSE_MODELS as SONG_RESPONSE_MODELS
@@ -40,6 +41,7 @@ async def _lifespan(app: FastAPI):
             credential = Credential.model_validate_json(await f.read())
 
     app.state.client = Client(credential=credential)
+    app.state.cache = MemoryBackend()
     yield
     await app.state.client.close()
 
@@ -63,7 +65,7 @@ def _include_dynamic_routers(
             continue
 
         response_model = spec.response_model or get_response_model(spec.method)
-        endpoint, doc = make_endpoint(spec.module_attr, spec.method_name, spec.method)
+        endpoint, doc = make_endpoint(spec.module_attr, spec.method_name, spec.method, cache_ttl=spec.cache_ttl)
         requires_credential = "credential" in inspect.signature(spec.method).parameters
         for method in spec.methods:
             response_models[(spec.path, method.lower())] = response_model
