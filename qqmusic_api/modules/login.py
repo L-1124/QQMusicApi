@@ -417,7 +417,7 @@ class LoginApi(ApiModule):
             raise
         except ApiError as exc:
             if exc.code == PhoneLoginEvents.CAPTCHA.value:
-                return PhoneAuthCodeResult(event=PhoneLoginEvents.CAPTCHA)
+                return PhoneAuthCodeResult(event=PhoneLoginEvents.CAPTCHA, info=exc.data["securityURL"])
             if exc.code == PhoneLoginEvents.FREQUENCY.value:
                 return PhoneAuthCodeResult(event=PhoneLoginEvents.FREQUENCY)
             raise _build_api_login_error("PhoneLogin", exc) from exc
