@@ -10,12 +10,6 @@ from web.schema import COOKIE_SECURITY_REQUIREMENT
 
 router = APIRouter(prefix="/songlist", tags=["songlist"])
 credential_dependency = Depends(credential_from_cookies)
-OPENAPI_RESPONSE_MODELS = {
-    ("/songlist/add_songs", "get"): bool,
-    ("/songlist/add_songs", "post"): bool,
-    ("/songlist/del_songs", "get"): bool,
-    ("/songlist/del_songs", "post"): bool,
-}
 
 
 class SonglistSongItem(BaseModel):
@@ -60,32 +54,6 @@ async def _write_songlist_songs(
     )
 
 
-@router.get(
-    "/add_songs",
-    summary="添加单首歌曲到歌单",
-    description="添加单首歌曲到歌单.",
-    response_model=ApiResponse,
-    openapi_extra={"security": [COOKIE_SECURITY_REQUIREMENT]},
-)
-async def songlist_add_song_get(
-    request: Request,
-    dirid: int,
-    song_id: int,
-    song_type: int,
-    tid: int = 0,
-    credential: Credential = credential_dependency,
-):
-    """添加单首歌曲到歌单."""
-    return await _write_songlist_songs(
-        request,
-        "add_songs",
-        dirid=dirid,
-        song_info=[(song_id, song_type)],
-        tid=tid,
-        credential=credential,
-    )
-
-
 @router.post(
     "/add_songs",
     summary="添加歌曲到歌单",
@@ -105,32 +73,6 @@ async def songlist_add_songs(
         dirid=body.dirid,
         song_info=_song_info_tuples(body.song_info),
         tid=body.tid,
-        credential=credential,
-    )
-
-
-@router.get(
-    "/del_songs",
-    summary="删除歌单中的单首歌曲",
-    description="删除歌单中的单首歌曲.",
-    response_model=ApiResponse,
-    openapi_extra={"security": [COOKIE_SECURITY_REQUIREMENT]},
-)
-async def songlist_del_song_get(
-    request: Request,
-    dirid: int,
-    song_id: int,
-    song_type: int,
-    tid: int = 0,
-    credential: Credential = credential_dependency,
-):
-    """删除歌单中的单首歌曲."""
-    return await _write_songlist_songs(
-        request,
-        "del_songs",
-        dirid=dirid,
-        song_info=[(song_id, song_type)],
-        tid=tid,
         credential=credential,
     )
 

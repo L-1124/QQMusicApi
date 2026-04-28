@@ -15,8 +15,8 @@ from qqmusic_api.models.login import (
     QRLoginType,
 )
 from web.auth import credential_for_request, credential_from_cookies
+from web.enum_utils import coerce_enum_value
 from web.response import ApiResponse, success_response
-from web.routing import coerce_enum_value
 from web.schema import COOKIE_SECURITY_REQUIREMENT
 
 router = APIRouter(prefix="/login", tags=["login"])
@@ -122,14 +122,6 @@ PHONE_EVENT_CODES = {
     PhoneLoginEvents.CAPTCHA: 1,
     PhoneLoginEvents.FREQUENCY: 2,
     PhoneLoginEvents.OTHER: -1,
-}
-OPENAPI_RESPONSE_MODELS = {
-    ("/login/check_expired", "get"): bool,
-    ("/login/refresh_credential", "get"): Credential,
-    ("/login/qrcode", "get"): QRCodeData,
-    ("/login/qrcode/status", "get"): QRCodeStatusData,
-    ("/login/phone/authcode", "get"): PhoneAuthCodeData,
-    ("/login/phone/authorize", "get"): Credential,
 }
 
 

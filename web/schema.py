@@ -1,17 +1,12 @@
 """Web OpenAPI schema 与动态模型辅助函数."""
 
-import ast
 import inspect
-import logging
 import re
-import textwrap
 from enum import Enum
-from typing import Any, get_type_hints
+from typing import Any
 
 from fastapi import FastAPI
 from pydantic import BaseModel, TypeAdapter
-
-logger = logging.getLogger(__name__)
 
 _DOCSTRING_SECTIONS = frozenset({"Args:", "Attributes:", "Returns:", "Raises:", "Yields:", "Note:", "Notes:"})
 COOKIE_SECURITY_REQUIREMENT = {"MusicId": [], "MusicKey": []}
@@ -131,54 +126,6 @@ def _sanitize_default(default: Any) -> Any:
     if isinstance(default, Enum):
         return default.name
     return default
-
-
-def get_response_model(method: Any) -> type[BaseModel] | None:
-    """从方法返回标注或源码 AST 提取 Pydantic 响应模型."""
-    try:
-        hints = get_type_hints(method)
-        ret = hints.get("return")
-        if ret is not None:
-            origin = getattr(ret, "__origin__", None)
-            args = getattr(ret, "__args__", ())
-            if origin is not None and args:
-                for arg in args:
-                    if isinstance(arg, type) and issubclass(arg, BaseModel) and arg is not BaseModel:
-                        return arg
-            if isinstance(ret, type) and issubclass(ret, BaseModel) and ret is not BaseModel:
-                return ret
-    except Exception:
-        logger.debug(
-            "type-hint response model extraction failed: method=%s",
-            getattr(method, "__qualname__", method),
-            exc_info=True,
-        )
-
-    try:
-        source = inspect.getsource(method)
-        tree = ast.parse(textwrap.dedent(source))
-    except Exception:
-        logger.debug(
-            "AST response model extraction failed: method=%s",
-            getattr(method, "__qualname__", method),
-            exc_info=True,
-        )
-        return None
-
-    module = inspect.getmodule(method)
-    ns = {**module.__dict__} if module else {}
-
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Call):
-            continue
-        func = node.func
-        if isinstance(func, ast.Attribute) and func.attr == "_build_request":
-            for kw in node.keywords:
-                if kw.arg == "response_model" and isinstance(kw.value, ast.Name):
-                    model = ns.get(kw.value.id)
-                    if isinstance(model, type) and issubclass(model, BaseModel) and model is not BaseModel:
-                        return model
-    return None
 
 
 def _strip_schema_descriptions(obj: Any) -> None:

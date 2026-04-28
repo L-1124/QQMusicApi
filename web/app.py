@@ -1,6 +1,5 @@
 """QQMusic API Web 应用工厂."""
 
-import inspect
 from collections import defaultdict
 from contextlib import asynccontextmanager
 from typing import Any
@@ -15,25 +14,20 @@ from qqmusic_api import Client, Credential
 from qqmusic_api.core.exceptions import BaseError, NotLoginError
 
 from .cache import MemoryBackend
-from .modules.login import OPENAPI_RESPONSE_MODELS as LOGIN_RESPONSE_MODELS
 from .modules.login import router as login_router
-from .modules.mv import OPENAPI_RESPONSE_MODELS as MV_RESPONSE_MODELS
 from .modules.mv import router as mv_router
-from .modules.song import OPENAPI_RESPONSE_MODELS as SONG_RESPONSE_MODELS
 from .modules.song import router as song_router
-from .modules.songlist import OPENAPI_RESPONSE_MODELS as SONGLIST_RESPONSE_MODELS
 from .modules.songlist import router as songlist_router
 from .response import ApiResponse, ErrorResponse, error_response
-from .route_registry import RouteSpec, get_route_specs
-from .routing import make_endpoint, uses_complex_query
-from .schema import COOKIE_SECURITY_REQUIREMENT, get_response_model, install_openapi_schema
+from .route_registry import AdapterKind, AuthPolicy, RouteSpec, get_route_specs
+from .routing import make_endpoint
+from .schema import COOKIE_SECURITY_REQUIREMENT, install_openapi_schema
 
-_EXPLICIT_ROUTE_KEYS = {
-    ("song", "get_song_urls"),
-    ("song", "query_song"),
-    ("mv", "get_mv_urls"),
-    ("songlist", "add_songs"),
-    ("songlist", "del_songs"),
+EXPLICIT_ROUTERS = {
+    "login": login_router,
+    "song": song_router,
+    "mv": mv_router,
+    "songlist": songlist_router,
 }
 
 _ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
@@ -63,6 +57,22 @@ def _route_path_for_module(spec: RouteSpec) -> str:
     return route_path or "/"
 
 
+def _openapi_security_for_auth(auth: AuthPolicy) -> dict[str, list[dict[str, list[str]]]] | None:
+    """返回契约认证策略对应的 OpenAPI 扩展."""
+    if auth is AuthPolicy.COOKIE_OR_DEFAULT:
+        return {"security": [COOKIE_SECURITY_REQUIREMENT]}
+    return None
+
+
+def _register_response_model(
+    response_models: dict[tuple[str, str], Any],
+    spec: RouteSpec,
+) -> None:
+    """登记契约声明的响应 data 模型."""
+    for method in spec.methods:
+        response_models[(spec.path, method.lower())] = spec.response_model
+
+
 def _include_dynamic_routers(
     app: FastAPI,
     route_specs: tuple[RouteSpec, ...],
@@ -71,22 +81,22 @@ def _include_dynamic_routers(
     """按模块分组注册动态路由."""
     routers: dict[str, APIRouter] = defaultdict(lambda: APIRouter())
     for spec in route_specs:
-        if uses_complex_query(spec.method) or (spec.module_attr, spec.method_name) in _EXPLICIT_ROUTE_KEYS:
+        if spec.adapter is not AdapterKind.AUTO:
             continue
+        if spec.method is None:
+            raise RuntimeError(f"自动路由缺少方法: {spec.module_attr}.{spec.method_name}")
 
-        response_model = spec.response_model or get_response_model(spec.method)
-        endpoint, doc = make_endpoint(spec.module_attr, spec.method_name, spec.method, cache_ttl=spec.cache_ttl)
-        requires_credential = "credential" in inspect.signature(spec.method).parameters
-        for method in spec.methods:
-            response_models[(spec.path, method.lower())] = response_model
+        endpoint, doc = make_endpoint(spec)
+        _register_response_model(response_models, spec)
+        module_name = spec.module_cls.__name__ if spec.module_cls is not None else spec.module_attr
         routers[spec.module_attr].add_api_route(
             _route_path_for_module(spec),
             endpoint,
             methods=list(spec.methods),
-            summary=doc["summary"] or f"{spec.module_cls.__name__}.{spec.method_name}",
-            description=doc["description"],
+            summary=spec.summary or doc["summary"] or f"{module_name}.{spec.method_name}",
+            description=spec.description or doc["description"],
             response_model=ApiResponse,
-            openapi_extra={"security": [COOKIE_SECURITY_REQUIREMENT]} if requires_credential else None,
+            openapi_extra=_openapi_security_for_auth(spec.auth),
         )
 
     for module_attr, router in routers.items():
@@ -98,19 +108,21 @@ def _include_explicit_routers(
     route_specs: tuple[RouteSpec, ...],
     response_models: dict[tuple[str, str], Any],
 ) -> None:
-    """注册需要显式请求体或特例参数处理的模块路由."""
-    route_keys = {(spec.module_attr, spec.method_name) for spec in route_specs}
-    app.include_router(login_router)
-    response_models.update(LOGIN_RESPONSE_MODELS)
-    if ("song", "get_song_urls") in route_keys:
-        app.include_router(song_router)
-        response_models.update(SONG_RESPONSE_MODELS)
-    if ("mv", "get_mv_urls") in route_keys:
-        app.include_router(mv_router)
-        response_models.update(MV_RESPONSE_MODELS)
-    if {("songlist", "add_songs"), ("songlist", "del_songs")} & route_keys:
-        app.include_router(songlist_router)
-        response_models.update(SONGLIST_RESPONSE_MODELS)
+    """按契约注册显式请求体或特例参数处理的模块路由."""
+    included_router_names: set[str] = set()
+    for spec in route_specs:
+        if spec.adapter is not AdapterKind.EXPLICIT:
+            continue
+        if spec.router_name is None:
+            raise RuntimeError(f"显式路由缺少 router_name: {spec.module_attr}.{spec.method_name}")
+        _register_response_model(response_models, spec)
+        if spec.router_name in included_router_names:
+            continue
+        router = EXPLICIT_ROUTERS.get(spec.router_name)
+        if router is None:
+            raise RuntimeError(f"未知显式路由器: {spec.router_name}")
+        app.include_router(router)
+        included_router_names.add(spec.router_name)
 
 
 def create_app() -> FastAPI:

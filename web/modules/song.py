@@ -1,25 +1,18 @@
 """歌曲模块 Web 路由适配."""
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from pydantic.json_schema import SkipJsonSchema
 
 from qqmusic_api import Client, Credential
-from qqmusic_api.models.song import GetSongUrlsResponse, QuerySongResponse
 from qqmusic_api.modules.song import BaseSongFileType, SongFileInfo, SongFileType
 from web.auth import credential_for_request, credential_from_cookies
+from web.enum_utils import coerce_enum_value
 from web.response import ApiResponse, success_response
-from web.routing import coerce_enum_value
-from web.schema import COOKIE_SECURITY_REQUIREMENT, _format_enum_values
+from web.schema import COOKIE_SECURITY_REQUIREMENT
 
 router = APIRouter(prefix="/song", tags=["song"])
 credential_dependency = Depends(credential_from_cookies)
-OPENAPI_RESPONSE_MODELS = {
-    ("/song/get_song_urls", "get"): GetSongUrlsResponse,
-    ("/song/get_song_urls", "post"): GetSongUrlsResponse,
-    ("/song/query_song", "get"): QuerySongResponse,
-    ("/song/query_song", "post"): QuerySongResponse,
-}
 
 
 class SongUrlItem(BaseModel):
@@ -44,9 +37,6 @@ class QuerySongRequest(BaseModel):
     value: list[int] | list[str] = Field(description="歌曲 ID 列表或 MID 列表.")
 
 
-SONG_FILE_TYPE_DESCRIPTION = f"歌曲文件类型.\n\n{_format_enum_values(BaseSongFileType)}"
-
-
 def _parse_song_file_type(value: str) -> BaseSongFileType:
     """解析歌曲文件类型名称."""
     try:
@@ -56,33 +46,6 @@ def _parse_song_file_type(value: str) -> BaseSongFileType:
     if not isinstance(file_type, BaseSongFileType):
         raise HTTPException(status_code=422, detail=f"未知歌曲文件类型: {value}")
     return file_type
-
-
-@router.get(
-    "/get_song_urls",
-    summary="获取单个歌曲文件链接",
-    description="获取单个歌曲文件链接.",
-    response_model=ApiResponse,
-    openapi_extra={"security": [COOKIE_SECURITY_REQUIREMENT]},
-)
-async def song_get_song_urls_get(
-    request: Request,
-    mid: str,
-    file_type: str = Query(default=SongFileType.MP3_128.name, description=SONG_FILE_TYPE_DESCRIPTION),
-    song_type: int | None = None,
-    media_mid: str | None = None,
-    credential: Credential = credential_dependency,
-):
-    """获取单个歌曲文件链接."""
-    client: Client = request.app.state.client
-    target_file_type = _parse_song_file_type(file_type)
-    return success_response(
-        await client.song.get_song_urls(
-            [SongFileInfo(mid=mid, file_type=target_file_type, song_type=song_type, media_mid=media_mid)],
-            file_type=target_file_type,
-            credential=credential_for_request(client, credential),
-        )
-    )
 
 
 @router.post(
@@ -115,28 +78,6 @@ async def song_get_song_urls_post(
             credential=credential_for_request(client, credential),
         )
     )
-
-
-@router.get(
-    "/query_song",
-    summary="查询单首歌曲",
-    description="根据 id 或 mid 查询单首歌曲.",
-    response_model=ApiResponse,
-)
-async def song_query_song_get(
-    request: Request,
-    song_id: int | None = Query(default=None, alias="id", description="歌曲 ID."),
-    mid: str | None = Query(default=None, description="歌曲 MID."),
-):
-    """查询单首歌曲."""
-    if song_id is None and mid is None:
-        raise HTTPException(status_code=422, detail="必须提供 id 或 mid")
-    client: Client = request.app.state.client
-    if song_id is not None:
-        return success_response(await client.song.query_song([song_id]))
-
-    assert mid is not None
-    return success_response(await client.song.query_song([mid]))
 
 
 @router.post(
