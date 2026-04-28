@@ -1,6 +1,7 @@
 """Web 显式路由注册表."""
 
 import inspect
+import re
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Literal
@@ -70,13 +71,16 @@ from qqmusic_api.modules.top import TopApi
 from qqmusic_api.modules.user import UserApi
 from web.modules.login import PhoneAuthCodeData, QRCodeData, QRCodeStatusData
 from web.query_models import (
-    AlbumGetSongQuery,
+    AlbumSongPageQuery,
+    AutoPathModel,
     AutoQueryModel,
-    CommentCountQuery,
-    CommentListQuery,
-    CommentMomentQuery,
+    BizIdPath,
+    CommentListPageQuery,
+    CommentMomentPageQuery,
+    EuinPath,
     KeywordQuery,
-    LyricGetLyricQuery,
+    LyricOptionsQuery,
+    MidPath,
     MvGetDetailQuery,
     NoQuery,
     PageQuery,
@@ -84,25 +88,24 @@ from web.query_models import (
     SearchGeneralQuery,
     SingerDescQuery,
     SingerIndexQuery,
-    SingerMidQuery,
-    SingerPagedMidQuery,
-    SingerSimilarQuery,
-    SingerTabDetailQuery,
+    SingerPageQuery,
+    SingerSimilarPageQuery,
+    SingerTabPageQuery,
+    SingerTabPath,
     SingerTypeQuery,
-    SongIdQuery,
+    SongIdPath,
     SongIdsQuery,
     SonglistCreateQuery,
     SonglistDeleteQuery,
-    SonglistGetDetailQuery,
-    SongRelatedMvQuery,
-    SongRelatedSonglistQuery,
-    SongSheetQuery,
-    TopGetDetailQuery,
-    UserEuinQuery,
-    UserPagedEuinQuery,
+    SonglistDetailOptionsQuery,
+    SonglistIdPath,
+    SongRelatedMvPageQuery,
+    SongRelatedSonglistPageQuery,
+    TopDetailOptionsQuery,
+    TopIdPath,
+    UinPath,
     UserPageQuery,
-    UserUinQuery,
-    ValueQuery,
+    ValuePath,
 )
 
 RouteKey = tuple[str, str]
@@ -138,11 +141,12 @@ class RouteDeclaration:
     module_attr: str
     module_cls: type[ApiModule] | None
     method_name: str
-    path: str
+    path: str | None = None
     methods: tuple[str, ...] = ("GET",)
     response_model: Any = None
     cache: CachePolicy = CachePolicy()
     query_model: type[AutoQueryModel] | None = None
+    path_model: type[AutoPathModel] | None = None
     adapter: AdapterKind = AdapterKind.AUTO
     auth: AuthPolicy = AuthPolicy.NONE
     router_name: str | None = None
@@ -167,6 +171,7 @@ class RouteSpec:
     methods: tuple[str, ...]
     response_model: Any
     query_model: type[AutoQueryModel] | None
+    path_model: type[AutoPathModel] | None
     cache: CachePolicy
     adapter: AdapterKind
     auth: AuthPolicy
@@ -181,14 +186,14 @@ PUBLIC_600 = CachePolicy(ttl=600, scope="public")
 AUTH = AuthPolicy.COOKIE_OR_DEFAULT
 EXPLICIT = AdapterKind.EXPLICIT
 AUTO_QUERY_MODELS: dict[RouteKey, type[AutoQueryModel]] = {
-    ("album", "get_detail"): ValueQuery,
-    ("album", "get_song"): AlbumGetSongQuery,
-    ("comment", "get_comment_count"): CommentCountQuery,
-    ("comment", "get_hot_comments"): CommentListQuery,
-    ("comment", "get_moment_comments"): CommentMomentQuery,
-    ("comment", "get_new_comments"): CommentListQuery,
-    ("comment", "get_recommend_comments"): CommentListQuery,
-    ("lyric", "get_lyric"): LyricGetLyricQuery,
+    ("album", "get_detail"): NoQuery,
+    ("album", "get_song"): AlbumSongPageQuery,
+    ("comment", "get_comment_count"): NoQuery,
+    ("comment", "get_hot_comments"): CommentListPageQuery,
+    ("comment", "get_moment_comments"): CommentMomentPageQuery,
+    ("comment", "get_new_comments"): CommentListPageQuery,
+    ("comment", "get_recommend_comments"): CommentListPageQuery,
+    ("lyric", "get_lyric"): LyricOptionsQuery,
     ("mv", "get_detail"): MvGetDetailQuery,
     ("recommend", "get_guess_recommend"): NoQuery,
     ("recommend", "get_home_feed"): NoQuery,
@@ -200,41 +205,41 @@ AUTO_QUERY_MODELS: dict[RouteKey, type[AutoQueryModel]] = {
     ("search", "get_hotkey"): NoQuery,
     ("search", "quick_search"): KeywordQuery,
     ("search", "search_by_type"): SearchByTypeQuery,
-    ("singer", "get_album_list"): SingerPagedMidQuery,
+    ("singer", "get_album_list"): SingerPageQuery,
     ("singer", "get_desc"): SingerDescQuery,
-    ("singer", "get_info"): SingerMidQuery,
-    ("singer", "get_mv_list"): SingerPagedMidQuery,
-    ("singer", "get_similar"): SingerSimilarQuery,
+    ("singer", "get_info"): NoQuery,
+    ("singer", "get_mv_list"): SingerPageQuery,
+    ("singer", "get_similar"): SingerSimilarPageQuery,
     ("singer", "get_singer_list"): SingerTypeQuery,
     ("singer", "get_singer_list_index"): SingerIndexQuery,
-    ("singer", "get_songs_list"): SingerPagedMidQuery,
-    ("singer", "get_tab_detail"): SingerTabDetailQuery,
+    ("singer", "get_songs_list"): SingerPageQuery,
+    ("singer", "get_tab_detail"): SingerTabPageQuery,
     ("song", "get_cdn_dispatch"): NoQuery,
-    ("song", "get_detail"): ValueQuery,
+    ("song", "get_detail"): NoQuery,
     ("song", "get_fav_num"): SongIdsQuery,
-    ("song", "get_labels"): SongIdQuery,
-    ("song", "get_other_version"): ValueQuery,
-    ("song", "get_producer"): ValueQuery,
-    ("song", "get_related_mv"): SongRelatedMvQuery,
-    ("song", "get_related_songlist"): SongRelatedSonglistQuery,
-    ("song", "get_sheet"): SongSheetQuery,
-    ("song", "get_similar_song"): SongIdQuery,
+    ("song", "get_labels"): NoQuery,
+    ("song", "get_other_version"): NoQuery,
+    ("song", "get_producer"): NoQuery,
+    ("song", "get_related_mv"): SongRelatedMvPageQuery,
+    ("song", "get_related_songlist"): SongRelatedSonglistPageQuery,
+    ("song", "get_sheet"): NoQuery,
+    ("song", "get_similar_song"): NoQuery,
     ("songlist", "create"): SonglistCreateQuery,
     ("songlist", "delete"): SonglistDeleteQuery,
-    ("songlist", "get_detail"): SonglistGetDetailQuery,
+    ("songlist", "get_detail"): SonglistDetailOptionsQuery,
     ("top", "get_category"): NoQuery,
-    ("top", "get_detail"): TopGetDetailQuery,
-    ("user", "get_created_songlist"): UserUinQuery,
-    ("user", "get_fans"): UserPagedEuinQuery,
-    ("user", "get_fav_album"): UserPagedEuinQuery,
-    ("user", "get_fav_mv"): UserPagedEuinQuery,
-    ("user", "get_fav_song"): UserPagedEuinQuery,
-    ("user", "get_fav_songlist"): UserPagedEuinQuery,
-    ("user", "get_follow_singers"): UserPagedEuinQuery,
-    ("user", "get_follow_user"): UserPagedEuinQuery,
+    ("top", "get_detail"): TopDetailOptionsQuery,
+    ("user", "get_created_songlist"): NoQuery,
+    ("user", "get_fans"): UserPageQuery,
+    ("user", "get_fav_album"): UserPageQuery,
+    ("user", "get_fav_mv"): UserPageQuery,
+    ("user", "get_fav_song"): UserPageQuery,
+    ("user", "get_fav_songlist"): UserPageQuery,
+    ("user", "get_follow_singers"): UserPageQuery,
+    ("user", "get_follow_user"): UserPageQuery,
     ("user", "get_friend"): UserPageQuery,
-    ("user", "get_homepage"): UserEuinQuery,
-    ("user", "get_music_gene"): UserEuinQuery,
+    ("user", "get_homepage"): NoQuery,
+    ("user", "get_music_gene"): NoQuery,
     ("user", "get_vip_info"): NoQuery,
 }
 
@@ -244,7 +249,6 @@ ROUTE_CANDIDATES: tuple[RouteDeclaration, ...] = (
         "login",
         None,
         "check_expired",
-        "/login/check_expired",
         response_model=bool,
         adapter=EXPLICIT,
         auth=AUTH,
@@ -254,15 +258,12 @@ ROUTE_CANDIDATES: tuple[RouteDeclaration, ...] = (
         "login",
         None,
         "refresh_credential",
-        "/login/refresh_credential",
         response_model=Credential,
         adapter=EXPLICIT,
         auth=AUTH,
         router_name="login",
     ),
-    RouteDeclaration(
-        "login", None, "qrcode", "/login/qrcode", response_model=QRCodeData, adapter=EXPLICIT, router_name="login"
-    ),
+    RouteDeclaration("login", None, "qrcode", response_model=QRCodeData, adapter=EXPLICIT, router_name="login"),
     RouteDeclaration(
         "login",
         None,
@@ -291,61 +292,83 @@ ROUTE_CANDIDATES: tuple[RouteDeclaration, ...] = (
         router_name="login",
     ),
     RouteDeclaration(
-        "album", AlbumApi, "get_detail", "/album/get_detail", response_model=GetAlbumDetailResponse, cache=PUBLIC_300
+        "album",
+        AlbumApi,
+        "get_detail",
+        path="/album/{value}/detail",
+        response_model=GetAlbumDetailResponse,
+        cache=PUBLIC_300,
+        path_model=ValuePath,
     ),
     RouteDeclaration(
-        "album", AlbumApi, "get_song", "/album/get_song", response_model=GetAlbumSongResponse, cache=PUBLIC_300
+        "album",
+        AlbumApi,
+        "get_song",
+        path="/album/{value}/songs",
+        response_model=GetAlbumSongResponse,
+        cache=PUBLIC_300,
+        path_model=ValuePath,
     ),
     RouteDeclaration(
         "comment",
         CommentApi,
         "get_comment_count",
-        "/comment/get_comment_count",
+        path="/song/{biz_id}/comments/count",
         response_model=CommentCountResponse,
         cache=PUBLIC_60,
+        path_model=BizIdPath,
     ),
     RouteDeclaration(
         "comment",
         CommentApi,
         "get_hot_comments",
-        "/comment/get_hot_comments",
+        path="/song/{biz_id}/comments/hot",
         response_model=CommentListResponse,
         cache=PUBLIC_60,
+        path_model=BizIdPath,
     ),
     RouteDeclaration(
         "comment",
         CommentApi,
         "get_moment_comments",
-        "/comment/get_moment_comments",
+        path="/song/{biz_id}/comments/moments",
         response_model=MomentCommentResponse,
         cache=PUBLIC_60,
+        path_model=BizIdPath,
     ),
     RouteDeclaration(
         "comment",
         CommentApi,
         "get_new_comments",
-        "/comment/get_new_comments",
+        path="/song/{biz_id}/comments/new",
         response_model=CommentListResponse,
         cache=PUBLIC_60,
+        path_model=BizIdPath,
     ),
     RouteDeclaration(
         "comment",
         CommentApi,
         "get_recommend_comments",
-        "/comment/get_recommend_comments",
+        path="/song/{biz_id}/comments/recommended",
         response_model=CommentListResponse,
         cache=PUBLIC_60,
+        path_model=BizIdPath,
     ),
     RouteDeclaration(
-        "lyric", LyricApi, "get_lyric", "/lyric/get_lyric", response_model=GetLyricResponse, cache=PUBLIC_300
+        "lyric",
+        LyricApi,
+        "get_lyric",
+        path="/song/{value}/lyric",
+        response_model=GetLyricResponse,
+        cache=PUBLIC_300,
+        path_model=ValuePath,
     ),
-    RouteDeclaration("mv", MvApi, "get_detail", "/mv/get_detail", response_model=GetMvDetailResponse, cache=PUBLIC_300),
+    RouteDeclaration("mv", MvApi, "get_detail", response_model=GetMvDetailResponse, cache=PUBLIC_300),
     RouteDeclaration(
         "mv",
         MvApi,
         "get_mv_urls",
-        "/mv/get_mv_urls",
-        ("POST",),
+        methods=("POST",),
         response_model=GetMvUrlsResponse,
         adapter=EXPLICIT,
         router_name="mv",
@@ -354,7 +377,6 @@ ROUTE_CANDIDATES: tuple[RouteDeclaration, ...] = (
         "recommend",
         RecommendApi,
         "get_guess_recommend",
-        "/recommend/get_guess_recommend",
         response_model=GuessRecommendResponse,
         cache=PUBLIC_60,
     ),
@@ -362,7 +384,6 @@ ROUTE_CANDIDATES: tuple[RouteDeclaration, ...] = (
         "recommend",
         RecommendApi,
         "get_home_feed",
-        "/recommend/get_home_feed",
         response_model=RecommendFeedCardResponse,
         cache=PUBLIC_60,
     ),
@@ -370,7 +391,6 @@ ROUTE_CANDIDATES: tuple[RouteDeclaration, ...] = (
         "recommend",
         RecommendApi,
         "get_radar_recommend",
-        "/recommend/get_radar_recommend",
         response_model=RadarRecommendResponse,
         cache=PUBLIC_60,
     ),
@@ -378,7 +398,6 @@ ROUTE_CANDIDATES: tuple[RouteDeclaration, ...] = (
         "recommend",
         RecommendApi,
         "get_recommend_newsong",
-        "/recommend/get_recommend_newsong",
         response_model=RecommendNewSongResponse,
         cache=PUBLIC_60,
     ),
@@ -386,26 +405,23 @@ ROUTE_CANDIDATES: tuple[RouteDeclaration, ...] = (
         "recommend",
         RecommendApi,
         "get_recommend_songlist",
-        "/recommend/get_recommend_songlist",
         response_model=RecommendSonglistResponse,
         cache=PUBLIC_60,
     ),
-    RouteDeclaration("search", SearchApi, "complete", "/search/complete", response_model=Any, cache=PUBLIC_60),
+    RouteDeclaration("search", SearchApi, "complete", response_model=Any, cache=PUBLIC_60),
     RouteDeclaration(
         "search",
         SearchApi,
         "general_search",
-        "/search/general_search",
         response_model=GeneralSearchResponse,
         cache=PUBLIC_60,
     ),
-    RouteDeclaration("search", SearchApi, "get_hotkey", "/search/get_hotkey", response_model=Any, cache=PUBLIC_600),
-    RouteDeclaration("search", SearchApi, "quick_search", "/search/quick_search", response_model=Any, cache=PUBLIC_60),
+    RouteDeclaration("search", SearchApi, "get_hotkey", response_model=Any, cache=PUBLIC_600),
+    RouteDeclaration("search", SearchApi, "quick_search", response_model=Any, cache=PUBLIC_60),
     RouteDeclaration(
         "search",
         SearchApi,
         "search_by_type",
-        "/search/search_by_type",
         response_model=SearchByTypeResponse,
         cache=PUBLIC_60,
     ),
@@ -413,32 +429,43 @@ ROUTE_CANDIDATES: tuple[RouteDeclaration, ...] = (
         "singer",
         SingerApi,
         "get_album_list",
-        "/singer/get_album_list",
+        path="/singer/{mid}/albums",
         response_model=SingerAlbumListResponse,
         cache=PUBLIC_300,
+        path_model=MidPath,
+    ),
+    RouteDeclaration("singer", SingerApi, "get_desc", response_model=SingerDetailResponse, cache=PUBLIC_300),
+    RouteDeclaration(
+        "singer",
+        SingerApi,
+        "get_info",
+        path="/singer/{mid}/info",
+        response_model=HomepageHeaderResponse,
+        cache=PUBLIC_300,
+        path_model=MidPath,
     ),
     RouteDeclaration(
-        "singer", SingerApi, "get_desc", "/singer/get_desc", response_model=SingerDetailResponse, cache=PUBLIC_300
-    ),
-    RouteDeclaration(
-        "singer", SingerApi, "get_info", "/singer/get_info", response_model=HomepageHeaderResponse, cache=PUBLIC_300
-    ),
-    RouteDeclaration(
-        "singer", SingerApi, "get_mv_list", "/singer/get_mv_list", response_model=SingerMvListResponse, cache=PUBLIC_600
+        "singer",
+        SingerApi,
+        "get_mv_list",
+        path="/singer/{mid}/mvs",
+        response_model=SingerMvListResponse,
+        cache=PUBLIC_600,
+        path_model=MidPath,
     ),
     RouteDeclaration(
         "singer",
         SingerApi,
         "get_similar",
-        "/singer/get_similar",
+        path="/singer/{mid}/similar",
         response_model=SimilarSingerResponse,
         cache=PUBLIC_600,
+        path_model=MidPath,
     ),
     RouteDeclaration(
         "singer",
         SingerApi,
         "get_singer_list",
-        "/singer/get_singer_list",
         response_model=SingerTypeListResponse,
         cache=PUBLIC_300,
     ),
@@ -446,7 +473,6 @@ ROUTE_CANDIDATES: tuple[RouteDeclaration, ...] = (
         "singer",
         SingerApi,
         "get_singer_list_index",
-        "/singer/get_singer_list_index",
         response_model=SingerIndexPageResponse,
         cache=PUBLIC_300,
     ),
@@ -454,69 +480,99 @@ ROUTE_CANDIDATES: tuple[RouteDeclaration, ...] = (
         "singer",
         SingerApi,
         "get_songs_list",
-        "/singer/get_songs_list",
+        path="/singer/{mid}/songs",
         response_model=SingerSongListResponse,
         cache=PUBLIC_300,
+        path_model=MidPath,
     ),
     RouteDeclaration(
         "singer",
         SingerApi,
         "get_tab_detail",
-        "/singer/get_tab_detail",
+        path="/singer/{mid}/tabs/{tab_type}",
         response_model=HomepageTabDetailResponse,
         cache=PUBLIC_600,
+        path_model=SingerTabPath,
     ),
+    RouteDeclaration("song", SongApi, "get_cdn_dispatch", response_model=GetCdnDispatchResponse),
     RouteDeclaration(
-        "song", SongApi, "get_cdn_dispatch", "/song/get_cdn_dispatch", response_model=GetCdnDispatchResponse
+        "song",
+        SongApi,
+        "get_detail",
+        path="/song/{value}/detail",
+        response_model=GetSongDetailResponse,
+        cache=PUBLIC_300,
+        path_model=ValuePath,
     ),
+    RouteDeclaration("song", SongApi, "get_fav_num", response_model=GetFavNumResponse, cache=PUBLIC_60),
     RouteDeclaration(
-        "song", SongApi, "get_detail", "/song/get_detail", response_model=GetSongDetailResponse, cache=PUBLIC_300
-    ),
-    RouteDeclaration(
-        "song", SongApi, "get_fav_num", "/song/get_fav_num", response_model=GetFavNumResponse, cache=PUBLIC_60
-    ),
-    RouteDeclaration(
-        "song", SongApi, "get_labels", "/song/get_labels", response_model=GetSongLabelsResponse, cache=PUBLIC_300
+        "song",
+        SongApi,
+        "get_labels",
+        path="/song/{songid}/labels",
+        response_model=GetSongLabelsResponse,
+        cache=PUBLIC_300,
+        path_model=SongIdPath,
     ),
     RouteDeclaration(
         "song",
         SongApi,
         "get_other_version",
-        "/song/get_other_version",
+        path="/song/{value}/other_versions",
         response_model=GetOtherVersionResponse,
         cache=PUBLIC_600,
+        path_model=ValuePath,
     ),
     RouteDeclaration(
-        "song", SongApi, "get_producer", "/song/get_producer", response_model=GetProducerResponse, cache=PUBLIC_300
+        "song",
+        SongApi,
+        "get_producer",
+        path="/song/{value}/producer",
+        response_model=GetProducerResponse,
+        cache=PUBLIC_300,
+        path_model=ValuePath,
     ),
     RouteDeclaration(
-        "song", SongApi, "get_related_mv", "/song/get_related_mv", response_model=GetRelatedMvResponse, cache=PUBLIC_600
+        "song",
+        SongApi,
+        "get_related_mv",
+        path="/song/{songid}/related_mv",
+        response_model=GetRelatedMvResponse,
+        cache=PUBLIC_600,
+        path_model=SongIdPath,
     ),
     RouteDeclaration(
         "song",
         SongApi,
         "get_related_songlist",
-        "/song/get_related_songlist",
+        path="/song/{songid}/related_songlists",
         response_model=GetRelatedSonglistResponse,
         cache=PUBLIC_600,
+        path_model=SongIdPath,
     ),
     RouteDeclaration(
-        "song", SongApi, "get_sheet", "/song/get_sheet", response_model=GetSheetResponse, cache=PUBLIC_300
+        "song",
+        SongApi,
+        "get_sheet",
+        path="/song/{mid}/sheet",
+        response_model=GetSheetResponse,
+        cache=PUBLIC_300,
+        path_model=MidPath,
     ),
     RouteDeclaration(
         "song",
         SongApi,
         "get_similar_song",
-        "/song/get_similar_song",
+        path="/song/{songid}/similar",
         response_model=GetSimilarSongResponse,
         cache=PUBLIC_600,
+        path_model=SongIdPath,
     ),
     RouteDeclaration(
         "song",
         SongApi,
         "get_song_urls",
-        "/song/get_song_urls",
-        ("POST",),
+        methods=("POST",),
         response_model=GetSongUrlsResponse,
         adapter=EXPLICIT,
         auth=AUTH,
@@ -526,8 +582,7 @@ ROUTE_CANDIDATES: tuple[RouteDeclaration, ...] = (
         "song",
         SongApi,
         "query_song",
-        "/song/query_song",
-        ("POST",),
+        methods=("POST",),
         response_model=QuerySongResponse,
         adapter=EXPLICIT,
         router_name="song",
@@ -536,79 +591,134 @@ ROUTE_CANDIDATES: tuple[RouteDeclaration, ...] = (
         "songlist",
         SonglistApi,
         "add_songs",
-        "/songlist/add_songs",
-        ("POST",),
+        methods=("POST",),
         response_model=bool,
         adapter=EXPLICIT,
         auth=AUTH,
         router_name="songlist",
     ),
-    RouteDeclaration(
-        "songlist", SonglistApi, "create", "/songlist/create", response_model=CreateDeleteSonglistResp, auth=AUTH
-    ),
+    RouteDeclaration("songlist", SonglistApi, "create", response_model=CreateDeleteSonglistResp, auth=AUTH),
     RouteDeclaration(
         "songlist",
         SonglistApi,
         "del_songs",
-        "/songlist/del_songs",
-        ("POST",),
+        methods=("POST",),
         response_model=bool,
         adapter=EXPLICIT,
         auth=AUTH,
         router_name="songlist",
     ),
+    RouteDeclaration("songlist", SonglistApi, "delete", response_model=CreateDeleteSonglistResp, auth=AUTH),
     RouteDeclaration(
-        "songlist", SonglistApi, "delete", "/songlist/delete", response_model=CreateDeleteSonglistResp, auth=AUTH
+        "songlist",
+        SonglistApi,
+        "get_detail",
+        path="/songlist/{songlist_id}/detail",
+        response_model=GetSonglistDetailResponse,
+        path_model=SonglistIdPath,
     ),
+    RouteDeclaration("top", TopApi, "get_category", response_model=TopCategoryResponse, cache=PUBLIC_300),
     RouteDeclaration(
-        "songlist", SonglistApi, "get_detail", "/songlist/get_detail", response_model=GetSonglistDetailResponse
+        "top",
+        TopApi,
+        "get_detail",
+        path="/top/{top_id}/detail",
+        response_model=TopDetailResponse,
+        cache=PUBLIC_60,
+        path_model=TopIdPath,
     ),
-    RouteDeclaration(
-        "top", TopApi, "get_category", "/top/get_category", response_model=TopCategoryResponse, cache=PUBLIC_300
-    ),
-    RouteDeclaration("top", TopApi, "get_detail", "/top/get_detail", response_model=TopDetailResponse, cache=PUBLIC_60),
     RouteDeclaration(
         "user",
         UserApi,
         "get_created_songlist",
-        "/user/get_created_songlist",
+        path="/user/{uin}/created_songlists",
         response_model=UserCreatedSonglistResponse,
         auth=AUTH,
-    ),
-    RouteDeclaration("user", UserApi, "get_fans", "/user/get_fans", response_model=UserRelationListResponse, auth=AUTH),
-    RouteDeclaration(
-        "user", UserApi, "get_fav_album", "/user/get_fav_album", response_model=UserFavAlbumResponse, auth=AUTH
-    ),
-    RouteDeclaration("user", UserApi, "get_fav_mv", "/user/get_fav_mv", response_model=UserFavMvResponse, auth=AUTH),
-    RouteDeclaration(
-        "user", UserApi, "get_fav_song", "/user/get_fav_song", response_model=GetSonglistDetailResponse, auth=AUTH
+        path_model=UinPath,
     ),
     RouteDeclaration(
-        "user", UserApi, "get_fav_songlist", "/user/get_fav_songlist", response_model=UserFavSonglistResponse, auth=AUTH
+        "user",
+        UserApi,
+        "get_fans",
+        path="/user/{euin}/fans",
+        response_model=UserRelationListResponse,
+        auth=AUTH,
+        path_model=EuinPath,
+    ),
+    RouteDeclaration(
+        "user",
+        UserApi,
+        "get_fav_album",
+        path="/user/{euin}/fav/albums",
+        response_model=UserFavAlbumResponse,
+        auth=AUTH,
+        path_model=EuinPath,
+    ),
+    RouteDeclaration(
+        "user",
+        UserApi,
+        "get_fav_mv",
+        path="/user/{euin}/fav/mvs",
+        response_model=UserFavMvResponse,
+        auth=AUTH,
+        path_model=EuinPath,
+    ),
+    RouteDeclaration(
+        "user",
+        UserApi,
+        "get_fav_song",
+        path="/user/{euin}/fav/songs",
+        response_model=GetSonglistDetailResponse,
+        auth=AUTH,
+        path_model=EuinPath,
+    ),
+    RouteDeclaration(
+        "user",
+        UserApi,
+        "get_fav_songlist",
+        path="/user/{euin}/fav/songlists",
+        response_model=UserFavSonglistResponse,
+        auth=AUTH,
+        path_model=EuinPath,
     ),
     RouteDeclaration(
         "user",
         UserApi,
         "get_follow_singers",
-        "/user/get_follow_singers",
+        path="/user/{euin}/follow/singers",
         response_model=UserRelationListResponse,
         auth=AUTH,
+        path_model=EuinPath,
     ),
     RouteDeclaration(
-        "user", UserApi, "get_follow_user", "/user/get_follow_user", response_model=UserRelationListResponse, auth=AUTH
+        "user",
+        UserApi,
+        "get_follow_user",
+        path="/user/{euin}/follow/users",
+        response_model=UserRelationListResponse,
+        auth=AUTH,
+        path_model=EuinPath,
+    ),
+    RouteDeclaration("user", UserApi, "get_friend", response_model=UserFriendListResponse, auth=AUTH),
+    RouteDeclaration(
+        "user",
+        UserApi,
+        "get_homepage",
+        path="/user/{euin}/homepage",
+        response_model=UserHomepageResponse,
+        auth=AUTH,
+        path_model=EuinPath,
     ),
     RouteDeclaration(
-        "user", UserApi, "get_friend", "/user/get_friend", response_model=UserFriendListResponse, auth=AUTH
+        "user",
+        UserApi,
+        "get_music_gene",
+        path="/user/{euin}/music_gene",
+        response_model=UserMusicGeneResponse,
+        auth=AUTH,
+        path_model=EuinPath,
     ),
-    RouteDeclaration(
-        "user", UserApi, "get_homepage", "/user/get_homepage", response_model=UserHomepageResponse, auth=AUTH
-    ),
-    RouteDeclaration(
-        "user", UserApi, "get_music_gene", "/user/get_music_gene", response_model=UserMusicGeneResponse, auth=AUTH
-    ),
-    RouteDeclaration(
-        "user", UserApi, "get_vip_info", "/user/get_vip_info", response_model=UserVipInfoResponse, auth=AUTH
-    ),
+    RouteDeclaration("user", UserApi, "get_vip_info", response_model=UserVipInfoResponse, auth=AUTH),
 )
 
 ROUTE_FILTER_MODE: RouteFilterMode = "allowlist"
@@ -647,13 +757,14 @@ def get_route_specs(
         specs.append(
             RouteSpec(
                 module_attr=route.module_attr,
+                path=_resolve_route_path(route),
                 module_cls=route.module_cls,
                 method_name=route.method_name,
                 method=method,
-                path=route.path,
                 methods=route.methods,
                 response_model=route.response_model,
                 query_model=query_model,
+                path_model=route.path_model,
                 cache=route.cache,
                 adapter=route.adapter,
                 auth=route.auth,
@@ -666,12 +777,23 @@ def get_route_specs(
     return tuple(specs)
 
 
+def _resolve_route_path(route: RouteDeclaration) -> str:
+    """解析契约路径, 默认使用模块与方法名推导."""
+    return route.path or f"/{route.module_attr}/{route.method_name}"
+
+
+def _path_param_names(path: str) -> set[str]:
+    """提取路由模板中的 Path 参数名."""
+    return set(re.findall(r"{([^{}]+)}", path))
+
+
 def _validate_route_declaration(route: RouteDeclaration, path_methods: set[tuple[str, str]]) -> None:
     """校验单条路由契约."""
+    route_path = _resolve_route_path(route)
     for method in route.methods:
-        path_method = (route.path, method.upper())
+        path_method = (route_path, method.upper())
         if path_method in path_methods:
-            raise RuntimeError(f"Web 路由重复: {route.path} {method.upper()}")
+            raise RuntimeError(f"Web 路由重复: {route_path} {method.upper()}")
         path_methods.add(path_method)
 
     if route.response_model is None:
@@ -682,7 +804,10 @@ def _validate_route_declaration(route: RouteDeclaration, path_methods: set[tuple
         raise RuntimeError(f"认证路由不能使用 public 缓存: {route.key}")
     if route.adapter is AdapterKind.EXPLICIT and route.query_model is not None:
         raise RuntimeError(f"显式路由不能声明 query_model: {route.key}")
-    if route.adapter is AdapterKind.AUTO and _resolve_route_query_model(route) is None:
+    if route.adapter is AdapterKind.EXPLICIT and route.path_model is not None:
+        raise RuntimeError(f"显式路由不能声明 path_model: {route.key}")
+    query_model = _resolve_route_query_model(route)
+    if route.adapter is AdapterKind.AUTO and query_model is None:
         raise RuntimeError(f"自动路由缺少 query_model: {route.key}")
     if route.adapter is AdapterKind.EXPLICIT and route.router_name is None:
         raise RuntimeError(f"显式路由缺少 router_name: {route.key}")
@@ -690,6 +815,32 @@ def _validate_route_declaration(route: RouteDeclaration, path_methods: set[tuple
         raise RuntimeError(f"自动路由缺少 module_cls: {route.key}")
     if route.adapter is AdapterKind.AUTO and not isinstance(getattr(Client, route.module_attr, None), property):
         raise TypeError(f"Client 缺少模块属性: {route.module_attr}")
+
+    _validate_path_model(route, route_path, query_model)
+
+
+def _validate_path_model(
+    route: RouteDeclaration,
+    route_path: str,
+    query_model: type[AutoQueryModel] | None,
+) -> None:
+    """校验 Path 模型与模板路径一致."""
+    param_names = _path_param_names(route_path)
+    if route.path_model is None:
+        if param_names:
+            raise RuntimeError(f"模板路径缺少 path_model: {route.key}")
+        return
+    if route.adapter is not AdapterKind.AUTO:
+        raise RuntimeError(f"只有自动路由支持 path_model: {route.key}")
+    if not param_names:
+        raise RuntimeError(f"path_model 缺少模板路径: {route.key}")
+    model_fields = set(route.path_model.model_fields)
+    if param_names != model_fields:
+        raise RuntimeError(f"路径参数与 path_model 字段不一致: {route.key}")
+    if query_model is not None:
+        conflicts = model_fields & set(query_model.model_fields)
+        if conflicts:
+            raise RuntimeError(f"Path 与 Query 参数来源冲突: {route.key} {sorted(conflicts)!r}")
 
 
 def _resolve_route_query_model(route: RouteDeclaration) -> type[AutoQueryModel] | None:

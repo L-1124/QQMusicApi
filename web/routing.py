@@ -3,13 +3,14 @@
 import inspect
 from typing import Annotated, Any
 
-from fastapi import Depends, Query, Request
+from fastapi import Depends, HTTPException, Query, Request
+from pydantic import ValidationError
 
 from qqmusic_api import Client, Credential
 
 from .auth import credential_for_request, credential_from_cookies
 from .cache import cached_response, make_cache_key
-from .query_models import AutoQueryModel
+from .query_models import AutoPathModel, AutoQueryModel
 from .response import success_response
 from .schema import parse_docstring
 
@@ -36,14 +37,32 @@ def _uses_cookie_or_default_auth(spec: Any) -> bool:
     return _auth_value(spec) == _COOKIE_OR_DEFAULT_AUTH
 
 
-def _validate_endpoint_contract(spec: Any, *, accepts_credential: bool, query_model: Any) -> None:
+def _validate_endpoint_contract(
+    spec: Any,
+    *,
+    accepts_credential: bool,
+    query_model: Any,
+    path_model: Any,
+) -> None:
     """校验动态端点执行契约与 modules 方法一致."""
     if query_model is None:
         raise RuntimeError(f"自动路由缺少 query_model: {spec.module_attr}.{spec.method_name}")
+    if path_model is not None and set(path_model.model_fields) & set(query_model.model_fields):
+        raise RuntimeError(f"Path 与 Query 参数来源冲突: {spec.module_attr}.{spec.method_name}")
     if accepts_credential and not _uses_cookie_or_default_auth(spec):
         raise RuntimeError(f"认证方法缺少认证策略: {spec.module_attr}.{spec.method_name}")
     if getattr(spec.cache, "scope", None) == _PUBLIC_CACHE_SCOPE and _uses_cookie_or_default_auth(spec):
         raise RuntimeError(f"认证路由不能使用 public 缓存: {spec.module_attr}.{spec.method_name}")
+
+
+def _path_kwargs(path_model: type[AutoPathModel] | None, path_params: dict[str, Any]) -> dict[str, Any]:
+    """校验 Path 参数并转换为 modules 方法参数."""
+    if path_model is None:
+        return {}
+    try:
+        return path_model.model_validate(dict(path_params)).to_method_kwargs()
+    except ValidationError as exc:
+        raise HTTPException(status_code=422, detail=exc.errors()) from exc
 
 
 async def _execute_endpoint(
@@ -58,7 +77,12 @@ async def _execute_endpoint(
     client: Client = request.app.state.client
     module = getattr(client, spec.module_attr)
     bound_method = getattr(module, spec.method_name)
-    kwargs = query.to_method_kwargs()
+    query_kwargs = query.to_method_kwargs()
+    path_kwargs = _path_kwargs(spec.path_model, request.path_params)
+    conflicts = path_kwargs.keys() & query_kwargs.keys()
+    if conflicts:
+        raise RuntimeError(f"Path 与 Query 参数来源冲突: {spec.module_attr}.{spec.method_name} {sorted(conflicts)!r}")
+    kwargs = {**path_kwargs, **query_kwargs}
     cache_ttl = spec.cache.ttl
 
     if cache_ttl is not None:
@@ -87,12 +111,18 @@ def make_endpoint(spec: Any):
     """为模块方法创建显式 Query 模型端点."""
     method = spec.method
     query_model = spec.query_model
+    path_model = spec.path_model
     if method is None:
         raise RuntimeError(f"动态路由缺少方法: {spec.module_attr}.{spec.method_name}")
     sig = inspect.signature(method)
     accepts_credential = "credential" in sig.parameters
     expose_credential = _uses_cookie_or_default_auth(spec)
-    _validate_endpoint_contract(spec, accepts_credential=accepts_credential, query_model=query_model)
+    _validate_endpoint_contract(
+        spec,
+        accepts_credential=accepts_credential,
+        query_model=query_model,
+        path_model=path_model,
+    )
 
     doc = parse_docstring(method)
 

@@ -8,6 +8,8 @@ from typing import Any
 from fastapi import FastAPI
 from pydantic import BaseModel, TypeAdapter
 
+from .query_models import AutoPathModel
+
 _DOCSTRING_SECTIONS = frozenset({"Args:", "Attributes:", "Returns:", "Raises:", "Yields:", "Note:", "Notes:"})
 COOKIE_SECURITY_REQUIREMENT = {"MusicId": [], "MusicKey": []}
 
@@ -234,7 +236,55 @@ def _install_precise_response_schemas(
         json_content["schema"] = _api_response_schema(data_schema)
 
 
-def install_openapi_schema(app: FastAPI, response_models: dict[tuple[str, str], Any] | None = None) -> None:
+def _path_parameter_schema(field_schema: dict[str, Any], field_name: str) -> dict[str, Any]:
+    """生成 OpenAPI Path 参数 schema."""
+    parameter_schema = dict(field_schema)
+    description = parameter_schema.pop("description", None)
+    return {
+        "name": field_name,
+        "in": "path",
+        "required": True,
+        "schema": parameter_schema,
+        "description": description,
+    }
+
+
+def _install_path_parameter_schemas(
+    schema: dict[str, Any],
+    path_models: dict[tuple[str, str], type[AutoPathModel]],
+) -> None:
+    """将 Path 模型字段注入 OpenAPI operation 参数."""
+    components = schema.setdefault("components", {}).setdefault("schemas", {})
+    for (path, method), path_model in path_models.items():
+        operation = schema.get("paths", {}).get(path, {}).get(method)
+        if not isinstance(operation, dict):
+            continue
+        model_schema = TypeAdapter(path_model).json_schema(ref_template="#/components/schemas/{model}")
+        definitions = model_schema.pop("$defs", None)
+        if isinstance(definitions, dict):
+            components.update(definitions)
+        properties = model_schema.get("properties", {})
+        if not isinstance(properties, dict):
+            continue
+        existing_parameters = operation.get("parameters", [])
+        parameters = [
+            parameter
+            for parameter in existing_parameters
+            if not (isinstance(parameter, dict) and parameter.get("in") == "path")
+        ]
+        parameters.extend(
+            _path_parameter_schema(field_schema, field_name)
+            for field_name, field_schema in properties.items()
+            if isinstance(field_schema, dict)
+        )
+        operation["parameters"] = parameters
+
+
+def install_openapi_schema(
+    app: FastAPI,
+    response_models: dict[tuple[str, str], Any] | None = None,
+    path_models: dict[tuple[str, str], type[AutoPathModel]] | None = None,
+) -> None:
     """安装 OpenAPI schema 后处理."""
     original_openapi = app.openapi
 
@@ -244,6 +294,7 @@ def install_openapi_schema(app: FastAPI, response_models: dict[tuple[str, str], 
         schema = original_openapi()
         _normalize_cookie_security(schema)
         _install_precise_response_schemas(schema, response_models or {})
+        _install_path_parameter_schemas(schema, path_models or {})
         _collapse_nullable_parameter_anyof(schema)
         _strip_schema_descriptions(schema)
         app.openapi_schema = schema

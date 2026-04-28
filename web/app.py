@@ -1,11 +1,10 @@
 """QQMusic API Web 应用工厂."""
 
-from collections import defaultdict
 from contextlib import asynccontextmanager
 from typing import Any
 
 import anyio
-from fastapi import APIRouter, FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse
 
@@ -50,13 +49,6 @@ async def _lifespan(app: FastAPI):
     await app.state.client.close()
 
 
-def _route_path_for_module(spec: RouteSpec) -> str:
-    """返回模块 APIRouter 内部路径."""
-    prefix = f"/{spec.module_attr}"
-    route_path = spec.path.removeprefix(prefix)
-    return route_path or "/"
-
-
 def _openapi_security_for_auth(auth: AuthPolicy) -> dict[str, list[dict[str, list[str]]]] | None:
     """返回契约认证策略对应的 OpenAPI 扩展."""
     if auth is AuthPolicy.COOKIE_OR_DEFAULT:
@@ -77,9 +69,9 @@ def _include_dynamic_routers(
     app: FastAPI,
     route_specs: tuple[RouteSpec, ...],
     response_models: dict[tuple[str, str], Any],
+    path_models: dict[tuple[str, str], Any],
 ) -> None:
-    """按模块分组注册动态路由."""
-    routers: dict[str, APIRouter] = defaultdict(lambda: APIRouter())
+    """按完整契约路径注册动态路由."""
     for spec in route_specs:
         if spec.adapter is not AdapterKind.AUTO:
             continue
@@ -88,19 +80,20 @@ def _include_dynamic_routers(
 
         endpoint, doc = make_endpoint(spec)
         _register_response_model(response_models, spec)
+        if spec.path_model is not None:
+            for method in spec.methods:
+                path_models[(spec.path, method.lower())] = spec.path_model
         module_name = spec.module_cls.__name__ if spec.module_cls is not None else spec.module_attr
-        routers[spec.module_attr].add_api_route(
-            _route_path_for_module(spec),
+        app.add_api_route(
+            spec.path,
             endpoint,
             methods=list(spec.methods),
+            tags=[spec.module_attr],
             summary=spec.summary or doc["summary"] or f"{module_name}.{spec.method_name}",
             description=spec.description or doc["description"],
             response_model=ApiResponse,
             openapi_extra=_openapi_security_for_auth(spec.auth),
         )
-
-    for module_attr, router in routers.items():
-        app.include_router(router, prefix=f"/{module_attr}", tags=[module_attr])
 
 
 def _include_explicit_routers(
@@ -213,9 +206,10 @@ def create_app() -> FastAPI:
 
     route_specs = get_route_specs()
     response_models: dict[tuple[str, str], Any] = {}
-    _include_dynamic_routers(app, route_specs, response_models)
+    path_models: dict[tuple[str, str], Any] = {}
+    _include_dynamic_routers(app, route_specs, response_models, path_models)
     _include_explicit_routers(app, route_specs, response_models)
-    install_openapi_schema(app, response_models)
+    install_openapi_schema(app, response_models, path_models)
 
     return app
 
