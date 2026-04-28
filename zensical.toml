@@ -12,6 +12,7 @@ nav = [
     { "Credential" = "tutorial/credential.md" },
     { "Client" = "tutorial/client.md" },
     { "Pagination" = "tutorial/pagination.md" },
+    { "Web 服务" = "tutorial/web.md" },
   ] },
   { "API 文档" = [
     { "Modules" = [
