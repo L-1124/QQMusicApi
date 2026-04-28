@@ -189,10 +189,25 @@ def _collapse_nullable_parameter_anyof(schema: dict[str, Any]) -> None:
                     parameter_schema["description"] = description
 
 
+def _any_data_schema() -> dict[str, Any]:
+    """生成 OpenAPI 兼容的任意 data schema."""
+    return {
+        "anyOf": [
+            {"type": "object"},
+            {"type": "array"},
+            {"type": "string"},
+            {"type": "number"},
+            {"type": "integer"},
+            {"type": "boolean"},
+            {"type": "null"},
+        ]
+    }
+
+
 def _schema_for_response_data(data_model: Any, components: dict[str, Any]) -> dict[str, Any]:
     """生成标准响应 data 字段的精确 schema."""
     if data_model is None:
-        return {}
+        return _any_data_schema()
     schema = TypeAdapter(data_model).json_schema(ref_template="#/components/schemas/{model}")
     definitions = schema.pop("$defs", None)
     if isinstance(definitions, dict):
@@ -203,20 +218,24 @@ def _schema_for_response_data(data_model: Any, components: dict[str, Any]) -> di
     return schema
 
 
+def _response_data_property(data_schema: dict[str, Any]) -> dict[str, Any]:
+    """生成带描述且兼容 OpenAPI 解析器的 data 字段 schema."""
+    if "$ref" in data_schema:
+        return {"allOf": [data_schema], "description": "响应数据."}
+    return {**data_schema, "description": "响应数据."}
+
+
 def _api_response_schema(data_schema: dict[str, Any]) -> dict[str, Any]:
     """生成带精确 data schema 的标准响应 schema."""
     return {
         "title": "ApiResponse",
         "type": "object",
         "properties": {
-            "success": {"type": "boolean", "description": "请求是否成功."},
-            "data": {**data_schema, "description": "成功响应数据."},
-            "error": {
-                "anyOf": [{"$ref": "#/components/schemas/ApiErrorBody"}, {"type": "null"}],
-                "description": "失败错误信息.",
-            },
+            "code": {"type": "string", "description": "稳定状态码或错误码."},
+            "msg": {"type": "string", "description": "面向调用方的状态说明."},
+            "data": _response_data_property(data_schema),
         },
-        "required": ["success"],
+        "required": ["code", "msg"],
     }
 
 

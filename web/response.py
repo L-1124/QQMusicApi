@@ -1,26 +1,30 @@
 """Web API 标准响应结构."""
 
-from typing import Any
+from typing import Any, cast
 
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-
-class ApiErrorBody(BaseModel):
-    """标准错误信息."""
-
-    code: str = Field(description="稳定错误码或异常类型.")
-    message: str = Field(description="面向调用方的错误说明.")
-    detail: Any = Field(default=None, description="结构化错误详情.")
+_ANY_DATA_SCHEMA = {
+    "anyOf": [
+        {"type": "object"},
+        {"type": "array"},
+        {"type": "string"},
+        {"type": "number"},
+        {"type": "integer"},
+        {"type": "boolean"},
+        {"type": "null"},
+    ]
+}
 
 
 class ApiResponse(BaseModel):
     """标准 API 响应结构."""
 
-    success: bool = Field(description="请求是否成功.")
-    data: Any = Field(default=None, description="成功响应数据.")
-    error: ApiErrorBody | None = Field(default=None, description="失败错误信息.")
+    code: str = Field(description="稳定状态码或错误码.")
+    msg: str = Field(description="面向调用方的状态说明.")
+    data: Any = Field(default=None, description="响应数据.", json_schema_extra=cast("Any", _ANY_DATA_SCHEMA))
 
 
 ErrorResponse = ApiResponse
@@ -28,20 +32,20 @@ ErrorResponse = ApiResponse
 
 def success_response(data: Any) -> ApiResponse:
     """构造标准成功响应."""
-    return ApiResponse(success=True, data=data, error=None)
+    return ApiResponse(code="0", msg="ok", data=data)
 
 
 def error_response(
     *,
     status_code: int,
     code: str,
-    message: str,
+    msg: str,
     detail: Any | None = None,
 ) -> JSONResponse:
     """构造标准错误响应."""
     response = ApiResponse(
-        success=False,
-        data=None,
-        error=ApiErrorBody(code=code, message=message, detail=detail),
+        code=code,
+        msg=msg,
+        data=detail,
     )
     return JSONResponse(status_code=status_code, content=jsonable_encoder(response))
