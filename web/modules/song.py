@@ -2,13 +2,14 @@
 
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from pydantic import BaseModel, Field
 from pydantic.json_schema import SkipJsonSchema
 
 from qqmusic_api import Client, Credential
 from qqmusic_api.modules.song import BaseSongFileType, SongFileInfo, SongFileType
 from web.auth import credential_from_cookies
+from web.deps import client_dependency
 from web.enum_utils import coerce_enum_value, iter_enum_members
 from web.response import ApiResponse, success_response
 from web.schema import COOKIE_SECURITY_REQUIREMENT
@@ -89,12 +90,11 @@ def _parse_query_song_values(values: list[str]) -> list[int] | list[str]:
     openapi_extra={"security": [COOKIE_SECURITY_REQUIREMENT]},
 )
 async def song_get_song_urls_post(
-    request: Request,
     body: SongUrlsRequest,
+    client: Client = client_dependency,
     credential: Credential = credential_dependency,
 ):
     """批量获取歌曲文件链接."""
-    client: Client = request.app.state.client
     default_file_type = _parse_song_file_type(body.file_type)
     return success_response(
         await client.song.get_song_urls(
@@ -120,11 +120,10 @@ async def song_get_song_urls_post(
     response_model=ApiResponse,
 )
 async def song_get_fav_num_by_id_get(
-    request: Request,
     song_id: Annotated[int, Path(alias="id", description="歌曲 ID.")],
+    client: Client = client_dependency,
 ):
     """根据单个歌曲 ID 获取收藏数量."""
-    client: Client = request.app.state.client
     return success_response(await client.song.get_fav_num([song_id]))
 
 
@@ -136,7 +135,6 @@ async def song_get_fav_num_by_id_get(
     openapi_extra={"security": [COOKIE_SECURITY_REQUIREMENT]},
 )
 async def song_get_song_url_get(
-    request: Request,
     mid: Annotated[str, Path(description="歌曲 MID.")],
     file_type: int = Query(
         default=DEFAULT_SONG_FILE_TYPE,
@@ -145,10 +143,10 @@ async def song_get_song_url_get(
     ),
     song_type: int | None = Query(default=None, description="歌曲类型."),
     media_mid: str | None = Query(default=None, description="媒体文件 MID."),
+    client: Client = client_dependency,
     credential: Credential = credential_dependency,
 ):
     """根据单个歌曲 MID 获取文件链接."""
-    client: Client = request.app.state.client
     default_file_type = _parse_song_file_type(file_type)
     return success_response(
         await client.song.get_song_urls(
@@ -172,9 +170,8 @@ async def song_get_song_url_get(
     response_model=ApiResponse,
 )
 async def song_query_song_get(
-    request: Request,
     value: Annotated[list[str], Query(description="歌曲 ID 列表或 MID 列表.")],
+    client: Client = client_dependency,
 ):
     """批量查询歌曲."""
-    client: Client = request.app.state.client
     return success_response(await client.song.query_song(_parse_query_song_values(value)))

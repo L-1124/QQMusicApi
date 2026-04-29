@@ -2,10 +2,11 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from qqmusic_api import Client, Credential
 from web.auth import credential_from_cookies
+from web.deps import client_dependency
 from web.response import ApiResponse, success_response
 from web.schema import COOKIE_SECURITY_REQUIREMENT
 
@@ -21,7 +22,7 @@ def _song_info_tuples(song_ids: list[int], song_types: list[int]) -> list[tuple[
 
 
 async def _write_songlist_songs(
-    request: Request,
+    client: Client,
     method_name: str,
     *,
     dirid: int,
@@ -30,7 +31,6 @@ async def _write_songlist_songs(
     credential: Credential,
 ):
     """调用歌单歌曲写操作并返回标准响应."""
-    client: Client = request.app.state.client
     method = getattr(client.songlist, method_name)
     return success_response(
         await method(
@@ -50,16 +50,16 @@ async def _write_songlist_songs(
     openapi_extra={"security": [COOKIE_SECURITY_REQUIREMENT]},
 )
 async def songlist_add_songs(
-    request: Request,
     dirid: Annotated[int, Query(description="歌单目录 ID.")],
     song_id: Annotated[list[int], Query(description="歌曲 ID 列表.")],
     song_type: Annotated[list[int], Query(description="歌曲类型列表.")],
     tid: int = Query(default=0, description="歌单 TID."),
+    client: Client = client_dependency,
     credential: Credential = credential_dependency,
 ):
     """添加歌曲到歌单."""
     return await _write_songlist_songs(
-        request,
+        client,
         "add_songs",
         dirid=dirid,
         song_info=_song_info_tuples(song_id, song_type),
@@ -76,16 +76,16 @@ async def songlist_add_songs(
     openapi_extra={"security": [COOKIE_SECURITY_REQUIREMENT]},
 )
 async def songlist_del_songs(
-    request: Request,
     dirid: Annotated[int, Query(description="歌单目录 ID.")],
     song_id: Annotated[list[int], Query(description="歌曲 ID 列表.")],
     song_type: Annotated[list[int], Query(description="歌曲类型列表.")],
     tid: int = Query(default=0, description="歌单 TID."),
+    client: Client = client_dependency,
     credential: Credential = credential_dependency,
 ):
     """删除歌单中的歌曲."""
     return await _write_songlist_songs(
-        request,
+        client,
         "del_songs",
         dirid=dirid,
         song_info=_song_info_tuples(song_id, song_type),

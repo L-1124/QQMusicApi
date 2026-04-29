@@ -10,6 +10,7 @@ from qqmusic_api import Client, Credential
 
 from .auth import credential_from_cookies
 from .cache import cached_response, make_cache_key
+from .deps import client_dependency
 from .query_models import AutoPathModel, AutoQueryModel
 from .response import success_response
 from .schema import parse_docstring
@@ -69,11 +70,11 @@ async def _execute_endpoint(
     spec: Any,
     query: AutoQueryModel,
     credential: Credential | None,
+    client: Client,
     *,
     expose_credential: bool,
 ) -> Any:
     """执行 Query 模型驱动的自动路由端点."""
-    client: Client = request.app.state.client
     module = getattr(client, spec.module_attr)
     bound_method = getattr(module, spec.method_name)
     try:
@@ -130,14 +131,19 @@ def make_endpoint(spec: Any):
         async def endpoint(
             request: Request,
             query: Any,
+            client: Client = client_dependency,
             credential: Credential = credential_dependency,
         ) -> Any:
-            return await _execute_endpoint(request, spec, query, credential, expose_credential=True)
+            return await _execute_endpoint(request, spec, query, credential, client, expose_credential=True)
 
     else:
 
-        async def endpoint(request: Request, query: Any) -> Any:
-            return await _execute_endpoint(request, spec, query, None, expose_credential=False)
+        async def endpoint(
+            request: Request,
+            query: Any,
+            client: Client = client_dependency,
+        ) -> Any:
+            return await _execute_endpoint(request, spec, query, None, client, expose_credential=False)
 
     endpoint.__name__ = f"{spec.module_attr}_{spec.method_name}"
     endpoint.__doc__ = spec.description or doc["description"]

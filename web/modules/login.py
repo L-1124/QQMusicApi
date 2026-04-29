@@ -2,7 +2,7 @@
 
 import base64
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, ValidationError, model_validator
 
 from qqmusic_api import Client, Credential
@@ -15,6 +15,7 @@ from qqmusic_api.models.login import (
     QRLoginType,
 )
 from web.auth import credential_from_cookies
+from web.deps import client_dependency
 from web.enum_utils import coerce_enum_value
 from web.response import ApiResponse, success_response
 from web.schema import COOKIE_SECURITY_REQUIREMENT
@@ -178,11 +179,10 @@ def _build_qrcode_placeholder(identifier: str, login_type: QRLoginType) -> QR:
     openapi_extra={"security": [COOKIE_SECURITY_REQUIREMENT]},
 )
 async def login_check_expired(
-    request: Request,
+    client: Client = client_dependency,
     credential: Credential = credential_dependency,
 ):
     """检查登录凭证是否过期."""
-    client: Client = request.app.state.client
     return success_response(await client.login.check_expired(credential))
 
 
@@ -194,11 +194,10 @@ async def login_check_expired(
     openapi_extra={"security": [COOKIE_SECURITY_REQUIREMENT]},
 )
 async def login_refresh_credential(
-    request: Request,
+    client: Client = client_dependency,
     credential: Credential = credential_dependency,
 ):
     """刷新登录凭证."""
-    client: Client = request.app.state.client
     return success_response(await client.login.refresh_credential(credential))
 
 
@@ -209,11 +208,10 @@ async def login_refresh_credential(
     response_model=ApiResponse,
 )
 async def login_get_qrcode(
-    request: Request,
     login_type: str = Query(description=WEB_QR_LOGIN_TYPE_DESCRIPTION, json_schema_extra={"enum": ["QQ", "WX"]}),
+    client: Client = client_dependency,
 ):
     """获取登录二维码."""
-    client: Client = request.app.state.client
     qrcode = await client.login.get_qrcode(_parse_web_qr_login_type(login_type))
     return success_response(_serialize_qrcode(qrcode))
 
@@ -225,12 +223,11 @@ async def login_get_qrcode(
     response_model=ApiResponse,
 )
 async def login_check_qrcode(
-    request: Request,
     identifier: str = Query(description="二维码标识符."),
     login_type: str = Query(description=WEB_QR_LOGIN_TYPE_DESCRIPTION, json_schema_extra={"enum": ["QQ", "WX"]}),
+    client: Client = client_dependency,
 ):
     """检查二维码登录状态."""
-    client: Client = request.app.state.client
     parsed_login_type = _parse_web_qr_login_type(login_type)
     qrcode = _build_qrcode_placeholder(identifier, parsed_login_type)
     result = await client.login.check_qrcode(qrcode)
@@ -244,10 +241,10 @@ async def login_check_qrcode(
     response_model=ApiResponse,
 )
 async def login_send_authcode(
-    request: Request,
     phone: int | None = Query(default=None, description="明文手机号."),
     encrypted_phone: str | None = Query(default=None, description="加密手机号."),
     country_code: int = Query(default=86, description="国家代码."),
+    client: Client = client_dependency,
 ):
     """发送手机验证码."""
     try:
@@ -255,7 +252,6 @@ async def login_send_authcode(
     except ValidationError as exc:
         raise HTTPException(status_code=422, detail=exc.errors()) from exc
 
-    client: Client = request.app.state.client
     result = await client.login.send_authcode(query.phone_value(), query.country_code)
     return success_response(_serialize_phone_authcode(result))
 
@@ -267,10 +263,10 @@ async def login_send_authcode(
     response_model=ApiResponse,
 )
 async def login_phone_authorize(
-    request: Request,
     auth_code: int = Query(description="短信验证码."),
     phone: int | None = Query(default=None, description="明文手机号."),
     encrypted_phone: str | None = Query(default=None, description="加密手机号."),
+    client: Client = client_dependency,
 ):
     """使用手机验证码登录."""
     try:
@@ -278,5 +274,4 @@ async def login_phone_authorize(
     except ValidationError as exc:
         raise HTTPException(status_code=422, detail=exc.errors()) from exc
 
-    client: Client = request.app.state.client
     return success_response(await client.login.phone_authorize(query.phone_value(), query.auth_code))
