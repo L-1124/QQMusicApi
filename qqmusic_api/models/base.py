@@ -200,7 +200,7 @@ class SongList(Response):
     picurl: str = Field(default="", validation_alias=AliasChoices("picurl", "cover", "logo", "picUrl"))
     desc: str = Field(default="", validation_alias=AliasChoices("desc", "description"))
     songnum: int = Field(default=0, validation_alias=AliasChoices("songnum", "songNum", "song_cnt"))
-    listennum: int | str = Field(default=0, validation_alias=AliasChoices("listennum", "playCnt", "play_cnt"))
+    listennum: int = Field(default=0, validation_alias=AliasChoices("listennum", "playCnt", "play_cnt"))
 
 
 class Song(Response):
