@@ -18,6 +18,8 @@ _COOKIE_OR_DEFAULT_AUTH = "cookie_or_default"
 credential_dependency = Depends(credential_from_cookies)
 _PUBLIC_CACHE_SCOPE = "public"
 
+_VALIDATION_ERROR_TYPES = (KeyError, TypeError, ValueError)
+
 
 async def _call_bound_method(bound_method: Any, kwargs: dict[str, Any]) -> Any:
     """调用业务方法并兼容同步与异步返回值."""
@@ -63,6 +65,8 @@ def _path_kwargs(path_model: type[AutoPathModel] | None, path_params: dict[str, 
         return path_model.model_validate(dict(path_params)).to_method_kwargs()
     except ValidationError as exc:
         raise HTTPException(status_code=422, detail=exc.errors()) from exc
+    except _VALIDATION_ERROR_TYPES as exc:
+        raise HTTPException(status_code=422, detail=f"路径参数校验失败: {exc!s}") from exc
 
 
 async def _execute_endpoint(
@@ -77,7 +81,10 @@ async def _execute_endpoint(
     client: Client = request.app.state.client
     module = getattr(client, spec.module_attr)
     bound_method = getattr(module, spec.method_name)
-    query_kwargs = query.to_method_kwargs()
+    try:
+        query_kwargs = query.to_method_kwargs()
+    except _VALIDATION_ERROR_TYPES as exc:
+        raise HTTPException(status_code=422, detail=f"查询参数校验失败: {exc!s}") from exc
     path_kwargs = _path_kwargs(spec.path_model, request.path_params)
     conflicts = path_kwargs.keys() & query_kwargs.keys()
     if conflicts:

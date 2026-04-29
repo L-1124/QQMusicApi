@@ -80,7 +80,14 @@ class RedisBackend:
 
     def __init__(self, url: str, prefix: str = "qqapi:") -> None:
         """初始化 Redis 缓存后端."""
-        from redis.asyncio import Redis
+        try:
+            from redis.asyncio import Redis
+        except ImportError as exc:
+            raise RuntimeError(
+                "RedisBackend requires the optional 'redis' package. "
+                "Install it before enabling Redis cache support, for example: "
+                "`uv add redis`."
+            ) from exc
 
         self._client: Redis = Redis.from_url(url, decode_responses=True)
         self._prefix = prefix

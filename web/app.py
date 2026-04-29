@@ -7,6 +7,7 @@ import anyio
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse
+from fastapi.routing import APIRoute
 
 import qqmusic_api
 from qqmusic_api import Client, Credential
@@ -35,6 +36,14 @@ _ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
     400: {"model": ErrorResponse},
     401: {"model": ErrorResponse},
     422: {"model": ErrorResponse},
+}
+_HTTP_ERROR_MESSAGES = {
+    400: "请求错误",
+    401: "未授权",
+    403: "禁止访问",
+    404: "资源不存在",
+    422: "请求参数校验失败",
+    500: "服务器内部错误",
 }
 
 
@@ -98,26 +107,47 @@ def _include_dynamic_routers(
         )
 
 
+def _find_explicit_route(spec: RouteSpec) -> APIRoute:
+    """按契约查找单个显式路由端点."""
+    if spec.router_name is None:
+        raise RuntimeError(f"显式路由缺少 router_name: {spec.module_attr}.{spec.method_name}")
+    router = EXPLICIT_ROUTERS.get(spec.router_name)
+    if router is None:
+        raise RuntimeError(f"未知显式路由器: {spec.router_name}")
+    spec_methods = {method.upper() for method in spec.methods}
+    for route in router.routes:
+        if not isinstance(route, APIRoute):
+            continue
+        if route.path == spec.path and spec_methods <= route.methods:
+            return route
+    raise RuntimeError(f"显式路由未在 router 中定义: {spec.path} {sorted(spec_methods)!r}")
+
+
+def _http_exception_message(exc: HTTPException) -> str:
+    """返回稳定且面向调用方的 HTTP 错误说明."""
+    if isinstance(exc.detail, str) and exc.detail:
+        return exc.detail
+    return _HTTP_ERROR_MESSAGES.get(exc.status_code, "HTTP 请求错误")
+
+
 def _include_explicit_routers(
     app: FastAPI,
     route_specs: tuple[RouteSpec, ...],
     response_models: dict[tuple[str, str], Any],
 ) -> None:
-    """按契约注册显式请求体或特例参数处理的模块路由."""
-    included_router_names: set[str] = set()
+    """按契约逐个注册显式请求体或特例参数处理路由."""
+    included_routes: set[tuple[str, str]] = set()
     for spec in route_specs:
         if spec.adapter is not AdapterKind.EXPLICIT:
             continue
-        if spec.router_name is None:
-            raise RuntimeError(f"显式路由缺少 router_name: {spec.module_attr}.{spec.method_name}")
         _register_response_model(response_models, spec)
-        if spec.router_name in included_router_names:
-            continue
-        router = EXPLICIT_ROUTERS.get(spec.router_name)
-        if router is None:
-            raise RuntimeError(f"未知显式路由器: {spec.router_name}")
-        app.include_router(router)
-        included_router_names.add(spec.router_name)
+        route = _find_explicit_route(spec)
+        for method in spec.methods:
+            route_key = (spec.path, method.upper())
+            if route_key in included_routes:
+                continue
+            app.router.routes.append(route)
+            included_routes.add(route_key)
 
 
 def create_app() -> FastAPI:
@@ -164,7 +194,7 @@ def create_app() -> FastAPI:
         return error_response(
             status_code=exc.status_code,
             code="HTTP_ERROR",
-            msg=str(exc.detail),
+            msg=_http_exception_message(exc),
             detail=exc.detail,
         )
 
