@@ -17,7 +17,7 @@ class AlbumApi(ApiModule):
             value: 专辑 ID 或 MID.
         """
         param: dict[str, Any] = {}
-        if isinstance(value, int) or (isinstance(value, str) and value.isdigit()):
+        if isinstance(value, int) or (isinstance(value, str) and value.isdecimal()):
             param["albumId"] = int(value)
         else:
             param["albumMId"] = value
@@ -41,7 +41,7 @@ class AlbumApi(ApiModule):
             "begin": num * (page - 1),
             "num": num,
         }
-        if isinstance(value, int) or (isinstance(value, str) and value.isdigit()):
+        if isinstance(value, int) or (isinstance(value, str) and value.isdecimal()):
             param["albumId"] = int(value)
         else:
             param["albumMid"] = value

@@ -10,6 +10,7 @@ from pydantic import BaseModel, TypeAdapter
 
 from .enum_utils import enum_query_values, iter_enum_members
 from .query_models import AutoPathModel
+from .response import _ANY_DATA_SCHEMA
 
 _DOCSTRING_SECTIONS = frozenset({"Args:", "Attributes:", "Returns:", "Raises:", "Yields:", "Note:", "Notes:"})
 COOKIE_SECURITY_REQUIREMENT = {"MusicId": [], "MusicKey": []}
@@ -193,17 +194,7 @@ def _collapse_nullable_parameter_anyof(schema: dict[str, Any]) -> None:
 
 def _any_data_schema() -> dict[str, Any]:
     """生成 OpenAPI 兼容的任意 data schema."""
-    return {
-        "anyOf": [
-            {"type": "object"},
-            {"type": "array"},
-            {"type": "string"},
-            {"type": "number"},
-            {"type": "integer"},
-            {"type": "boolean"},
-            {"type": "null"},
-        ]
-    }
+    return _ANY_DATA_SCHEMA
 
 
 def _schema_for_response_data(data_model: Any, components: dict[str, Any]) -> dict[str, Any]:

@@ -197,7 +197,7 @@ class SongApi(ApiModule):
             "ctx": 0,
             "client": 1,
         }
-        numeric_values = [isinstance(item, int) or (isinstance(item, str) and item.isdigit()) for item in value]
+        numeric_values = [isinstance(item, int) or (isinstance(item, str) and item.isdecimal()) for item in value]
         if all(numeric_values):
             params["ids"] = [int(v) for v in value]
         elif any(numeric_values):
@@ -281,7 +281,7 @@ class SongApi(ApiModule):
         """
         param = (
             {"song_id": int(value)}
-            if isinstance(value, int) or (isinstance(value, str) and value.isdigit())
+            if isinstance(value, int) or (isinstance(value, str) and value.isdecimal())
             else {"song_mid": value}
         )
         return self._build_request(
@@ -370,7 +370,7 @@ class SongApi(ApiModule):
         """
         param = (
             {"songid": int(value)}
-            if isinstance(value, int) or (isinstance(value, str) and value.isdigit())
+            if isinstance(value, int) or (isinstance(value, str) and value.isdecimal())
             else {"songmid": value}
         )
         return self._build_request(
@@ -388,7 +388,7 @@ class SongApi(ApiModule):
         """
         param = (
             {"songid": int(value)}
-            if isinstance(value, int) or (isinstance(value, str) and value.isdigit())
+            if isinstance(value, int) or (isinstance(value, str) and value.isdecimal())
             else {"songmid": value}
         )
         return self._build_request(

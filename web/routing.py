@@ -87,20 +87,22 @@ async def _execute_endpoint(
     kwargs = {**path_kwargs, **query_kwargs}
     cache_ttl = spec.cache.ttl
 
+    if expose_credential:
+        resolved = credential_for_request(client, credential or Credential())
+        if not resolved.musicid:
+            raise HTTPException(status_code=401, detail="未提供有效的登录凭证")
+        kwargs["credential"] = resolved
+
     if cache_ttl is not None:
         cache_key = make_cache_key(spec.path, kwargs)
         hit = await request.app.state.cache.get(cache_key)
         if hit is not None:
             return cached_response(hit, cache_ttl)
 
-        if expose_credential:
-            kwargs["credential"] = credential_for_request(client, credential or client.credential)
         result = success_response(await _call_bound_method(bound_method, kwargs))
         await request.app.state.cache.set(cache_key, result, cache_ttl)
         return cached_response(result, cache_ttl)
 
-    if expose_credential:
-        kwargs["credential"] = credential_for_request(client, credential or client.credential)
     return success_response(await _call_bound_method(bound_method, kwargs))
 
 
@@ -139,5 +141,6 @@ def make_endpoint(spec: Any):
 
     endpoint.__name__ = f"{spec.module_attr}_{spec.method_name}"
     endpoint.__doc__ = spec.description or doc["description"]
+    # 运行时动态注入真实 Query 模型类型, 绕过静态类型检查以支持动态路由生成
     endpoint.__annotations__["query"] = Annotated[query_model, Query()]
     return endpoint, doc

@@ -37,7 +37,7 @@ class LyricApi(ApiModule):
             "type": 1,
         }
         params.update(self._build_query_common_params())
-        if isinstance(value, int) or (isinstance(value, str) and value.isdigit()):
+        if isinstance(value, int) or (isinstance(value, str) and value.isdecimal()):
             params["songId"] = int(value)
         else:
             params["songMid"] = value

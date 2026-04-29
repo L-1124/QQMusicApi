@@ -42,7 +42,7 @@ async def _write_songlist_songs(
     )
 
 
-@router.get(
+@router.post(
     "/add_songs",
     summary="添加歌曲到歌单",
     description="添加歌曲到歌单.",
@@ -68,7 +68,7 @@ async def songlist_add_songs(
     )
 
 
-@router.get(
+@router.post(
     "/del_songs",
     summary="删除歌单中的歌曲",
     description="删除歌单中的歌曲.",

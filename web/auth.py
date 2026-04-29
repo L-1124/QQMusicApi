@@ -1,6 +1,6 @@
 """Web 认证辅助函数."""
 
-from fastapi import Cookie, HTTPException, Request, Security
+from fastapi import Cookie, HTTPException, Security
 from fastapi.security import APIKeyCookie
 
 from qqmusic_api import Client, Credential
@@ -18,7 +18,6 @@ def _parse_cookie_int(value: str) -> int:
 
 
 async def credential_from_cookies(
-    request: Request,
     musicid: str | None = Security(musicid_cookie),
     musickey: str | None = Security(musickey_cookie),
     openid: str | None = Cookie(default=None, description="QQ 音乐 OpenID."),
@@ -47,9 +46,9 @@ async def credential_from_cookies(
     if any(value is not None for value in values) and not (musicid and musickey):
         raise HTTPException(status_code=422, detail="Cookie musicid 与 musickey 必须同时提供")
 
-    return request.app.state.client.credential
+    return Credential()
 
 
 def credential_for_request(client: Client, credential: Credential) -> Credential:
     """返回当前请求可用的登录凭证."""
-    return credential if credential.musicid else client.credential
+    return credential
