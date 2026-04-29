@@ -967,6 +967,8 @@ def _validate_route_declaration(route: RouteDeclaration, path_methods: set[tuple
 
     if route.response_model is None:
         raise RuntimeError(f"Web 路由缺少响应模型: {route.key}")
+    if route.cache.ttl is not None and route.cache.scope != "public":
+        raise RuntimeError(f"ttl 缓存路由必须声明 public scope: {route.key}")
     if route.cache.scope == "public" and route.cache.ttl is None:
         raise RuntimeError(f"public 缓存路由缺少 ttl: {route.key}")
     if route.cache.scope == "public" and route.auth is not AuthPolicy.NONE:

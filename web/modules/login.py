@@ -3,7 +3,7 @@
 import base64
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, ValidationError, model_validator
 
 from qqmusic_api import Client, Credential
 from qqmusic_api.models.login import (
@@ -107,6 +107,30 @@ class PhoneAuthorizeRequest(PhoneTargetRequest):
     """手机验证码鉴权请求体."""
 
     auth_code: int = Field(description="短信验证码.")
+
+
+def _build_send_authcode_query(
+    phone: int | None,
+    encrypted_phone: str | None,
+    country_code: int,
+) -> SendAuthcodeRequest:
+    """构造手机验证码发送查询参数."""
+    try:
+        return SendAuthcodeRequest(phone=phone, encrypted_phone=encrypted_phone, country_code=country_code)
+    except ValidationError as exc:
+        raise HTTPException(status_code=422, detail=exc.errors()) from exc
+
+
+def _build_phone_authorize_query(
+    phone: int | None,
+    encrypted_phone: str | None,
+    auth_code: int,
+) -> PhoneAuthorizeRequest:
+    """构造手机验证码登录查询参数."""
+    try:
+        return PhoneAuthorizeRequest(phone=phone, encrypted_phone=encrypted_phone, auth_code=auth_code)
+    except ValidationError as exc:
+        raise HTTPException(status_code=422, detail=exc.errors()) from exc
 
 
 QR_CODE_EVENT_CODES = {
@@ -256,7 +280,7 @@ async def login_send_authcode(
 ):
     """发送手机验证码."""
     client: Client = request.app.state.client
-    query = SendAuthcodeRequest(phone=phone, encrypted_phone=encrypted_phone, country_code=country_code)
+    query = _build_send_authcode_query(phone=phone, encrypted_phone=encrypted_phone, country_code=country_code)
     result = await client.login.send_authcode(query.phone_value(), query.country_code)
     return success_response(_serialize_phone_authcode(result))
 
@@ -275,5 +299,5 @@ async def login_phone_authorize(
 ):
     """使用手机验证码登录."""
     client: Client = request.app.state.client
-    query = PhoneAuthorizeRequest(phone=phone, encrypted_phone=encrypted_phone, auth_code=auth_code)
+    query = _build_phone_authorize_query(phone=phone, encrypted_phone=encrypted_phone, auth_code=auth_code)
     return success_response(await client.login.phone_authorize(query.phone_value(), query.auth_code))

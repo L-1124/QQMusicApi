@@ -1,12 +1,12 @@
 """Web 层缓存抽象与内存/Redis 实现."""
 
 import hashlib
-import json
 import logging
 import time
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
+import orjson
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 
@@ -91,13 +91,13 @@ class RedisBackend:
         if raw is None:
             return None
         try:
-            return json.loads(raw)
-        except (json.JSONDecodeError, TypeError):
+            return orjson.loads(raw)
+        except (orjson.JSONDecodeError, TypeError):
             return None
 
     async def set(self, key: str, data: Any, ttl: int) -> None:
         """写入 Redis 缓存条目."""
-        value = json.dumps(jsonable_encoder(data), ensure_ascii=False)
+        value = orjson.dumps(jsonable_encoder(data)).decode("utf-8")
         await self._client.setex(self._prefix + key, ttl, value)
 
     async def close(self) -> None:
@@ -115,7 +115,7 @@ def make_cache_key(path: str, kwargs: dict[str, Any]) -> str:
 def cached_response(data: Any, ttl: int) -> JSONResponse:
     """构造带 Cache-Control 头的缓存响应."""
     content = data if isinstance(data, dict) else jsonable_encoder(data)
-    etag = hashlib.md5(json.dumps(content, sort_keys=True).encode()).hexdigest()[:16]
+    etag = hashlib.sha256(orjson.dumps(content, option=orjson.OPT_SORT_KEYS)).hexdigest()[:16]
     return JSONResponse(
         content=content,
         headers={

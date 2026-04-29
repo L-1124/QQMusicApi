@@ -186,9 +186,8 @@ def create_app() -> FastAPI:
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
     <title>QQMusic API 文档</title>
-    <link rel="icon" type="image/svg+xml" href="https://github.com/L-1124/QQMusicApi/raw/refs/heads/main/assets/qq-music.svg">
-    <script src="https://unpkg.com/@stoplight/elements/web-components.min.js"></script>
-    <link rel="stylesheet" href="https://unpkg.com/@stoplight/elements/styles.min.css">
+    <script src="https://unpkg.com/@stoplight/elements@9.0.19/web-components.min.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/@stoplight/elements@9.0.19/styles.min.css">
     <style>
       body {{ margin: 0; }}
       elements-api {{ min-height: 100vh; }}

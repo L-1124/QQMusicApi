@@ -8,7 +8,7 @@ def iter_enum_members(target_type: type[Enum]) -> list[Enum]:
     """按目标枚举与子类枚举顺序返回成员."""
     members = list(target_type.__members__.values())
     for sub in target_type.__subclasses__():
-        members.extend(sub.__members__.values())
+        members.extend(iter_enum_members(sub))
     return members
 
 

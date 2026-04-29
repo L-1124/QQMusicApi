@@ -8,6 +8,7 @@ from typing import Any
 from fastapi import FastAPI
 from pydantic import BaseModel, TypeAdapter
 
+from .enum_utils import enum_query_values, iter_enum_members
 from .query_models import AutoPathModel
 
 _DOCSTRING_SECTIONS = frozenset({"Args:", "Attributes:", "Returns:", "Raises:", "Yields:", "Note:", "Notes:"})
@@ -51,12 +52,14 @@ def _strip_docstring_sections(description: str) -> str:
 
 
 def _iter_enum_types(tp: Any) -> list[type[Enum]]:
-    """从类型标注中递归收集枚举类型."""
+    """从类型标注中递归收集枚举根类型."""
     if isinstance(tp, type) and issubclass(tp, Enum):
-        return [tp, *tp.__subclasses__()]
+        return [tp]
     collected: list[type[Enum]] = []
     for arg in getattr(tp, "__args__", ()):
-        collected.extend(_iter_enum_types(arg))
+        for enum_type in _iter_enum_types(arg):
+            if enum_type not in collected:
+                collected.append(enum_type)
     return collected
 
 
@@ -65,8 +68,8 @@ def _enum_members(tp: Any) -> list[Enum]:
     members: list[Enum] = []
     seen: set[tuple[type[Enum], str]] = set()
     for enum_type in _iter_enum_types(tp):
-        for member in enum_type:
-            key = (enum_type, member.name)
+        for member in iter_enum_members(enum_type):
+            key = (type(member), member.name)
             if key not in seen:
                 members.append(member)
                 seen.add(key)
@@ -77,14 +80,11 @@ def _enum_query_values(tp: Any) -> list[str]:
     """返回 Web query 接收的枚举名称和值文本."""
     values: list[str] = []
     seen: set[str] = set()
-    for member in _enum_members(tp):
-        candidates = [member.name]
-        if isinstance(member.value, int | str):
-            candidates.append(str(member.value))
-        for candidate in candidates:
-            if candidate not in seen:
-                values.append(candidate)
-                seen.add(candidate)
+    for enum_type in _iter_enum_types(tp):
+        for value in enum_query_values(enum_type):
+            if value not in seen:
+                values.append(value)
+                seen.add(value)
     return values
 
 
@@ -108,11 +108,12 @@ def _format_enum_values(tp: Any) -> str | None:
         return None
     lines = ["枚举值:"]
     for et in enum_types:
-        if not et.__members__:
+        members = iter_enum_members(et)
+        if not members:
             continue
         lines.append("")
         lines.append(f"- `{et.__name__}`:")
-        lines.extend(f"  - {_format_enum_member(m)}" for m in et)
+        lines.extend(f"  - {_format_enum_member(m)}" for m in members)
     return "\n".join(lines) if len(lines) > 1 else None
 
 
