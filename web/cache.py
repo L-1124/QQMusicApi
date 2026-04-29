@@ -114,8 +114,8 @@ class RedisBackend:
 
 def make_cache_key(path: str, kwargs: dict[str, Any]) -> str:
     """生成缓存键."""
-    sorted_params = "&".join(f"{k}={v}" for k, v in sorted(kwargs.items()))
-    param_hash = hashlib.sha256(sorted_params.encode()).hexdigest()[:16]
+    serialized = orjson.dumps(jsonable_encoder(kwargs), option=orjson.OPT_SORT_KEYS)
+    param_hash = hashlib.sha256(serialized).hexdigest()[:16]
     return f"{path}:{param_hash}"
 
 
