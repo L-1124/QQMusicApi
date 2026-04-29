@@ -98,7 +98,7 @@ async def song_get_song_urls_post(
             [
                 SongFileInfo(
                     mid=item.mid,
-                    file_type=_parse_song_file_type(item.file_type) if item.file_type else None,
+                    file_type=_parse_song_file_type(item.file_type) if item.file_type is not None else None,
                     song_type=item.song_type,
                     media_mid=item.media_mid,
                 )
