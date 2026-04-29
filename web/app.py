@@ -147,7 +147,21 @@ def _include_explicit_routers(
             route_key = (spec.path, method.upper())
             if route_key in included_routes:
                 continue
-            app.router.routes.append(route)
+            app.add_api_route(
+                route.path,
+                route.endpoint,
+                methods=[method],
+                response_model=route.response_model,
+                status_code=route.status_code,
+                tags=route.tags,
+                dependencies=route.dependencies,
+                summary=route.summary,
+                description=route.description,
+                response_description=route.response_description,
+                deprecated=route.deprecated,
+                name=route.name,
+                openapi_extra=route.openapi_extra,
+            )
             included_routes.add(route_key)
 
 

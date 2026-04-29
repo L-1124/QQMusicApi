@@ -43,6 +43,15 @@ def _credential_from_cookie_values(
     )
 
 
+def _has_partial_credential_cookies(
+    *values: str | None,
+    musicid: str | None,
+    musickey: str | None,
+) -> bool:
+    """判断请求是否提供了不完整的登录 Cookie."""
+    return any(value is not None for value in (*values, musicid, musickey)) and not (musicid and musickey)
+
+
 async def credential_from_cookies(
     request: Request,
     musicid: str | None = Security(musicid_cookie),
@@ -68,6 +77,18 @@ async def credential_from_cookies(
             str_musicid=str_musicid,
             refresh_key=refresh_key,
         )
+    if _has_partial_credential_cookies(
+        openid,
+        refresh_token,
+        access_token,
+        expired_at,
+        unionid,
+        str_musicid,
+        refresh_key,
+        musicid=musicid,
+        musickey=musickey,
+    ):
+        raise HTTPException(status_code=422, detail="Cookie musicid 与 musickey 必须同时提供")
     return request.app.state.client.credential
 
 
