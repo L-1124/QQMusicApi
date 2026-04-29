@@ -15,6 +15,7 @@ from qqmusic_api.core.exceptions import BaseError, NotLoginError
 from .cache import MemoryBackend
 from .modules.login import router as login_router
 from .modules.mv import router as mv_router
+from .modules.singer import router as singer_router
 from .modules.song import router as song_router
 from .modules.songlist import router as songlist_router
 from .response import ApiResponse, ErrorResponse, error_response
@@ -26,6 +27,7 @@ EXPLICIT_ROUTERS = {
     "login": login_router,
     "song": song_router,
     "mv": mv_router,
+    "singer": singer_router,
     "songlist": songlist_router,
 }
 

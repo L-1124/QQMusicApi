@@ -366,7 +366,15 @@ ROUTE_CANDIDATES: tuple[RouteDeclaration, ...] = (
         module_cls=MvApi,
         method_name="get_mv_urls",
         path="/mv/get_mv_urls",
-        methods=("POST",),
+        response_model=GetMvUrlsResponse,
+        adapter=EXPLICIT,
+        router_name="mv",
+    ),
+    RouteDeclaration(
+        module_attr="mv",
+        module_cls=None,
+        method_name="get_mv_url",
+        path="/mv/{vid}/url",
         response_model=GetMvUrlsResponse,
         adapter=EXPLICIT,
         router_name="mv",
@@ -482,6 +490,16 @@ ROUTE_CANDIDATES: tuple[RouteDeclaration, ...] = (
     ),
     RouteDeclaration(
         module_attr="singer",
+        module_cls=None,
+        method_name="get_desc_by_mid",
+        path="/singer/{mid}/desc",
+        response_model=SingerDetailResponse,
+        cache=PUBLIC_300,
+        adapter=EXPLICIT,
+        router_name="singer",
+    ),
+    RouteDeclaration(
+        module_attr="singer",
         module_cls=SingerApi,
         method_name="get_info",
         path="/singer/{mid}/info",
@@ -577,6 +595,16 @@ ROUTE_CANDIDATES: tuple[RouteDeclaration, ...] = (
     ),
     RouteDeclaration(
         module_attr="song",
+        module_cls=None,
+        method_name="get_fav_num_by_id",
+        path="/song/{id}/fav_num",
+        response_model=GetFavNumResponse,
+        cache=PUBLIC_60,
+        adapter=EXPLICIT,
+        router_name="song",
+    ),
+    RouteDeclaration(
+        module_attr="song",
         module_cls=SongApi,
         method_name="get_labels",
         path="/song/{songid}/labels",
@@ -658,10 +686,19 @@ ROUTE_CANDIDATES: tuple[RouteDeclaration, ...] = (
     ),
     RouteDeclaration(
         module_attr="song",
+        module_cls=None,
+        method_name="get_song_url",
+        path="/song/{mid}/url",
+        response_model=GetSongUrlsResponse,
+        adapter=EXPLICIT,
+        auth=AUTH,
+        router_name="song",
+    ),
+    RouteDeclaration(
+        module_attr="song",
         module_cls=SongApi,
         method_name="query_song",
         path="/song/query_song",
-        methods=("POST",),
         response_model=QuerySongResponse,
         adapter=EXPLICIT,
         router_name="song",
@@ -671,7 +708,6 @@ ROUTE_CANDIDATES: tuple[RouteDeclaration, ...] = (
         module_cls=SonglistApi,
         method_name="add_songs",
         path="/songlist/add_songs",
-        methods=("POST",),
         response_model=bool,
         adapter=EXPLICIT,
         auth=AUTH,
@@ -691,7 +727,6 @@ ROUTE_CANDIDATES: tuple[RouteDeclaration, ...] = (
         module_cls=SonglistApi,
         method_name="del_songs",
         path="/songlist/del_songs",
-        methods=("POST",),
         response_model=bool,
         adapter=EXPLICIT,
         auth=AUTH,
@@ -959,6 +994,8 @@ def _validate_path_model(
     query_model: type[AutoQueryModel] | None,
 ) -> None:
     """校验 Path 模型与模板路径一致."""
+    if route.adapter is AdapterKind.EXPLICIT:
+        return
     param_names = _path_param_names(route_path)
     if route.path_model is None:
         if param_names:
