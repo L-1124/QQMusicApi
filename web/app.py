@@ -1,6 +1,7 @@
 """QQMusic API Web 应用工厂."""
 
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from typing import Any
 
 import anyio
@@ -206,6 +207,14 @@ def create_app() -> FastAPI:
             msg="请求参数校验失败",
             detail=exc.errors(),
         )
+
+    @app.get("/", include_in_schema=False)
+    async def root_status():
+        return {
+            "code": 0,
+            "message": "ok",
+            "time": datetime.now(timezone.utc).astimezone().strftime("%Y-%m-%d %H:%M:%S"),
+        }
 
     @app.get("/docs", include_in_schema=False)
     async def stoplight_elements_html():
