@@ -29,14 +29,9 @@ async def _call_bound_method(bound_method: Any, kwargs: dict[str, Any]) -> Any:
     return result
 
 
-def _auth_value(spec: Any) -> str:
-    """返回契约认证策略值."""
-    return str(getattr(spec.auth, "value", spec.auth))
-
-
 def _uses_cookie_or_default_auth(spec: Any) -> bool:
     """判断契约是否需要 Cookie 或默认登录态."""
-    return _auth_value(spec) == _COOKIE_OR_DEFAULT_AUTH
+    return str(getattr(spec.auth, "value", spec.auth)) == _COOKIE_OR_DEFAULT_AUTH
 
 
 def _validate_endpoint_contract(
@@ -109,11 +104,6 @@ async def _execute_endpoint(
     return success_response(await _call_bound_method(bound_method, kwargs))
 
 
-def _bind_query_model(endpoint: Any, query_model: type[AutoQueryModel]) -> None:
-    """将运行期 Query 模型绑定到 FastAPI 可见端点标注."""
-    endpoint.__annotations__["query"] = Annotated[query_model, Query()]
-
-
 def make_endpoint(spec: Any):
     """为模块方法创建显式 Query 模型端点."""
     method = spec.method
@@ -149,5 +139,5 @@ def make_endpoint(spec: Any):
 
     endpoint.__name__ = f"{spec.module_attr}_{spec.method_name}"
     endpoint.__doc__ = spec.description or doc["description"]
-    _bind_query_model(endpoint, query_model)
+    endpoint.__annotations__["query"] = Annotated[query_model, Query()]
     return endpoint, doc

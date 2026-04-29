@@ -109,30 +109,6 @@ class PhoneAuthorizeRequest(PhoneTargetRequest):
     auth_code: int = Field(description="短信验证码.")
 
 
-def _build_send_authcode_query(
-    phone: int | None,
-    encrypted_phone: str | None,
-    country_code: int,
-) -> SendAuthcodeRequest:
-    """构造手机验证码发送查询参数."""
-    try:
-        return SendAuthcodeRequest(phone=phone, encrypted_phone=encrypted_phone, country_code=country_code)
-    except ValidationError as exc:
-        raise HTTPException(status_code=422, detail=exc.errors()) from exc
-
-
-def _build_phone_authorize_query(
-    phone: int | None,
-    encrypted_phone: str | None,
-    auth_code: int,
-) -> PhoneAuthorizeRequest:
-    """构造手机验证码登录查询参数."""
-    try:
-        return PhoneAuthorizeRequest(phone=phone, encrypted_phone=encrypted_phone, auth_code=auth_code)
-    except ValidationError as exc:
-        raise HTTPException(status_code=422, detail=exc.errors()) from exc
-
-
 QR_CODE_EVENT_CODES = {
     QRCodeLoginEvents.DONE: 0,
     QRCodeLoginEvents.SCAN: 1,
@@ -172,15 +148,10 @@ def _serialize_qrcode(qrcode: QR) -> QRCodeData:
     )
 
 
-def _qrcode_event_code(result: QRLoginResult) -> int:
-    """返回 Web 层统一二维码登录状态码."""
-    return QR_CODE_EVENT_CODES.get(result.event, QR_CODE_EVENT_CODES[QRCodeLoginEvents.OTHER])
-
-
 def _serialize_qrcode_status(result: QRLoginResult, qrcode: QR) -> QRCodeStatusData:
     """序列化二维码登录状态结果."""
     return QRCodeStatusData(
-        event=_qrcode_event_code(result),
+        event=QR_CODE_EVENT_CODES.get(result.event, QR_CODE_EVENT_CODES[QRCodeLoginEvents.OTHER]),
         done=result.done,
         credential=result.credential,
         identifier=qrcode.identifier,
@@ -279,8 +250,12 @@ async def login_send_authcode(
     country_code: int = Query(default=86, description="国家代码."),
 ):
     """发送手机验证码."""
+    try:
+        query = SendAuthcodeRequest(phone=phone, encrypted_phone=encrypted_phone, country_code=country_code)
+    except ValidationError as exc:
+        raise HTTPException(status_code=422, detail=exc.errors()) from exc
+
     client: Client = request.app.state.client
-    query = _build_send_authcode_query(phone=phone, encrypted_phone=encrypted_phone, country_code=country_code)
     result = await client.login.send_authcode(query.phone_value(), query.country_code)
     return success_response(_serialize_phone_authcode(result))
 
@@ -298,6 +273,10 @@ async def login_phone_authorize(
     encrypted_phone: str | None = Query(default=None, description="加密手机号."),
 ):
     """使用手机验证码登录."""
+    try:
+        query = PhoneAuthorizeRequest(phone=phone, encrypted_phone=encrypted_phone, auth_code=auth_code)
+    except ValidationError as exc:
+        raise HTTPException(status_code=422, detail=exc.errors()) from exc
+
     client: Client = request.app.state.client
-    query = _build_phone_authorize_query(phone=phone, encrypted_phone=encrypted_phone, auth_code=auth_code)
     return success_response(await client.login.phone_authorize(query.phone_value(), query.auth_code))

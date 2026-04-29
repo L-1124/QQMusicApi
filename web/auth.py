@@ -17,41 +17,6 @@ def _parse_cookie_int(value: str) -> int:
         raise HTTPException(status_code=422, detail="Cookie musicid/expired_at 必须是整数") from exc
 
 
-def _credential_from_cookie_values(
-    *,
-    musicid: str,
-    musickey: str,
-    openid: str | None = None,
-    refresh_token: str | None = None,
-    access_token: str | None = None,
-    expired_at: str | None = None,
-    unionid: str | None = None,
-    str_musicid: str | None = None,
-    refresh_key: str | None = None,
-) -> Credential:
-    """从 Cookie 字段组装 Credential."""
-    return Credential(
-        musicid=_parse_cookie_int(musicid),
-        musickey=musickey,
-        openid=openid or "",
-        refresh_token=refresh_token or "",
-        access_token=access_token or "",
-        expired_at=_parse_cookie_int(expired_at) if expired_at else 0,
-        unionid=unionid or "",
-        str_musicid=str_musicid or musicid,
-        refresh_key=refresh_key or "",
-    )
-
-
-def _has_partial_credential_cookies(
-    *values: str | None,
-    musicid: str | None,
-    musickey: str | None,
-) -> bool:
-    """判断请求是否提供了不完整的登录 Cookie."""
-    return any(value is not None for value in (*values, musicid, musickey)) and not (musicid and musickey)
-
-
 async def credential_from_cookies(
     request: Request,
     musicid: str | None = Security(musicid_cookie),
@@ -66,29 +31,22 @@ async def credential_from_cookies(
 ) -> Credential:
     """从请求 Cookie 中提取 Credential."""
     if musicid and musickey:
-        return _credential_from_cookie_values(
-            musicid=musicid,
+        return Credential(
+            musicid=_parse_cookie_int(musicid),
             musickey=musickey,
-            openid=openid,
-            refresh_token=refresh_token,
-            access_token=access_token,
-            expired_at=expired_at,
-            unionid=unionid,
-            str_musicid=str_musicid,
-            refresh_key=refresh_key,
+            openid=openid or "",
+            refresh_token=refresh_token or "",
+            access_token=access_token or "",
+            expired_at=_parse_cookie_int(expired_at) if expired_at else 0,
+            unionid=unionid or "",
+            str_musicid=str_musicid or musicid,
+            refresh_key=refresh_key or "",
         )
-    if _has_partial_credential_cookies(
-        openid,
-        refresh_token,
-        access_token,
-        expired_at,
-        unionid,
-        str_musicid,
-        refresh_key,
-        musicid=musicid,
-        musickey=musickey,
-    ):
+
+    values = (openid, refresh_token, access_token, expired_at, unionid, str_musicid, refresh_key, musicid, musickey)
+    if any(value is not None for value in values) and not (musicid and musickey):
         raise HTTPException(status_code=422, detail="Cookie musicid 与 musickey 必须同时提供")
+
     return request.app.state.client.credential
 
 

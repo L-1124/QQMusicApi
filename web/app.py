@@ -61,22 +61,6 @@ async def _lifespan(app: FastAPI):
     await app.state.client.close()
 
 
-def _openapi_security_for_auth(auth: AuthPolicy) -> dict[str, list[dict[str, list[str]]]] | None:
-    """返回契约认证策略对应的 OpenAPI 扩展."""
-    if auth is AuthPolicy.COOKIE_OR_DEFAULT:
-        return {"security": [COOKIE_SECURITY_REQUIREMENT]}
-    return None
-
-
-def _register_response_model(
-    response_models: dict[tuple[str, str], Any],
-    spec: RouteSpec,
-) -> None:
-    """登记契约声明的响应 data 模型."""
-    for method in spec.methods:
-        response_models[(spec.path, method.lower())] = spec.response_model
-
-
 def _include_dynamic_routers(
     app: FastAPI,
     route_specs: tuple[RouteSpec, ...],
@@ -91,11 +75,17 @@ def _include_dynamic_routers(
             raise RuntimeError(f"自动路由缺少方法: {spec.module_attr}.{spec.method_name}")
 
         endpoint, doc = make_endpoint(spec)
-        _register_response_model(response_models, spec)
+        for method in spec.methods:
+            response_models[(spec.path, method.lower())] = spec.response_model
         if spec.path_model is not None:
             for method in spec.methods:
                 path_models[(spec.path, method.lower())] = spec.path_model
         module_name = spec.module_cls.__name__ if spec.module_cls is not None else spec.module_attr
+
+        openapi_extra = (
+            {"security": [COOKIE_SECURITY_REQUIREMENT]} if spec.auth is AuthPolicy.COOKIE_OR_DEFAULT else None
+        )
+
         app.add_api_route(
             spec.path,
             endpoint,
@@ -104,7 +94,7 @@ def _include_dynamic_routers(
             summary=spec.summary or doc["summary"] or f"{module_name}.{spec.method_name}",
             description=spec.description or doc["description"],
             response_model=ApiResponse,
-            openapi_extra=_openapi_security_for_auth(spec.auth),
+            openapi_extra=openapi_extra,
         )
 
 
@@ -141,7 +131,10 @@ def _include_explicit_routers(
     for spec in route_specs:
         if spec.adapter is not AdapterKind.EXPLICIT:
             continue
-        _register_response_model(response_models, spec)
+
+        for method in spec.methods:
+            response_models[(spec.path, method.lower())] = spec.response_model
+
         route = _find_explicit_route(spec)
         for method in spec.methods:
             route_key = (spec.path, method.upper())
