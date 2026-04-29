@@ -181,12 +181,10 @@ def create_app() -> FastAPI:
         if isinstance(exc, NotLoginError):
             return error_response(
                 status_code=401,
-                code="NotLoginError",
                 msg=str(exc),
             )
         return error_response(
             status_code=400,
-            code=type(exc).__name__,
             msg=str(exc),
         )
 
@@ -194,7 +192,6 @@ def create_app() -> FastAPI:
     async def _handle_http_exception(_request: Request, exc: HTTPException):
         return error_response(
             status_code=exc.status_code,
-            code="HTTP_ERROR",
             msg=_http_exception_message(exc),
             detail=exc.detail,
         )
@@ -203,7 +200,6 @@ def create_app() -> FastAPI:
     async def _handle_validation_error(_request: Request, exc: RequestValidationError):
         return error_response(
             status_code=422,
-            code="VALIDATION_ERROR",
             msg="请求参数校验失败",
             detail=exc.errors(),
         )

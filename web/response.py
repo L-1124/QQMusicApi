@@ -22,7 +22,7 @@ _ANY_DATA_SCHEMA = {
 class ApiResponse(BaseModel):
     """标准 API 响应结构."""
 
-    code: str = Field(description="稳定状态码或错误码.")
+    code: int = Field(description="状态码, 成功为 0, 失败为 -1.")
     msg: str = Field(description="面向调用方的状态说明.")
     data: Any = Field(default=None, description="响应数据.", json_schema_extra=cast("Any", _ANY_DATA_SCHEMA))
 
@@ -32,19 +32,18 @@ ErrorResponse = ApiResponse
 
 def success_response(data: Any) -> ApiResponse:
     """构造标准成功响应."""
-    return ApiResponse(code="0", msg="ok", data=data)
+    return ApiResponse(code=0, msg="ok", data=data)
 
 
 def error_response(
     *,
     status_code: int,
-    code: str,
     msg: str,
     detail: Any | None = None,
 ) -> JSONResponse:
     """构造标准错误响应."""
     response = ApiResponse(
-        code=code,
+        code=-1,
         msg=msg,
         data=detail,
     )
