@@ -197,10 +197,13 @@ class SongApi(ApiModule):
             "ctx": 0,
             "client": 1,
         }
-        if isinstance(value[0], int) or (isinstance(value[0], str) and value[0].isdigit()):
+        numeric_values = [isinstance(item, int) or (isinstance(item, str) and item.isdigit()) for item in value]
+        if all(numeric_values):
             params["ids"] = [int(v) for v in value]
+        elif any(numeric_values):
+            raise ValueError("value 不能混合歌曲 ID 与 MID")
         else:
-            params["mids"] = value
+            params["mids"] = [str(v) for v in value]
         return self._build_request(
             module="music.trackInfo.UniformRuleCtrl",
             method="CgiGetTrackInfo",

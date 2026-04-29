@@ -233,7 +233,7 @@ def _api_response_schema(data_schema: dict[str, Any]) -> dict[str, Any]:
         "title": "ApiResponse",
         "type": "object",
         "properties": {
-            "code": {"type": "string", "description": "稳定状态码或错误码."},
+            "code": {"type": "integer", "description": "状态码, 成功为 0, 失败为 -1."},
             "msg": {"type": "string", "description": "面向调用方的状态说明."},
             "data": _response_data_property(data_schema),
         },

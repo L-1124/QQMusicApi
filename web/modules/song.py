@@ -73,8 +73,11 @@ def _parse_song_file_type(value: int | str) -> BaseSongFileType:
 
 def _parse_query_song_values(values: list[str]) -> list[int] | list[str]:
     """解析批量查询歌曲 ID 或 MID 列表."""
-    if all(value.isdecimal() for value in values):
+    numeric_values = [value.isdecimal() for value in values]
+    if all(numeric_values):
         return [int(value) for value in values]
+    if any(numeric_values):
+        raise HTTPException(status_code=422, detail="value 不能混合歌曲 ID 与 MID")
     return values
 
 
