@@ -8,7 +8,7 @@ from pydantic.json_schema import SkipJsonSchema
 
 from qqmusic_api import Client, Credential
 from qqmusic_api.modules.song import BaseSongFileType, SongFileInfo, SongFileType
-from web.auth import credential_for_request, credential_from_cookies
+from web.auth import credential_from_cookies
 from web.enum_utils import coerce_enum_value, iter_enum_members
 from web.response import ApiResponse, success_response
 from web.schema import COOKIE_SECURITY_REQUIREMENT
@@ -108,7 +108,7 @@ async def song_get_song_urls_post(
                 for item in body.file_info
             ],
             file_type=default_file_type,
-            credential=credential_for_request(client, credential),
+            credential=credential,
         )
     )
 
@@ -160,7 +160,7 @@ async def song_get_song_url_get(
                 )
             ],
             file_type=default_file_type,
-            credential=credential_for_request(client, credential),
+            credential=credential,
         )
     )
 

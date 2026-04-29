@@ -8,7 +8,7 @@ from pydantic import ValidationError
 
 from qqmusic_api import Client, Credential
 
-from .auth import credential_for_request, credential_from_cookies
+from .auth import credential_from_cookies
 from .cache import cached_response, make_cache_key
 from .query_models import AutoPathModel, AutoQueryModel
 from .response import success_response
@@ -88,7 +88,7 @@ async def _execute_endpoint(
     cache_ttl = spec.cache.ttl
 
     if expose_credential:
-        resolved = credential_for_request(client, credential or Credential())
+        resolved = credential or Credential()
         if not resolved.musicid:
             raise HTTPException(status_code=401, detail="未提供有效的登录凭证")
         kwargs["credential"] = resolved

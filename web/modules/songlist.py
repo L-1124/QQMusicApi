@@ -5,7 +5,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from qqmusic_api import Client, Credential
-from web.auth import credential_for_request, credential_from_cookies
+from web.auth import credential_from_cookies
 from web.response import ApiResponse, success_response
 from web.schema import COOKIE_SECURITY_REQUIREMENT
 
@@ -37,7 +37,7 @@ async def _write_songlist_songs(
             dirid=dirid,
             song_info=song_info,
             tid=tid,
-            credential=credential_for_request(client, credential),
+            credential=credential,
         )
     )
 

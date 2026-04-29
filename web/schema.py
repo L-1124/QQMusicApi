@@ -2,13 +2,11 @@
 
 import inspect
 import re
-from enum import Enum
 from typing import Any
 
 from fastapi import FastAPI
 from pydantic import BaseModel, TypeAdapter
 
-from .enum_utils import enum_query_values, iter_enum_members
 from .query_models import AutoPathModel
 from .response import _ANY_DATA_SCHEMA
 
@@ -50,87 +48,6 @@ def _strip_docstring_sections(description: str) -> str:
             break
         visible_lines.append(line.rstrip())
     return "\n".join(visible_lines).strip()
-
-
-def _iter_enum_types(tp: Any) -> list[type[Enum]]:
-    """从类型标注中递归收集枚举根类型."""
-    if isinstance(tp, type) and issubclass(tp, Enum):
-        return [tp]
-    collected: list[type[Enum]] = []
-    for arg in getattr(tp, "__args__", ()):
-        for enum_type in _iter_enum_types(arg):
-            if enum_type not in collected:
-                collected.append(enum_type)
-    return collected
-
-
-def _enum_members(tp: Any) -> list[Enum]:
-    """从类型标注中收集可传入的枚举成员."""
-    members: list[Enum] = []
-    seen: set[tuple[type[Enum], str]] = set()
-    for enum_type in _iter_enum_types(tp):
-        for member in iter_enum_members(enum_type):
-            key = (type(member), member.name)
-            if key not in seen:
-                members.append(member)
-                seen.add(key)
-    return members
-
-
-def _enum_query_values(tp: Any) -> list[int | str]:
-    """返回 Web query 接收的枚举名称和值文本."""
-    values: list[int | str] = []
-    seen: set[int | str] = set()
-    for enum_type in _iter_enum_types(tp):
-        for value in enum_query_values(enum_type):
-            if value not in seen:
-                values.append(value)
-                seen.add(value)
-    return values
-
-
-def _first_enum_type(tp: Any) -> type[Enum] | None:
-    """返回类型标注中的第一个枚举类型."""
-    enum_types = _iter_enum_types(tp)
-    return enum_types[0] if enum_types else None
-
-
-def _format_enum_member(member: Enum) -> str:
-    """格式化单个枚举成员."""
-    name = member.name.casefold()
-    if isinstance(member.value, list | tuple | dict | set):
-        return f"`{name}`"
-    return f"`{name}`: `{member.value!r}`"
-
-
-def _format_enum_values(tp: Any) -> str | None:
-    """将枚举类型格式化为 Markdown 值列表."""
-    enum_types = _iter_enum_types(tp)
-    if not enum_types:
-        return None
-    lines = ["枚举值:"]
-    for et in enum_types:
-        members = iter_enum_members(et)
-        if not members:
-            continue
-        lines.append("")
-        lines.append(f"- `{et.__name__}`:")
-        lines.extend(f"  - {_format_enum_member(m)}" for m in members)
-    return "\n".join(lines) if len(lines) > 1 else None
-
-
-def _merge_description(desc: str | None, enum_desc: str | None) -> str | None:
-    """合并 docstring 参数说明与枚举值说明."""
-    if desc and enum_desc:
-        return f"{desc}.\n\n{enum_desc}"
-    return desc or enum_desc
-
-
-def _sanitize_default(default: Any) -> Any:
-    """将枚举默认值转换为 Web API 实际接收的名称."""
-    if isinstance(default, Enum):
-        return default.name
-    return default
 
 
 def _strip_schema_descriptions(obj: Any) -> None:
@@ -192,15 +109,10 @@ def _collapse_nullable_parameter_anyof(schema: dict[str, Any]) -> None:
                     parameter_schema["description"] = description
 
 
-def _any_data_schema() -> dict[str, Any]:
-    """生成 OpenAPI 兼容的任意 data schema."""
-    return _ANY_DATA_SCHEMA
-
-
 def _schema_for_response_data(data_model: Any, components: dict[str, Any]) -> dict[str, Any]:
     """生成标准响应 data 字段的精确 schema."""
     if data_model is None:
-        return _any_data_schema()
+        return dict(_ANY_DATA_SCHEMA)
     schema = TypeAdapter(data_model).json_schema(ref_template="#/components/schemas/{model}")
     definitions = schema.pop("$defs", None)
     if isinstance(definitions, dict):
@@ -211,22 +123,20 @@ def _schema_for_response_data(data_model: Any, components: dict[str, Any]) -> di
     return schema
 
 
-def _response_data_property(data_schema: dict[str, Any]) -> dict[str, Any]:
-    """生成带描述且兼容 OpenAPI 解析器的 data 字段 schema."""
-    if "$ref" in data_schema:
-        return {"allOf": [data_schema], "description": "响应数据."}
-    return {**data_schema, "description": "响应数据."}
-
-
 def _api_response_schema(data_schema: dict[str, Any]) -> dict[str, Any]:
     """生成带精确 data schema 的标准响应 schema."""
+    data_property = (
+        {"allOf": [data_schema], "description": "响应数据."}
+        if "$ref" in data_schema
+        else {**data_schema, "description": "响应数据."}
+    )
     return {
         "title": "ApiResponse",
         "type": "object",
         "properties": {
             "code": {"type": "integer", "description": "状态码, 成功为 0, 失败为 -1."},
             "msg": {"type": "string", "description": "面向调用方的状态说明."},
-            "data": _response_data_property(data_schema),
+            "data": data_property,
         },
         "required": ["code", "msg"],
     }

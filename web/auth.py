@@ -3,7 +3,7 @@
 from fastapi import Cookie, HTTPException, Security
 from fastapi.security import APIKeyCookie
 
-from qqmusic_api import Client, Credential
+from qqmusic_api import Credential
 
 musicid_cookie = APIKeyCookie(name="musicid", scheme_name="MusicId", description="QQ 音乐用户 ID.", auto_error=False)
 musickey_cookie = APIKeyCookie(name="musickey", scheme_name="MusicKey", description="QQ 音乐密钥.", auto_error=False)
@@ -47,8 +47,3 @@ async def credential_from_cookies(
         raise HTTPException(status_code=422, detail="Cookie musicid 与 musickey 必须同时提供")
 
     return Credential()
-
-
-def credential_for_request(client: Client, credential: Credential) -> Credential:
-    """返回当前请求可用的登录凭证."""
-    return credential

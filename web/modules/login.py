@@ -14,7 +14,7 @@ from qqmusic_api.models.login import (
     QRLoginResult,
     QRLoginType,
 )
-from web.auth import credential_for_request, credential_from_cookies
+from web.auth import credential_from_cookies
 from web.enum_utils import coerce_enum_value
 from web.response import ApiResponse, success_response
 from web.schema import COOKIE_SECURITY_REQUIREMENT
@@ -183,7 +183,7 @@ async def login_check_expired(
 ):
     """检查登录凭证是否过期."""
     client: Client = request.app.state.client
-    return success_response(await client.login.check_expired(credential_for_request(client, credential)))
+    return success_response(await client.login.check_expired(credential))
 
 
 @router.get(
@@ -199,7 +199,7 @@ async def login_refresh_credential(
 ):
     """刷新登录凭证."""
     client: Client = request.app.state.client
-    return success_response(await client.login.refresh_credential(credential_for_request(client, credential)))
+    return success_response(await client.login.refresh_credential(credential))
 
 
 @router.get(
