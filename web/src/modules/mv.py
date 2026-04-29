@@ -5,8 +5,8 @@ from typing import Annotated
 from fastapi import APIRouter, Path, Query
 
 from qqmusic_api import Client
-from web.deps import client_dependency
-from web.response import ApiResponse, success_response
+from web.src.deps import client_dependency
+from web.src.response import ApiResponse, success_response
 
 router = APIRouter(prefix="/mv", tags=["mv"])
 

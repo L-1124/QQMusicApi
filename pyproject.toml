@@ -78,6 +78,7 @@ testing = [
 ]
 web = [
   "fastapi>=0.136.1",
+  "pydantic-settings[toml]>=2.14.0",
   "uvicorn>=0.46.0",
 ]
 

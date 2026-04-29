@@ -8,11 +8,11 @@ from pydantic.json_schema import SkipJsonSchema
 
 from qqmusic_api import Client, Credential
 from qqmusic_api.modules.song import BaseSongFileType, SongFileInfo, SongFileType
-from web.auth import credential_from_cookies
-from web.deps import client_dependency
-from web.enum_utils import coerce_enum_value, iter_enum_members
-from web.response import ApiResponse, success_response
-from web.schema import COOKIE_SECURITY_REQUIREMENT
+from web.src.auth import credential_from_cookies
+from web.src.deps import client_dependency
+from web.src.enum_utils import coerce_enum_value, iter_enum_members
+from web.src.response import ApiResponse, success_response
+from web.src.schema import COOKIE_SECURITY_REQUIREMENT
 
 router = APIRouter(prefix="/song", tags=["song"])
 credential_dependency = Depends(credential_from_cookies)

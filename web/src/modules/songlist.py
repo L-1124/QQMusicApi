@@ -5,10 +5,10 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from qqmusic_api import Client, Credential
-from web.auth import credential_from_cookies
-from web.deps import client_dependency
-from web.response import ApiResponse, success_response
-from web.schema import COOKIE_SECURITY_REQUIREMENT
+from web.src.auth import credential_from_cookies
+from web.src.deps import client_dependency
+from web.src.response import ApiResponse, success_response
+from web.src.schema import COOKIE_SECURITY_REQUIREMENT
 
 router = APIRouter(prefix="/songlist", tags=["songlist"])
 credential_dependency = Depends(credential_from_cookies)

@@ -522,7 +522,7 @@ def _render_route_imports(route_contracts: tuple[Any, ...]) -> str:
     lines = [
         *_group_imports(set(module_symbols), module_registry),
         *_group_imports(set(response_symbols), _RESPONSE_IMPORTS),
-        "from web.query_models import (",
+        "from web.src.query_models import (",
         "    AutoPathModel,",
         "    AutoQueryModel,",
     ]
@@ -651,7 +651,7 @@ def _spec_by_key(specs: tuple[Any, ...]) -> dict[tuple[str, str], Any]:
 
 def _check_contracts() -> list[str]:
     """校验 manifest 源数据与运行时注册表一致."""
-    from web.route_registry import get_route_specs
+    from web.src.route_registry import get_route_specs
 
     specs = get_route_specs()
     route_contracts, _ = _load_manifest()
@@ -676,7 +676,7 @@ def _check_contracts() -> list[str]:
 
 def _check_models() -> list[str]:
     """校验 Path/Query 模型与 modules 方法签名一致."""
-    from web.route_registry import AdapterKind, get_route_specs
+    from web.src.route_registry import AdapterKind, get_route_specs
 
     errors: list[str] = []
     for spec in get_route_specs():
@@ -753,7 +753,7 @@ def write_generated_files() -> None:
 
 def print_manifest() -> None:
     """打印 route manifest 源数据草稿."""
-    from web.route_registry import get_route_specs
+    from web.src.route_registry import get_route_specs
 
     route_contracts = tuple(RouteContract(**_route_contract_kwargs(spec)) for spec in get_route_specs())
     print(_render_manifest(route_contracts), end="")
@@ -761,7 +761,7 @@ def print_manifest() -> None:
 
 def write_manifest() -> None:
     """写入 route manifest 源数据."""
-    from web.route_registry import get_route_specs
+    from web.src.route_registry import get_route_specs
 
     route_contracts = tuple(RouteContract(**_route_contract_kwargs(spec)) for spec in get_route_specs())
     _MANIFEST_PATH.write_text(_render_manifest(route_contracts), encoding="utf-8")
@@ -775,7 +775,7 @@ def check() -> int:
         for error in errors:
             print(f"ERROR: {error}")
         return 1
-    from web.route_registry import get_route_specs
+    from web.src.route_registry import get_route_specs
 
     print(f"Web route generation OK: {len(get_route_specs())} routes")
     return 0

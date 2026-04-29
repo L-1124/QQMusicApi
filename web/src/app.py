@@ -4,17 +4,17 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Any
 
-import anyio
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse
 from fastapi.routing import APIRoute
 
 import qqmusic_api
-from qqmusic_api import Client, Credential
+from qqmusic_api import Client
 from qqmusic_api.core.exceptions import BaseError, NotLoginError
 
-from .cache import MemoryBackend
+from .cache import MemoryBackend, RedisBackend
+from .config import settings
 from .modules.login import router as login_router
 from .modules.mv import router as mv_router
 from .modules.singer import router as singer_router
@@ -50,12 +50,7 @@ _HTTP_ERROR_MESSAGES = {
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
-    credential = None
-    if await anyio.Path("credential.json").exists():
-        async with await anyio.open_file("credential.json", "r") as f:
-            credential = Credential.model_validate_json(await f.read())
-
-    app.state.client = Client(credential=credential)
+    app.state.client = Client()
     yield
     await app.state.cache.close()
     await app.state.client.close()
@@ -167,21 +162,13 @@ def create_app() -> FastAPI:
         docs_url=None,
         redoc_url=None,
         responses=_ERROR_RESPONSES,
-        description="""QQMusic REST API。
-
-## 认证方式
-
-通过 **Cookie** 传递 QQ 音乐登录凭证:
-
-- `musicid` — QQ 音乐用户 ID
-- `musickey` — QQ 音乐密钥
-
-可选字段: `openid` `refresh_token` `access_token` `expired_at` `unionid` `str_musicid` `refresh_key`
-
-需要登录凭证的接口请通过 Cookie 提供上述字段。
-""",
     )
-    app.state.cache = MemoryBackend()
+    if settings.cache.backend == "redis":
+        if settings.cache.redis_url is None:
+            raise RuntimeError("Redis 缓存后端需要配置 redis_url")
+        app.state.cache = RedisBackend(url=settings.cache.redis_url, prefix=settings.cache.redis_prefix)
+    else:
+        app.state.cache = MemoryBackend(_max_size=settings.cache.memory_max_size)
 
     @app.exception_handler(BaseError)
     async def _handle_base_error(_request: Request, exc: BaseError):

@@ -86,7 +86,7 @@ class RedisBackend:
             raise RuntimeError(
                 "RedisBackend requires the optional 'redis' package. "
                 "Install it before enabling Redis cache support, for example: "
-                "`uv add redis`."
+                "`uv pip install redis`."
             ) from exc
 
         self._client: Redis = Redis.from_url(url, decode_responses=True)

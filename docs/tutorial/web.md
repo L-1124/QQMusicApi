@@ -10,12 +10,12 @@ cd QQMusicApi
 uv sync --group web
 ```
 
+可使用环境变量或者编辑`web/config.toml` 来配置服务参数
+
 ## 2. 启动服务
 
-开发环境可使用 `uvicorn` 启动：
-
 ```bash
-uv run uvicorn web.app:app
+uv run python web/run.py
 ```
 
 ## 3. 查看 API 文档

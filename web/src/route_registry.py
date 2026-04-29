@@ -93,12 +93,12 @@ from qqmusic_api.models.user import (
     UserRelationListResponse,
     UserVipInfoResponse,
 )
-from web.modules.login import (
+from web.src.modules.login import (
     PhoneAuthCodeData,
     QRCodeData,
     QRCodeStatusData,
 )
-from web.query_models import (
+from web.src.query_models import (
     AutoPathModel,
     AutoQueryModel,
     AlbumSongPageQuery,

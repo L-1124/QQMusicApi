@@ -1,0 +1,26 @@
+# QQMusic API Web 服务全局配置 (config.toml)
+# 配置加载优先级: Init > Env > Dotenv > Toml > Defaults
+# 可通过环境变量 `QQMUSIC_` 前缀覆盖配置项，例如 `QQMUSIC_SERVER_HOST` 覆盖 `server.host`
+
+[server]
+# 绑定地址
+host = "127.0.0.1"
+# 监听端口
+port = 8000
+# 工作进程数
+workers = 1
+
+[cache]
+# 默认缓存过期时间(秒)
+ttl = 60
+# 内存缓存最大条目数
+memory_max_size = 1024
+# 缓存后端 (可选: "memory" 或 "redis")
+backend = "redis"
+
+# Redis 连接地址
+# 当 backend = "redis" 时需要配置此项
+# 例如: redis_url = "redis://localhost:6379/0"
+redis_url = "redis://localhost:6379/0"
+# Redis 键前缀
+# redis_prefix = "qqapi:"

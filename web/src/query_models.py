@@ -6,7 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from qqmusic_api.modules.search import SearchType
 from qqmusic_api.modules.singer import AreaType, GenreType, IndexType, SexType, TabType
-from web.enum_utils import coerce_enum_value, enum_query_values
+from web.src.enum_utils import coerce_enum_value, enum_query_values
 
 
 def _enum_schema(enum_type: Any) -> dict[str, Any]:
