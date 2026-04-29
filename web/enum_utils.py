@@ -33,14 +33,16 @@ def coerce_enum_value(value: Any, target_type: type[Enum]) -> Any:
     raise KeyError(value)
 
 
-def enum_query_values(target_type: type[Enum]) -> list[str]:
-    """返回 Web query 接收的枚举名称和值文本."""
-    values: list[str] = []
-    seen: set[str] = set()
+def enum_query_values(target_type: type[Enum]) -> list[int | str]:
+    """返回 Web query 文档展示的枚举名称和值."""
+    values: list[int | str] = []
+    seen: set[int | str] = set()
     for member in iter_enum_members(target_type):
-        candidates = [member.name]
-        if isinstance(member.value, int | str):
-            candidates.append(str(member.value))
+        candidates: list[int | str] = [member.name.casefold()]
+        if isinstance(member.value, int):
+            candidates.append(member.value)
+        elif isinstance(member.value, str):
+            candidates.append(member.value.casefold())
         for candidate in candidates:
             if candidate not in seen:
                 values.append(candidate)

@@ -1,6 +1,6 @@
 """歌曲模块 Web 路由适配."""
 
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
 from pydantic import BaseModel, Field
@@ -9,19 +9,37 @@ from pydantic.json_schema import SkipJsonSchema
 from qqmusic_api import Client, Credential
 from qqmusic_api.modules.song import BaseSongFileType, SongFileInfo, SongFileType
 from web.auth import credential_for_request, credential_from_cookies
-from web.enum_utils import coerce_enum_value
+from web.enum_utils import coerce_enum_value, iter_enum_members
 from web.response import ApiResponse, success_response
 from web.schema import COOKIE_SECURITY_REQUIREMENT
 
 router = APIRouter(prefix="/song", tags=["song"])
 credential_dependency = Depends(credential_from_cookies)
+SONG_FILE_TYPES: tuple[BaseSongFileType, ...] = tuple(
+    member for member in iter_enum_members(BaseSongFileType) if isinstance(member, BaseSongFileType)
+)
+DEFAULT_SONG_FILE_TYPE = SONG_FILE_TYPES.index(SongFileType.MP3_128)
+SONG_FILE_TYPE_SCHEMA: dict[str, Any] = {"type": "integer", "enum": list(range(len(SONG_FILE_TYPES)))}
+SONG_FILE_TYPE_DESCRIPTION = "\n".join(
+    [
+        "歌曲文件类型. 歌曲品质整数值映射:",
+        *(
+            f"- {index}: `{type(file_type).__name__}.{file_type.name.casefold()}`"
+            for index, file_type in enumerate(SONG_FILE_TYPES)
+        ),
+    ]
+)
 
 
 class SongUrlItem(BaseModel):
     """单个歌曲文件链接请求项."""
 
     mid: str = Field(description="歌曲 MID.")
-    file_type: str | SkipJsonSchema[None] = Field(default=None, description="歌曲文件类型.")
+    file_type: int | SkipJsonSchema[None] = Field(
+        default=None,
+        description=SONG_FILE_TYPE_DESCRIPTION,
+        json_schema_extra=SONG_FILE_TYPE_SCHEMA,
+    )
     song_type: int | SkipJsonSchema[None] = Field(default=None, description="歌曲类型.")
     media_mid: str | SkipJsonSchema[None] = Field(default=None, description="媒体文件 MID.")
 
@@ -30,12 +48,21 @@ class SongUrlsRequest(BaseModel):
     """批量歌曲文件链接请求体."""
 
     file_info: list[SongUrlItem] = Field(description="歌曲文件信息列表.")
-    file_type: str = Field(default=SongFileType.MP3_128.name, description="默认歌曲文件类型.")
+    file_type: int = Field(
+        default=DEFAULT_SONG_FILE_TYPE,
+        description=SONG_FILE_TYPE_DESCRIPTION,
+        json_schema_extra=SONG_FILE_TYPE_SCHEMA,
+    )
 
 
-def _parse_song_file_type(value: str) -> BaseSongFileType:
-    """解析歌曲文件类型名称."""
+def _parse_song_file_type(value: int | str) -> BaseSongFileType:
+    """解析歌曲文件类型."""
     try:
+        if isinstance(value, int) or (isinstance(value, str) and value.isdecimal()):
+            index = int(value)
+            if 0 <= index < len(SONG_FILE_TYPES):
+                return SONG_FILE_TYPES[index]
+            raise KeyError(value)
         file_type = coerce_enum_value(value, BaseSongFileType)
     except (KeyError, ValueError) as exc:
         raise HTTPException(status_code=422, detail=f"未知歌曲文件类型: {value}") from exc
@@ -54,7 +81,7 @@ def _parse_query_song_values(values: list[str]) -> list[int] | list[str]:
 @router.post(
     "/get_song_urls",
     summary="批量获取歌曲文件链接",
-    description="批量获取歌曲文件链接.",
+    description=f"批量获取歌曲文件链接.\n\n{SONG_FILE_TYPE_DESCRIPTION}",
     response_model=ApiResponse,
     openapi_extra={"security": [COOKIE_SECURITY_REQUIREMENT]},
 )
@@ -101,14 +128,18 @@ async def song_get_fav_num_by_id_get(
 @router.get(
     "/{mid}/url",
     summary="获取单首歌曲文件链接",
-    description="根据单个歌曲 MID 获取文件链接.",
+    description=f"根据单个歌曲 MID 获取文件链接.\n\n{SONG_FILE_TYPE_DESCRIPTION}",
     response_model=ApiResponse,
     openapi_extra={"security": [COOKIE_SECURITY_REQUIREMENT]},
 )
 async def song_get_song_url_get(
     request: Request,
     mid: Annotated[str, Path(description="歌曲 MID.")],
-    file_type: str = Query(default=SongFileType.MP3_128.name, description="歌曲文件类型."),
+    file_type: int = Query(
+        default=DEFAULT_SONG_FILE_TYPE,
+        description=SONG_FILE_TYPE_DESCRIPTION,
+        json_schema_extra=SONG_FILE_TYPE_SCHEMA,
+    ),
     song_type: int | None = Query(default=None, description="歌曲类型."),
     media_mid: str | None = Query(default=None, description="媒体文件 MID."),
     credential: Credential = credential_dependency,

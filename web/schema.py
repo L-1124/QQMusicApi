@@ -76,10 +76,10 @@ def _enum_members(tp: Any) -> list[Enum]:
     return members
 
 
-def _enum_query_values(tp: Any) -> list[str]:
+def _enum_query_values(tp: Any) -> list[int | str]:
     """返回 Web query 接收的枚举名称和值文本."""
-    values: list[str] = []
-    seen: set[str] = set()
+    values: list[int | str] = []
+    seen: set[int | str] = set()
     for enum_type in _iter_enum_types(tp):
         for value in enum_query_values(enum_type):
             if value not in seen:
@@ -96,9 +96,10 @@ def _first_enum_type(tp: Any) -> type[Enum] | None:
 
 def _format_enum_member(member: Enum) -> str:
     """格式化单个枚举成员."""
+    name = member.name.casefold()
     if isinstance(member.value, list | tuple | dict | set):
-        return f"`{member.name}`"
-    return f"`{member.name}`: `{member.value!r}`"
+        return f"`{name}`"
+    return f"`{name}`: `{member.value!r}`"
 
 
 def _format_enum_values(tp: Any) -> str | None:
