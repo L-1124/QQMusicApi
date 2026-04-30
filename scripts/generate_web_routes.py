@@ -10,9 +10,9 @@ from pathlib import Path
 from textwrap import dedent
 from typing import Any
 
-_MANIFEST_PATH = Path("web/route_manifest.py")
-_ROUTE_REGISTRY_PATH = Path("web/route_registry.py")
-_QUERY_MODELS_PATH = Path("web/query_models.py")
+_MANIFEST_PATH = Path("web/src/route_manifest.py")
+_ROUTE_REGISTRY_PATH = Path("web/src/route_registry.py")
+_QUERY_MODELS_PATH = Path("web/src/query_models.py")
 
 _ROUTE_IMPORTS_MARKER = "GENERATED WEB ROUTE IMPORTS"
 _ROUTE_DECLARATIONS_MARKER = "GENERATED WEB ROUTES"
@@ -85,9 +85,9 @@ _RESPONSE_IMPORTS: dict[str, tuple[str, str]] = {
     "UserMusicGeneResponse": ("qqmusic_api.models.user", "UserMusicGeneResponse"),
     "UserRelationListResponse": ("qqmusic_api.models.user", "UserRelationListResponse"),
     "UserVipInfoResponse": ("qqmusic_api.models.user", "UserVipInfoResponse"),
-    "PhoneAuthCodeData": ("web.modules.login", "PhoneAuthCodeData"),
-    "QRCodeData": ("web.modules.login", "QRCodeData"),
-    "QRCodeStatusData": ("web.modules.login", "QRCodeStatusData"),
+    "PhoneAuthCodeData": ("web.src.modules.login", "PhoneAuthCodeData"),
+    "QRCodeData": ("web.src.modules.login", "QRCodeData"),
+    "QRCodeStatusData": ("web.src.modules.login", "QRCodeStatusData"),
 }
 
 _MANUAL_QUERY_MODELS = {
@@ -483,7 +483,7 @@ def _render_manifest(route_contracts: tuple[RouteContract, ...]) -> str:
 
 def _load_manifest() -> tuple[tuple[Any, ...], tuple[Any, ...]]:
     """读取当前 manifest 契约."""
-    module = importlib.import_module("web.route_manifest")
+    module = importlib.import_module("web.src.route_manifest")
     return module.ROUTE_CONTRACTS, module.REQUEST_MODEL_CONTRACTS
 
 
@@ -727,9 +727,9 @@ def _check_generated_fresh() -> list[str]:
     )
     errors: list[str] = []
     if expected_registry != _ROUTE_REGISTRY_PATH.read_text(encoding="utf-8"):
-        errors.append("web/route_registry.py 自动生成区块不是最新, 请运行 --write。")
+        errors.append("web/src/route_registry.py 自动生成区块不是最新, 请运行 --write。")
     if expected_models != _QUERY_MODELS_PATH.read_text(encoding="utf-8"):
-        errors.append("web/query_models.py 自动生成区块不是最新, 请运行 --write。")
+        errors.append("web/src/query_models.py 自动生成区块不是最新, 请运行 --write。")
     return errors
 
 

@@ -8,7 +8,7 @@ host = "127.0.0.1"
 # 监听端口
 port = 8000
 # 工作进程数
-workers = 1
+workers = 4
 
 [cache]
 # 默认缓存过期时间(秒)
@@ -24,3 +24,24 @@ backend = "redis"
 redis_url = "redis://localhost:6379/0"
 # Redis 键前缀
 # redis_prefix = "qqapi:"
+
+
+[security]
+# 是否启用访问控制与限流。
+enabled = true
+# IP 名单模式, 可选: "allowlist" 或 "denylist"。
+ip_list_mode = "denylist"
+# 白名单模式仅允许命中 ip_allowlist 的客户端 IP; 为空时拒绝所有请求。
+ip_allowlist = []
+# 黑名单模式拒绝命中 ip_denylist 的客户端 IP; 为空时不拒绝任何 IP。
+ip_denylist = []
+# 可信代理 IP 或 CIDR。仅来源 IP 命中后才读取 client_ip_header。
+trusted_proxy_ips = []
+# 客户端真实 IP 头, 例如 "x-forwarded-for" 或 "x-real-ip"; 默认不启用代理头。
+# client_ip_header = ""
+# IP 维度限流, 默认 60 次/分钟/IP。
+rate_limit_enabled = true
+rate_limit_capacity = 60
+rate_limit_window_seconds = 60
+# 跳过限流的 IP 或 CIDR。
+rate_limit_exempt_ips = []

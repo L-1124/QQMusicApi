@@ -25,7 +25,7 @@ uv run web/run.py
 
 ## 路由生成脚本
 
-Web 路由声明以 `web/route_manifest.py` 为源数据。修改路由契约或简单请求模型后，应使用生成脚本同步自动生成区块。
+Web 路由声明以 `route_manifest.py` 为源数据。修改路由契约或简单请求模型后，应使用生成脚本同步自动生成区块。
 
 ### 校验生成结果
 
@@ -33,25 +33,11 @@ Web 路由声明以 `web/route_manifest.py` 为源数据。修改路由契约或
 uv run python scripts/generate_web_routes.py --check
 ```
 
-该命令会校验:
-
-* `web/route_registry.py` 与 `web/query_models.py` 的自动生成区块是否最新。
-* `web/route_manifest.py` 与运行时路由注册表是否一致。
-* Path/Query 模型字段是否与 modules 方法签名匹配。
-
 ### 写入生成结果
 
 ```bash
 uv run python scripts/generate_web_routes.py --write
 ```
-
-该命令会根据 `web/route_manifest.py` 重写以下自动生成区块:
-
-* `web/route_registry.py` 中的 generated imports。
-* `web/route_registry.py` 中的 `ROUTE_CANDIDATES`。
-* `web/query_models.py` 中的简单请求模型。
-
-不要手动修改 generated block 内部内容；下一次执行 `--write` 会覆盖这些内容。
 
 ### 查看 manifest 草稿
 
@@ -59,15 +45,11 @@ uv run python scripts/generate_web_routes.py --write
 uv run python scripts/generate_web_routes.py --print-manifest
 ```
 
-该命令会根据当前运行时路由注册表打印 manifest 草稿，不会写入文件。
-
 ### 反向写入 manifest
 
 ```bash
 uv run python scripts/generate_web_routes.py --write-manifest
 ```
-
-该命令会根据当前运行时路由注册表重写 `web/route_manifest.py`。它主要用于迁移或修复场景；日常开发应优先手动维护 `web/route_manifest.py`，再执行 `--write`。
 
 ## 新增自动路由示例
 
@@ -125,4 +107,4 @@ RequestModelContract(
 )
 ```
 
-如果请求模型需要枚举转换、自定义 `to_method_kwargs()` 或其他特殊逻辑，应保留在 `web/query_models.py` 的手写区域，不要放入 `REQUEST_MODEL_CONTRACTS`。
+如果请求模型需要枚举转换、自定义 `to_method_kwargs()` 或其他特殊逻辑，应保留在 `web/src/query_models.py` 的手写区域，不要放入 `REQUEST_MODEL_CONTRACTS`。

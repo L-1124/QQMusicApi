@@ -24,6 +24,21 @@ class CacheConfig(BaseModel):
     redis_prefix: str = Field(default="qqapi:", description="Redis 键前缀")
 
 
+class SecurityConfig(BaseModel):
+    """Web 访问控制与限流配置."""
+
+    enabled: bool = Field(default=True, description="是否启用访问控制与限流")
+    ip_list_mode: Literal["allowlist", "denylist"] = Field(default="denylist", description="IP 名单模式")
+    ip_allowlist: list[str] = Field(default_factory=list, description="白名单 IP 或 CIDR")
+    ip_denylist: list[str] = Field(default_factory=list, description="黑名单 IP 或 CIDR")
+    trusted_proxy_ips: list[str] = Field(default_factory=list, description="可信代理 IP 或 CIDR")
+    client_ip_header: str | None = Field(default=None, description="可信代理提供的客户端 IP 头")
+    rate_limit_enabled: bool = Field(default=True, description="是否启用 IP 限流")
+    rate_limit_capacity: int = Field(default=60, ge=1, description="单窗口最大请求数")
+    rate_limit_window_seconds: int = Field(default=60, ge=1, description="限流窗口秒数")
+    rate_limit_exempt_ips: list[str] = Field(default_factory=list, description="限流豁免 IP 或 CIDR")
+
+
 class Settings(BaseSettings):
     """Web 服务全局配置项."""
 
@@ -36,6 +51,7 @@ class Settings(BaseSettings):
 
     server: ServerConfig = ServerConfig()
     cache: CacheConfig = CacheConfig()
+    security: SecurityConfig = SecurityConfig()
 
     @classmethod
     def settings_customise_sources(

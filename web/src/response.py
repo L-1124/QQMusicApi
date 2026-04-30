@@ -40,6 +40,7 @@ def error_response(
     status_code: int,
     msg: str,
     detail: Any | None = None,
+    headers: dict[str, str] | None = None,
 ) -> JSONResponse:
     """构造标准错误响应."""
     response = ApiResponse(
@@ -47,4 +48,4 @@ def error_response(
         msg=msg,
         data=detail,
     )
-    return JSONResponse(status_code=status_code, content=jsonable_encoder(response))
+    return JSONResponse(status_code=status_code, content=jsonable_encoder(response), headers=headers)

@@ -24,6 +24,7 @@ from .response import ApiResponse, ErrorResponse, error_response
 from .route_registry import AdapterKind, AuthPolicy, RouteSpec, get_route_specs
 from .routing import make_endpoint
 from .schema import COOKIE_SECURITY_REQUIREMENT, install_openapi_schema
+from .security import apply_security_middleware, configure_security
 
 EXPLICIT_ROUTERS = {
     "login": login_router,
@@ -169,6 +170,9 @@ def create_app() -> FastAPI:
         app.state.cache = RedisBackend(url=settings.cache.redis_url, prefix=settings.cache.redis_prefix)
     else:
         app.state.cache = MemoryBackend(_max_size=settings.cache.memory_max_size)
+
+    configure_security(app, settings.security)
+    app.middleware("http")(apply_security_middleware)
 
     @app.exception_handler(BaseError)
     async def _handle_base_error(_request: Request, exc: BaseError):
