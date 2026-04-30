@@ -1,14 +1,10 @@
 """Web 认证辅助函数."""
 
-from fastapi import Cookie, HTTPException, Request, Security
-from fastapi.security import APIKeyCookie
+from fastapi import HTTPException, Request
 
 from qqmusic_api import Client, Credential
 
 from .credential_store import CredentialStore, credential_needs_refresh
-
-musicid_cookie = APIKeyCookie(name="musicid", scheme_name="MusicId", description="QQ 音乐用户 ID.", auto_error=False)
-musickey_cookie = APIKeyCookie(name="musickey", scheme_name="MusicKey", description="QQ 音乐密钥.", auto_error=False)
 
 
 def _parse_cookie_int(value: str) -> int:
@@ -70,18 +66,18 @@ async def configured_credential_for_api(
     return cookie_credential
 
 
-async def credential_from_cookies(
-    musicid: str | None = Security(musicid_cookie),
-    musickey: str | None = Security(musickey_cookie),
-    openid: str | None = Cookie(default=None, description="QQ 音乐 OpenID."),
-    refresh_token: str | None = Cookie(default=None, description="QQ 音乐 Refresh Token."),
-    access_token: str | None = Cookie(default=None, description="QQ 音乐 Access Token."),
-    expired_at: str | None = Cookie(default=None, description="QQ 音乐登录态过期时间戳."),
-    unionid: str | None = Cookie(default=None, description="QQ 音乐 UnionID."),
-    str_musicid: str | None = Cookie(default=None, description="字符串形式的 QQ 音乐用户 ID."),
-    refresh_key: str | None = Cookie(default=None, description="QQ 音乐 Refresh Key."),
-) -> Credential:
+async def credential_from_cookies(request: Request) -> Credential:
     """从请求 Cookie 中提取 Credential."""
+    cookies = request.cookies
+    musicid = cookies.get("musicid")
+    musickey = cookies.get("musickey")
+    openid = cookies.get("openid")
+    refresh_token = cookies.get("refresh_token")
+    access_token = cookies.get("access_token")
+    expired_at = cookies.get("expired_at")
+    unionid = cookies.get("unionid")
+    str_musicid = cookies.get("str_musicid")
+    refresh_key = cookies.get("refresh_key")
     if musicid and musickey:
         return Credential(
             musicid=_parse_cookie_int(musicid),

@@ -63,7 +63,7 @@ def _strip_schema_descriptions(obj: Any) -> None:
 
 
 def _normalize_cookie_security(schema: dict[str, Any]) -> None:
-    """将 Cookie 凭证操作安全声明收敛为同时需要两个 Cookie."""
+    """移除仅用于运行时标记的 Cookie 凭证安全声明."""
     for path_item in schema.get("paths", {}).values():
         if not isinstance(path_item, dict):
             continue
@@ -71,8 +71,11 @@ def _normalize_cookie_security(schema: dict[str, Any]) -> None:
             if not isinstance(operation, dict):
                 continue
             security = operation.get("security")
-            if isinstance(security, list) and COOKIE_SECURITY_REQUIREMENT in security:
-                operation["security"] = [COOKIE_SECURITY_REQUIREMENT]
+            if not isinstance(security, list):
+                continue
+            operation["security"] = [item for item in security if item != COOKIE_SECURITY_REQUIREMENT]
+            if not operation["security"]:
+                operation.pop("security")
 
 
 def _collapse_nullable_parameter_anyof(schema: dict[str, Any]) -> None:
