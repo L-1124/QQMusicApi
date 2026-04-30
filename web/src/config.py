@@ -12,6 +12,7 @@ class ServerConfig(BaseModel):
     host: str = Field(default="127.0.0.1", description="绑定地址")
     port: int = Field(default=8080, description="监听端口")
     workers: int = Field(default=1, description="工作进程数")
+    limit_concurrency: int | None = Field(default=None, ge=1, description="Uvicorn 最大并发连接/任务数")
 
 
 class CacheConfig(BaseModel):
@@ -37,6 +38,21 @@ class SecurityConfig(BaseModel):
     rate_limit_capacity: int = Field(default=60, ge=1, description="单窗口最大请求数")
     rate_limit_window_seconds: int = Field(default=60, ge=1, description="限流窗口秒数")
     rate_limit_exempt_ips: list[str] = Field(default_factory=list, description="限流豁免 IP 或 CIDR")
+    concurrency_limit_enabled: bool = Field(default=True, description="是否启用全局并发限制")
+    concurrency_limit: int = Field(default=100, ge=1, description="单进程最大并发业务请求数")
+    concurrency_retry_after_seconds: int = Field(default=1, ge=1, description="并发过载重试等待秒数")
+    cors_enabled: bool = Field(default=False, description="是否启用 CORS")
+    cors_allow_origins: list[str] = Field(default_factory=list, description="允许跨域访问的 Origin 列表")
+    cors_allow_methods: list[str] = Field(
+        default_factory=lambda: ["GET", "POST", "OPTIONS"],
+        description="允许跨域访问的方法",
+    )
+    cors_allow_headers: list[str] = Field(
+        default_factory=lambda: ["Accept", "Accept-Language", "Content-Language", "Content-Type"],
+        description="允许跨域访问的请求头",
+    )
+    cors_allow_credentials: bool = Field(default=True, description="是否允许跨域凭据")
+    cors_max_age: int = Field(default=600, ge=0, description="CORS 预检缓存秒数")
 
 
 class Settings(BaseSettings):

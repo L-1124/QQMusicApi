@@ -6,6 +6,7 @@ from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.routing import APIRoute
 
@@ -14,7 +15,7 @@ from qqmusic_api import Client
 from qqmusic_api.core.exceptions import BaseError, NotLoginError
 
 from .cache import MemoryBackend, RedisBackend
-from .config import settings
+from .config import SecurityConfig, settings
 from .modules.login import router as login_router
 from .modules.mv import router as mv_router
 from .modules.singer import router as singer_router
@@ -154,6 +155,26 @@ def _include_explicit_routers(
             included_routes.add(route_key)
 
 
+def _configure_cors(app: FastAPI) -> None:
+    """按显式安全配置安装 CORS 中间件."""
+    config: SecurityConfig = settings.security
+    if not config.cors_enabled:
+        return
+    if not config.cors_allow_origins:
+        raise RuntimeError("启用 CORS 时必须配置 cors_allow_origins")
+    if config.cors_allow_credentials and "*" in config.cors_allow_origins:
+        raise RuntimeError("允许跨域凭据时 cors_allow_origins 不能包含通配符 *")
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=config.cors_allow_origins,
+        allow_credentials=config.cors_allow_credentials,
+        allow_methods=config.cors_allow_methods,
+        allow_headers=config.cors_allow_headers,
+        max_age=config.cors_max_age,
+    )
+
+
 def create_app() -> FastAPI:
     """创建 QQMusic API Web 应用."""
     app = FastAPI(
@@ -173,6 +194,7 @@ def create_app() -> FastAPI:
 
     configure_security(app, settings.security)
     app.middleware("http")(apply_security_middleware)
+    _configure_cors(app)
 
     @app.exception_handler(BaseError)
     async def _handle_base_error(_request: Request, exc: BaseError):

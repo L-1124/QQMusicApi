@@ -20,4 +20,5 @@ if __name__ == "__main__":
         port=settings.server.port,
         workers=settings.server.workers,
         reload=True,
+        limit_concurrency=settings.server.limit_concurrency,
     )

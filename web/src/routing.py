@@ -62,7 +62,7 @@ def _path_kwargs(path_model: type[AutoPathModel] | None, path_params: dict[str, 
     except ValidationError as exc:
         raise HTTPException(status_code=422, detail=exc.errors()) from exc
     except _VALIDATION_ERROR_TYPES as exc:
-        raise HTTPException(status_code=422, detail=f"路径参数校验失败: {exc!s}") from exc
+        raise HTTPException(status_code=422, detail="路径参数校验失败") from exc
 
 
 async def _execute_endpoint(
@@ -80,7 +80,7 @@ async def _execute_endpoint(
     try:
         query_kwargs = query.to_method_kwargs()
     except _VALIDATION_ERROR_TYPES as exc:
-        raise HTTPException(status_code=422, detail=f"查询参数校验失败: {exc!s}") from exc
+        raise HTTPException(status_code=422, detail="查询参数校验失败") from exc
     path_kwargs = _path_kwargs(spec.path_model, request.path_params)
     conflicts = path_kwargs.keys() & query_kwargs.keys()
     if conflicts:

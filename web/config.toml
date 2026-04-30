@@ -9,6 +9,8 @@ host = "127.0.0.1"
 port = 8000
 # 工作进程数
 workers = 4
+# Uvicorn 并发连接/任务上限; 默认不启用, 由应用层并发限制先提供标准 JSON 过载响应。
+# limit_concurrency = 100
 
 [cache]
 # 默认缓存过期时间(秒)
@@ -17,7 +19,6 @@ ttl = 60
 memory_max_size = 1024
 # 缓存后端 (可选: "memory" 或 "redis")
 backend = "redis"
-
 # Redis 连接地址
 # 当 backend = "redis" 时需要配置此项
 # 例如: redis_url = "redis://localhost:6379/0"
@@ -45,3 +46,21 @@ rate_limit_capacity = 60
 rate_limit_window_seconds = 60
 # 跳过限流的 IP 或 CIDR。
 rate_limit_exempt_ips = []
+# 全局并发业务请求限制, 单 worker 独立生效; 达到上限时返回 503 标准 JSON 响应。
+concurrency_limit_enabled = true
+# 单进程允许同时进入业务处理的最大请求数。
+concurrency_limit = 100
+# 并发过载响应的 Retry-After 秒数。
+concurrency_retry_after_seconds = 1
+# CORS 默认关闭; 浏览器前端直接调用时必须显式列出可信 Origin。
+cors_enabled = false
+# 允许跨域访问的 Origin 列表, 例如 ["https://example.com"]。启用 CORS 时不能为空。
+cors_allow_origins = []
+# 是否允许跨域请求携带 Cookie/Authorization 等凭据; 为 true 时 cors_allow_origins 不能包含 "*"。
+cors_allow_credentials = true
+# 允许跨域访问的 HTTP 方法。
+cors_allow_methods = ["GET", "POST", "OPTIONS"]
+# 允许跨域访问的请求头。
+cors_allow_headers = ["Accept", "Accept-Language", "Content-Language", "Content-Type"]
+# CORS 预检请求缓存秒数。
+cors_max_age = 600

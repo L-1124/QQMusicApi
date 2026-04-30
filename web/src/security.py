@@ -1,5 +1,6 @@
 """Web 访问控制与 IP 限流."""
 
+import asyncio
 import math
 import time
 from collections.abc import Callable
@@ -173,6 +174,30 @@ class InMemoryRateLimiter:
             del self._counters[key]
 
 
+class InMemoryConcurrencyLimiter:
+    """单进程全局并发请求限制器."""
+
+    def __init__(self, limit: int) -> None:
+        """初始化并发容量."""
+        self._limit = limit
+        self._active = 0
+        self._lock = asyncio.Lock()
+
+    async def acquire(self) -> bool:
+        """尝试立即占用一个并发名额."""
+        async with self._lock:
+            if self._active >= self._limit:
+                return False
+            self._active += 1
+            return True
+
+    async def release(self) -> None:
+        """释放已占用的并发名额."""
+        async with self._lock:
+            if self._active > 0:
+                self._active -= 1
+
+
 async def apply_security_middleware(request: Request, call_next: RequestResponseEndpoint) -> Response:
     """执行客户端 IP 解析、访问控制与限流."""
     config: SecurityConfig = request.app.state.security_config
@@ -195,7 +220,21 @@ async def apply_security_middleware(request: Request, call_next: RequestResponse
         if not limit_result.allowed:
             return error_response(status_code=429, msg="请求过于频繁", headers=limit_result.headers)
 
-    return await call_next(request)
+    if not config.concurrency_limit_enabled:
+        return await call_next(request)
+
+    concurrency_limiter: InMemoryConcurrencyLimiter = request.app.state.concurrency_limiter
+    acquired = await concurrency_limiter.acquire()
+    if not acquired:
+        return error_response(
+            status_code=503,
+            msg="服务器繁忙",
+            headers={"Retry-After": str(config.concurrency_retry_after_seconds)},
+        )
+    try:
+        return await call_next(request)
+    finally:
+        await concurrency_limiter.release()
 
 
 def configure_security(app: FastAPI, config: SecurityConfig) -> None:
@@ -212,3 +251,4 @@ def configure_security(app: FastAPI, config: SecurityConfig) -> None:
         window_seconds=config.rate_limit_window_seconds,
         exempt_ips=config.rate_limit_exempt_ips,
     )
+    app.state.concurrency_limiter = InMemoryConcurrencyLimiter(config.concurrency_limit)
