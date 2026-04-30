@@ -18,5 +18,6 @@ if __name__ == "__main__":
         factory=True,
         host=settings.server.host,
         port=settings.server.port,
+        workers=settings.server.workers,
         reload=True,
     )
