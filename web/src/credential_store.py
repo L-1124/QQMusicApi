@@ -1,7 +1,5 @@
 """Web 全局默认 Credential 运行时存储."""
 
-from __future__ import annotations
-
 import secrets
 import sqlite3
 import time
