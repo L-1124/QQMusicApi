@@ -53,7 +53,7 @@ _HTTP_ERROR_MESSAGES = {
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
-    app.state.client = Client()
+    app.state.client = Client(device_path="web/data/device.json")
     app.state.credential_config = settings.credential
     app.state.credential_store = CredentialStore(settings.credential.store.path)
     app.state.credential_store.initialize()

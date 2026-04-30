@@ -61,7 +61,7 @@ class CredentialStoreConfig(BaseModel):
     """全局默认账号运行时状态存储配置."""
 
     backend: Literal["sqlite"] = Field(default="sqlite", description="运行时 Credential 存储后端, 可选值: sqlite")
-    path: str = Field(default="web/credentials.sqlite3", description="SQLite Credential 状态库路径")
+    path: str = Field(default="web/data/credentials.sqlite3", description="SQLite Credential 状态库路径")
 
 
 class CredentialConfig(BaseModel):
@@ -118,8 +118,8 @@ class AccountConfig(BaseModel):
             unionid=self.unionid,
             str_musicid=self.str_musicid or str(self.musicid),
             refresh_key=self.refresh_key,
-            musickey_create_time=self.musickey_create_time,
-            key_expires_in=self.key_expires_in,
+            musickeyCreateTime=self.musickey_create_time,
+            keyExpiresIn=self.key_expires_in,
         )
 
 

@@ -38,7 +38,7 @@ api = { song = ["get_song_urls", "get_song_url"] }
 # 存储后端, 可选值: "sqlite"。
 backend = "sqlite"
 # SQLite 状态库路径。
-# path = "web/credentials.sqlite3"
+# path = "web/data/credentials.sqlite3"
 
 
 [security]
