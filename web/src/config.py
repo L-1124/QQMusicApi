@@ -9,7 +9,7 @@ from qqmusic_api import Credential
 
 
 class ServerConfig(BaseModel):
-    """Server 模块配置."""
+    """服务器配置."""
 
     host: str = Field(default="127.0.0.1", description="绑定地址")
     port: int = Field(default=8080, description="监听端口")
@@ -18,7 +18,7 @@ class ServerConfig(BaseModel):
 
 
 class CacheConfig(BaseModel):
-    """Cache 模块配置."""
+    """缓存配置."""
 
     ttl: int = Field(default=60, description="默认缓存过期时间(秒)")
     memory_max_size: int = Field(default=1024, description="内存缓存最大条目数")
@@ -28,7 +28,7 @@ class CacheConfig(BaseModel):
 
 
 class SecurityConfig(BaseModel):
-    """Web 访问控制与限流配置."""
+    """安全与限流配置."""
 
     enabled: bool = Field(default=True, description="是否启用访问控制与限流")
     ip_list_mode: Literal["allowlist", "denylist"] = Field(default="denylist", description="IP 名单模式")
@@ -65,7 +65,7 @@ class CredentialStoreConfig(BaseModel):
 
 
 class CredentialConfig(BaseModel):
-    """全局默认登录凭证使用范围配置."""
+    """全局默认凭证配置."""
 
     enabled: bool = Field(default=False, description="是否启用全局默认登录凭证")
     api: dict[str, list[str]] = Field(
@@ -88,7 +88,7 @@ class CredentialConfig(BaseModel):
 
 
 class AccountConfig(BaseModel):
-    """单个全局默认登录凭证种子配置."""
+    """账号凭证种子配置."""
 
     musicid: int = Field(default=0, ge=0)
     musickey: str = ""
@@ -126,7 +126,7 @@ class AccountConfig(BaseModel):
         return merged
 
     def has_login(self) -> bool:
-        """判断账号种子是否包含可用登录凭证."""
+        """判断是否包含可用登录凭证."""
         return self.musicid > 0 and bool(self.musickey)
 
     def to_credential(self) -> Credential:
@@ -154,7 +154,7 @@ class AccountConfig(BaseModel):
 
 
 class Settings(BaseSettings):
-    """Web 服务全局配置项."""
+    """Web 服务全局配置."""
 
     model_config = SettingsConfigDict(
         env_prefix="QQMUSIC_",

@@ -19,7 +19,7 @@ from .response import error_response
 
 @dataclass(frozen=True)
 class SecurityServices:
-    """Web 安全中间件共享组件."""
+    """安全中间件共享组件."""
 
     config: SecurityConfig
     client_ip_resolver: "ClientIpResolver"
@@ -33,23 +33,23 @@ class ClientIpHeaderError(ValueError):
 
 
 class IpMatcher:
-    """匹配 IP 地址与 CIDR 网段."""
+    """IP 与 CIDR 匹配器."""
 
     def __init__(self, patterns: list[str]) -> None:
-        """解析 IP 与 CIDR 配置."""
+        """初始化匹配器."""
         self._networks = [ip_network(pattern, strict=False) for pattern in patterns]
 
     def contains(self, ip: str) -> bool:
-        """判断 IP 是否命中任一配置项."""
+        """判断 IP 是否命中任一配置."""
         address = ip_address(ip)
         return any(address in network for network in self._networks)
 
 
 class ClientIpResolver:
-    """解析请求的真实客户端 IP."""
+    """真实客户端 IP 解析器."""
 
     def __init__(self, trusted_proxy_ips: list[str], client_ip_header: str | None) -> None:
-        """初始化可信代理与客户端 IP 头配置."""
+        """初始化解析器."""
         self._trusted_proxies = IpMatcher(trusted_proxy_ips)
         self._client_ip_header = client_ip_header.lower() if client_ip_header else None
 
@@ -90,7 +90,7 @@ class ClientIpResolver:
 
 
 class AccessPolicy:
-    """按单一名单模式判断客户端 IP 是否允许访问."""
+    """IP 名单访问策略."""
 
     def __init__(
         self,
@@ -113,7 +113,7 @@ class AccessPolicy:
 
 @dataclass(frozen=True)
 class RateLimitResult:
-    """单次限流判断结果."""
+    """限流判断结果."""
 
     allowed: bool
     limit: int
@@ -133,7 +133,7 @@ class RateLimitResult:
 
 
 class InMemoryRateLimiter:
-    """单进程固定窗口 IP 限流器."""
+    """固定窗口 IP 限流器."""
 
     def __init__(
         self,
@@ -187,10 +187,10 @@ class InMemoryRateLimiter:
 
 
 class InMemoryConcurrencyLimiter:
-    """单进程全局并发请求限制器."""
+    """全局并发请求限制器."""
 
     def __init__(self, limit: int) -> None:
-        """初始化并发容量."""
+        """初始化限制器."""
         self._limit = limit
         self._active = 0
         self._lock = asyncio.Lock()
@@ -267,7 +267,7 @@ async def apply_security_middleware(request: Request, call_next: RequestResponse
 
 
 def configure_security(app: FastAPI, config: SecurityConfig) -> None:
-    """在 FastAPI 应用状态中安装安全组件."""
+    """安装安全组件到应用状态."""
     security = SecurityServices(
         config=config,
         client_ip_resolver=ClientIpResolver(config.trusted_proxy_ips, config.client_ip_header),

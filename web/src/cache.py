@@ -29,15 +29,13 @@ class CacheBackend(Protocol):
 
 @dataclass
 class _CacheEntry:
-    """缓存条目."""
-
     data: Any
     expires_at: float
 
 
 @dataclass
 class MemoryBackend:
-    """内存 TTL 缓存后端."""
+    """内存 TTL 缓存后端 (LRU 驱逐)."""
 
     _store: OrderedDict[str, _CacheEntry] = field(default_factory=OrderedDict)
     _max_size: int = 1024
@@ -79,7 +77,7 @@ class RedisBackend:
     """Redis 异步缓存后端."""
 
     def __init__(self, url: str, prefix: str = "qqapi:") -> None:
-        """初始化 Redis 缓存后端."""
+        """初始化 Redis 连接."""
         try:
             from redis.asyncio import Redis
         except ImportError as exc:
@@ -113,7 +111,7 @@ class RedisBackend:
 
 
 def make_cache_key(path: str, kwargs: dict[str, Any]) -> str:
-    """生成缓存键."""
+    """基于路径与请求参数生成缓存键."""
     serialized = orjson.dumps(jsonable_encoder(kwargs), option=orjson.OPT_SORT_KEYS)
     param_hash = hashlib.sha256(serialized).hexdigest()[:16]
     return f"{path}:{param_hash}"

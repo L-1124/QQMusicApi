@@ -21,7 +21,7 @@ _REDACTED_VALUE = "***"
 
 
 class ApiResponse(BaseModel, Generic[T]):
-    """标准 API 响应结构."""
+    """标准 API 响应."""
 
     code: int = Field(description="状态码, 成功为 0, 失败为 -1.")
     msg: str = Field(description="面向调用方的状态说明.")

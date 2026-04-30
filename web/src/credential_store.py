@@ -4,6 +4,7 @@ import secrets
 import sqlite3
 import threading
 import time
+from contextlib import suppress
 from pathlib import Path
 
 try:
@@ -21,10 +22,10 @@ ACCOUNT_CONFIG_FILE = "web/accounts.toml"
 
 
 class CredentialStore:
-    """SQLite Credential 运行时状态存储."""
+    """SQLite 凭证运行时状态存储."""
 
     def __init__(self, path: str) -> None:
-        """初始化 SQLite 存储路径."""
+        """初始化存储路径."""
         self.path = Path(path)
         self._connection: sqlite3.Connection | None = None
         self._lock = threading.RLock()
@@ -43,10 +44,12 @@ class CredentialStore:
                 )
                 """
             )
+            with suppress(sqlite3.OperationalError):
+                connection.execute("ALTER TABLE credentials ADD COLUMN valid INTEGER DEFAULT 1")
             connection.commit()
 
     def sync_accounts(self, accounts: list[AccountConfig]) -> None:
-        """同步账号种子集合到运行时状态库."""
+        """同步账号种子到状态库."""
         with self._lock:
             connection = self._connect()
             valid_accounts = [account for account in accounts if account.has_login()]
@@ -69,9 +72,9 @@ class CredentialStore:
                     connection.execute("DELETE FROM credentials")
 
     def random_credentials(self) -> list[Credential]:
-        """随机顺序返回全部可用 Credential."""
+        """随机顺序返回全部有效 Credential."""
         with self._lock:
-            rows = self._connect().execute("SELECT credential_json FROM credentials").fetchall()
+            rows = self._connect().execute("SELECT credential_json FROM credentials WHERE valid = 1").fetchall()
         credentials: list[Credential] = []
         for row in rows:
             credential = _load_credential(row[0])
@@ -80,7 +83,7 @@ class CredentialStore:
         return _shuffled(credentials)
 
     def get(self, musicid: int) -> Credential | None:
-        """按 musicid 返回当前 Credential."""
+        """按 musicid 获取凭证."""
         with self._lock:
             row = (
                 self._connect()
@@ -98,13 +101,32 @@ class CredentialStore:
         return credential
 
     def update(self, credential: Credential) -> None:
-        """保存刷新后的 Credential."""
+        """保存刷新后的 Credential 并标记为有效."""
         if not _credential_has_login(credential):
             raise ValueError("Credential 缺少 musicid 或 musickey")
         with self._lock:
             connection = self._connect()
             with connection:
                 self._upsert(credential)
+                connection.execute(
+                    "UPDATE credentials SET valid = 1 WHERE musicid = ?",
+                    (credential.musicid,),
+                )
+
+    def mark_invalid(self, musicid: int) -> None:
+        """标记账号为无效."""
+        with self._lock:
+            self._connect().execute(
+                "UPDATE credentials SET valid = 0 WHERE musicid = ?",
+                (musicid,),
+            )
+            self._connect().commit()
+
+    def get_all_musicids(self) -> list[int]:
+        """返回全部已知 musicid."""
+        with self._lock:
+            rows = self._connect().execute("SELECT musicid FROM credentials").fetchall()
+        return [row[0] for row in rows]
 
     def close(self) -> None:
         """关闭 SQLite 连接."""
@@ -114,7 +136,6 @@ class CredentialStore:
                 self._connection = None
 
     def _connect(self) -> sqlite3.Connection:
-        """返回 SQLite 连接."""
         if self._connection is None:
             self._connection = sqlite3.connect(self.path, check_same_thread=False)
         return self._connection
@@ -154,7 +175,7 @@ def load_account_configs(path: str) -> list[AccountConfig]:
 
 
 def credential_needs_refresh(credential: Credential) -> bool:
-    """判断 Credential 是否需要本地刷新."""
+    """判断凭证是否需要刷新."""
     if credential.musickey_create_time <= 0 or credential.key_expires_in <= 0:
         return False
     return credential.is_expired()

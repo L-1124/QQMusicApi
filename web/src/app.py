@@ -15,6 +15,7 @@ import qqmusic_api
 from qqmusic_api import Client
 from qqmusic_api.core.exceptions import BaseError, NotLoginError
 
+from .auth import startup_credential_health_check
 from .cache import MemoryBackend, RedisBackend
 from .config import SecurityConfig, settings
 from .credential_store import ACCOUNT_CONFIG_FILE, CredentialStore, load_account_configs
@@ -61,6 +62,7 @@ async def _lifespan(app: FastAPI):
     services.credential_store = CredentialStore(settings.credential.store.path)
     services.credential_store.initialize()
     services.credential_store.sync_accounts(load_account_configs(ACCOUNT_CONFIG_FILE))
+    await startup_credential_health_check(services.client, services.credential_store)
     yield
     await services.cache.close()
     if services.credential_store is not None:
@@ -73,7 +75,6 @@ def _include_dynamic_routers(
     app: FastAPI,
     route_specs: tuple[RouteSpec, ...],
 ) -> None:
-    """按完整契约路径注册动态路由."""
     for spec in route_specs:
         if spec.adapter is not AdapterKind.AUTO:
             continue
@@ -100,7 +101,6 @@ def _include_dynamic_routers(
 
 
 def _find_explicit_route(spec: RouteSpec) -> APIRoute:
-    """按契约查找单个显式路由端点."""
     if spec.router_name is None:
         raise RuntimeError(f"显式路由缺少 router_name: {spec.module_attr}.{spec.method_name}")
     router = EXPLICIT_ROUTERS.get(spec.router_name)
@@ -145,7 +145,6 @@ def _include_explicit_routers(
     app: FastAPI,
     route_specs: tuple[RouteSpec, ...],
 ) -> None:
-    """按契约逐个注册显式请求体或特例参数处理路由."""
     included_routes: set[tuple[str, str]] = set()
     for spec in route_specs:
         if spec.adapter is not AdapterKind.EXPLICIT:
@@ -175,7 +174,6 @@ def _include_explicit_routers(
 
 
 def _configure_cors(app: FastAPI) -> None:
-    """按显式安全配置安装 CORS 中间件."""
     config: SecurityConfig = settings.security
     if not config.cors_enabled:
         return
@@ -195,7 +193,7 @@ def _configure_cors(app: FastAPI) -> None:
 
 
 def create_app() -> FastAPI:
-    """创建 QQMusic API Web 应用."""
+    """创建并配置 QQMusic API Web 应用."""
     app = FastAPI(
         title="QQMusic API",
         version=qqmusic_api.__version__,

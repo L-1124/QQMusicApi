@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class RouteContract:
-    """Web 路由源数据契约."""
+    """Web 路由契约."""
 
     module_attr: str
     module_cls: str | None
@@ -26,7 +26,7 @@ class RouteContract:
 
 @dataclass(frozen=True)
 class FieldContract:
-    """自动生成请求模型字段契约."""
+    """模型字段契约."""
 
     name: str
     annotation: str
@@ -36,7 +36,7 @@ class FieldContract:
 
 @dataclass(frozen=True)
 class RequestModelContract:
-    """自动生成请求模型契约."""
+    """请求模型生成契约."""
 
     name: str
     base: str

@@ -13,7 +13,7 @@ def iter_enum_members(target_type: type[Enum]) -> list[Enum]:
 
 
 def coerce_enum_value(value: Any, target_type: type[Enum]) -> Any:
-    """将枚举名称或简单枚举值转换为枚举成员."""
+    """大小写不敏感解析枚举名称或值."""
     if isinstance(value, target_type):
         return value
     text = str(value)

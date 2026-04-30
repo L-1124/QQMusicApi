@@ -15,7 +15,6 @@ _credential_refresh_locks_guard = asyncio.Lock()
 
 
 def _parse_cookie_int(value: str) -> int:
-    """解析 Cookie 整数字段."""
     try:
         return int(value)
     except ValueError as exc:
@@ -40,7 +39,6 @@ def resolve_configured_default_credential(
 
 
 async def _credential_refresh_lock(musicid: int) -> asyncio.Lock:
-    """返回指定账号的刷新锁."""
     async with _credential_refresh_locks_guard:
         lock = _credential_refresh_locks.get(musicid)
         if lock is None:
@@ -64,6 +62,18 @@ async def _store_update(store: CredentialStore, credential: Credential) -> None:
     await run_sync(store.update, credential)
 
 
+async def _credential_is_expired(candidate: Credential, client: Client) -> bool:
+    """判断凭证是否过期, 本地信息不足时通过 API 验证."""
+    if credential_needs_refresh(candidate):
+        return True
+    if candidate.musickey_create_time > 0 and candidate.key_expires_in <= 0:
+        try:
+            return await client.login.check_expired(candidate)
+        except Exception:
+            return True
+    return False
+
+
 async def _refresh_configured_credential(
     *,
     store: CredentialStore,
@@ -80,6 +90,7 @@ async def _refresh_configured_credential(
         try:
             refreshed = await client.login.refresh_credential(current)
         except Exception:
+            store.mark_invalid(candidate.musicid)
             return None
         try:
             await _store_update(store, refreshed)
@@ -107,7 +118,7 @@ async def configured_credential_for_api(
         return cookie_credential
 
     for candidate in await _store_random_credentials(store):
-        if credential_needs_refresh(candidate):
+        if await _credential_is_expired(candidate, client):
             refreshed = await _refresh_configured_credential(
                 store=store,
                 client=client,
@@ -115,14 +126,14 @@ async def configured_credential_for_api(
             )
             if refreshed is None:
                 continue
-            return resolve_configured_default_credential(cookie_credential, refreshed)
+            candidate = refreshed
         return resolve_configured_default_credential(cookie_credential, candidate)
 
     return cookie_credential
 
 
 async def credential_from_cookies(request: Request) -> Credential:
-    """从请求 Cookie 中提取 Credential."""
+    """从请求 Cookie 提取 Credential."""
     cookies = request.cookies
     musicid = cookies.get("musicid")
     musickey = cookies.get("musickey")
@@ -151,3 +162,30 @@ async def credential_from_cookies(request: Request) -> Credential:
         raise HTTPException(status_code=422, detail="Cookie musicid 与 musickey 必须同时提供")
 
     return Credential()
+
+
+async def startup_credential_health_check(client: Client, store: CredentialStore) -> None:
+    """启动时清洗凭证状态: 检查过期, 尝试刷新, 标记无效."""
+
+    async def _check_one(musicid: int) -> None:
+        credential = await run_sync(store.get, musicid)
+        if credential is None or not credential_has_login(credential):
+            await run_sync(store.mark_invalid, musicid)
+            return
+        if credential_needs_refresh(credential):
+            try:
+                refreshed = await client.login.refresh_credential(credential)
+                await run_sync(store.update, refreshed)
+            except Exception:
+                await run_sync(store.mark_invalid, musicid)
+        elif credential.musickey_create_time > 0 and credential.key_expires_in <= 0:
+            try:
+                expired = await client.login.check_expired(credential)
+                if expired:
+                    refreshed = await client.login.refresh_credential(credential)
+                    await run_sync(store.update, refreshed)
+            except Exception:
+                await run_sync(store.mark_invalid, musicid)
+
+    musicids = await run_sync(store.get_all_musicids)
+    await asyncio.gather(*[_check_one(mid) for mid in musicids])

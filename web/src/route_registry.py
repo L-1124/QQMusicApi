@@ -115,14 +115,14 @@ RouteFilterMode = Literal["allowlist", "denylist"]
 
 
 class AdapterKind(str, Enum):
-    """Web 路由适配方式."""
+    """路由适配方式."""
 
     AUTO = "auto"
     EXPLICIT = "explicit"
 
 
 class AuthPolicy(str, Enum):
-    """Web 路由认证策略."""
+    """路由认证策略."""
 
     NONE = "none"
     COOKIE_OR_DEFAULT = "cookie_or_default"
@@ -130,7 +130,7 @@ class AuthPolicy(str, Enum):
 
 @dataclass(frozen=True)
 class CachePolicy:
-    """Web 路由缓存策略."""
+    """路由缓存策略."""
 
     ttl: int | None = None
     scope: Literal["public"] | None = None
@@ -138,7 +138,7 @@ class CachePolicy:
 
 @dataclass(frozen=True)
 class RouteSpec:
-    """Web 路由注册所需的元数据."""
+    """路由注册元数据."""
 
     module_attr: str
     module_cls: type[ApiModule] | None
@@ -159,7 +159,7 @@ class RouteSpec:
 
     @property
     def key(self) -> RouteKey:
-        """返回稳定的过滤键."""
+        """返回稳定过滤键."""
         return (self.module_attr, self.method_name)
 
 
@@ -289,7 +289,7 @@ def get_route_specs(
     allowlist: set[RouteKey] | None = None,
     denylist: set[RouteKey] | None = None,
 ) -> tuple[RouteSpec, ...]:
-    """根据 manifest 源数据与过滤配置构造路由元数据."""
+    """解析 manifest 源数据并构造路由元数据."""
     selected_mode = mode or ROUTE_FILTER_MODE
     selected_allowlist = ROUTE_ALLOWLIST if allowlist is None else allowlist
     selected_denylist = ROUTE_DENYLIST if denylist is None else denylist
@@ -316,12 +316,10 @@ def get_route_specs(
 
 
 def _contract_key(contract: RouteContract) -> RouteKey:
-    """返回 manifest 契约稳定键."""
     return (contract.module_attr, contract.method_name)
 
 
 def _resolve_contract(contract: RouteContract) -> RouteSpec:
-    """将 manifest 字符串契约解析为运行时路由元数据."""
     module_cls = _resolve_module_cls(contract)
     return RouteSpec(
         module_attr=contract.module_attr,
@@ -344,7 +342,6 @@ def _resolve_contract(contract: RouteContract) -> RouteSpec:
 
 
 def _resolve_module_cls(contract: RouteContract) -> type[ApiModule] | None:
-    """解析 manifest 中的模块类名."""
     if contract.module_cls is None:
         return None
     module_cls = _MODULE_CLASSES.get(contract.module_cls)
@@ -354,7 +351,6 @@ def _resolve_module_cls(contract: RouteContract) -> type[ApiModule] | None:
 
 
 def _resolve_response_model(contract: RouteContract) -> Any:
-    """解析 manifest 中的响应模型符号."""
     if contract.response_model is None:
         raise RuntimeError(f"Web 路由缺少响应模型: {_contract_key(contract)}")
     if contract.response_model not in _RESPONSE_MODELS:
@@ -363,7 +359,6 @@ def _resolve_response_model(contract: RouteContract) -> Any:
 
 
 def _resolve_query_model(contract: RouteContract) -> type[AutoQueryModel] | None:
-    """解析 manifest 中的 Query 模型符号."""
     if contract.query_model is None:
         return None
     model = _REQUEST_MODELS.get(contract.query_model)
@@ -373,7 +368,6 @@ def _resolve_query_model(contract: RouteContract) -> type[AutoQueryModel] | None
 
 
 def _resolve_path_model(contract: RouteContract) -> type[AutoPathModel] | None:
-    """解析 manifest 中的 Path 模型符号."""
     if contract.path_model is None:
         return None
     model = _REQUEST_MODELS.get(contract.path_model)
@@ -383,7 +377,6 @@ def _resolve_path_model(contract: RouteContract) -> type[AutoPathModel] | None:
 
 
 def _resolve_body_model(contract: RouteContract) -> type[AutoBodyModel] | None:
-    """解析 manifest 中的 Body 模型符号."""
     if contract.body_model is None:
         return None
     model = _REQUEST_MODELS.get(contract.body_model)
@@ -393,7 +386,6 @@ def _resolve_body_model(contract: RouteContract) -> type[AutoBodyModel] | None:
 
 
 def _resolve_cache_policy(contract: RouteContract) -> CachePolicy:
-    """解析 manifest 中的缓存策略符号."""
     if contract.cache is None:
         return CachePolicy()
     cache = _CACHE_POLICIES.get(contract.cache)
@@ -403,12 +395,10 @@ def _resolve_cache_policy(contract: RouteContract) -> CachePolicy:
 
 
 def _path_param_names(path: str) -> set[str]:
-    """提取路由模板中的 Path 参数名."""
     return set(re.findall(r"{([^{}]+)}", path))
 
 
 def _validate_route_spec(route: RouteSpec, path_methods: set[tuple[str, str]]) -> None:
-    """校验单条运行时路由契约."""
     for method in route.methods:
         path_method = (route.path, method.upper())
         if path_method in path_methods:
@@ -441,7 +431,6 @@ def _validate_route_spec(route: RouteSpec, path_methods: set[tuple[str, str]]) -
 
 
 def _validate_path_model(route: RouteSpec) -> None:
-    """校验 Path 模型与模板路径一致."""
     if route.adapter is AdapterKind.EXPLICIT:
         return
     param_names = _path_param_names(route.path)
@@ -461,7 +450,6 @@ def _validate_path_model(route: RouteSpec) -> None:
 
 
 def _validate_body_model(route: RouteSpec) -> None:
-    """校验 Body 模型与 Query/Path 模型无字段冲突."""
     if route.adapter is AdapterKind.EXPLICIT or route.body_model is None:
         return
     body_fields = set(route.body_model.model_fields)
@@ -476,7 +464,6 @@ def _validate_body_model(route: RouteSpec) -> None:
 
 
 def _resolve_route_method(module_cls: type[ApiModule] | None, method_name: str) -> Any | None:
-    """解析契约指向的 modules 方法."""
     if module_cls is None:
         return None
     method = getattr(module_cls, method_name, None)
@@ -490,7 +477,6 @@ def _resolve_route_method(module_cls: type[ApiModule] | None, method_name: str) 
 
 
 def _validate_filter_keys(name: str, keys: set[RouteKey], candidate_keys: set[RouteKey]) -> None:
-    """校验过滤配置只引用候选路由."""
     unknown = keys - candidate_keys
     if unknown:
         raise RuntimeError(f"{name} 包含未知路由: {sorted(unknown)!r}")

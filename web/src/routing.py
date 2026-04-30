@@ -3,13 +3,16 @@
 import inspect
 from typing import Annotated, Any
 
+from anyio.to_thread import run_sync
 from fastapi import Depends, HTTPException, Query, Request
 
 from qqmusic_api import Client, Credential
+from qqmusic_api.core.exceptions import CredentialError
 
 from .auth import configured_credential_for_api, credential_from_cookies, credential_has_login
 from .cache import CacheBackend, cached_response, make_cache_key
-from .deps import cache_dependency, client_dependency
+from .credential_store import CredentialStore
+from .deps import cache_dependency, client_dependency, get_credential_store
 from .query_models import AutoQueryModel
 from .response import success_response
 from .schema import parse_docstring
@@ -30,12 +33,10 @@ async def _call_bound_method(bound_method: Any, kwargs: dict[str, Any]) -> Any:
 
 
 def _uses_cookie_or_default_auth(spec: Any) -> bool:
-    """判断契约是否需要 Cookie 或默认登录态."""
     return str(getattr(spec.auth, "value", spec.auth)) == _COOKIE_OR_DEFAULT_AUTH
 
 
 def _route_key(spec: Any) -> str:
-    """返回路由对应的 API 配置键."""
     return f"{spec.module_attr}.{spec.method_name}"
 
 
@@ -46,7 +47,6 @@ def _validate_endpoint_contract(
     query_model: Any,
     path_model: Any,
 ) -> None:
-    """校验动态端点执行契约与 modules 方法一致."""
     if query_model is None:
         raise RuntimeError(f"自动路由缺少 query_model: {spec.module_attr}.{spec.method_name}")
     if path_model is not None and set(path_model.model_fields) & set(query_model.model_fields):
@@ -95,17 +95,38 @@ async def _execute_endpoint(
             raise HTTPException(status_code=401, detail="未提供有效的登录凭证")
         kwargs["credential"] = resolved
 
+    async def _invoke_with_retry() -> Any:
+        try:
+            return await _call_bound_method(bound_method, kwargs)
+        except CredentialError:
+            if not expose_credential or "credential" not in kwargs:
+                raise
+            store = get_credential_store(request)
+            if not isinstance(store, CredentialStore):
+                raise
+            candidate = kwargs["credential"]
+            if not credential_has_login(candidate):
+                raise
+            try:
+                refreshed = await client.login.refresh_credential(candidate)
+                await run_sync(store.update, refreshed)
+            except Exception:
+                await run_sync(store.mark_invalid, candidate.musicid)
+                raise
+            kwargs["credential"] = refreshed
+            return await _call_bound_method(bound_method, kwargs)
+
     if cache_ttl is not None:
         cache_key = make_cache_key(spec.path, kwargs)
         hit = await cache.get(cache_key)
         if hit is not None:
             return cached_response(hit, cache_ttl)
 
-        result = success_response(await _call_bound_method(bound_method, kwargs))
+        result = success_response(await _invoke_with_retry())
         await cache.set(cache_key, result, cache_ttl)
         return cached_response(result, cache_ttl)
 
-    return success_response(await _call_bound_method(bound_method, kwargs))
+    return success_response(await _invoke_with_retry())
 
 
 def _build_endpoint_signature(
@@ -169,14 +190,13 @@ def _build_endpoint_signature(
 
 
 def _path_param_names(spec: Any) -> set[str]:
-    """返回路径参数名称集合."""
     if spec.path_model is None:
         return set()
     return set(spec.path_model.model_fields)
 
 
 def make_endpoint(spec: Any):
-    """为模块方法创建显式 Query 模型端点."""
+    """为动态路由创建端点函数."""
     method = spec.method
     query_model = spec.query_model
     path_model = spec.path_model

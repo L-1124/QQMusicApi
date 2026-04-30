@@ -14,7 +14,7 @@ from .credential_store import CredentialStore
 
 @dataclass
 class WebServices:
-    """Web 应用生命周期内共享的服务对象."""
+    """应用生命周期内共享的服务对象."""
 
     cache: CacheBackend
     security: Any
@@ -24,7 +24,7 @@ class WebServices:
 
 
 def get_web_services(request: Request) -> WebServices:
-    """获取当前应用绑定的共享服务对象."""
+    """获取当前应用绑定的共享服务."""
     services = getattr(request.app.state, "services", None)
     if not isinstance(services, WebServices):
         raise TypeError("Web 服务尚未初始化")
@@ -45,17 +45,17 @@ def get_cache(request: Request) -> CacheBackend:
 
 
 def get_credential_config(request: Request) -> CredentialConfig | None:
-    """获取当前请求绑定的默认凭证配置."""
+    """获取当前请求绑定的凭证配置."""
     return get_web_services(request).credential_config
 
 
 def get_credential_store(request: Request) -> CredentialStore | None:
-    """获取当前请求绑定的默认凭证存储."""
+    """获取当前请求绑定的凭证存储."""
     return get_web_services(request).credential_store
 
 
 def get_security_services(request: Request) -> Any:
-    """获取当前请求绑定的安全组件集合."""
+    """获取当前请求绑定的安全组件."""
     return get_web_services(request).security
 
 
