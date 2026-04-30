@@ -1,10 +1,12 @@
 """Web API 标准响应结构."""
 
-from typing import Any, cast
+from typing import Any, Generic, TypeVar
 
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
+
+T = TypeVar("T")
 
 SENSITIVE_FIELD_NAMES = {
     "musickey",
@@ -17,33 +19,21 @@ SENSITIVE_FIELD_NAMES = {
 }
 _REDACTED_VALUE = "***"
 
-_ANY_DATA_SCHEMA = {
-    "anyOf": [
-        {"type": "object"},
-        {"type": "array"},
-        {"type": "string"},
-        {"type": "number"},
-        {"type": "integer"},
-        {"type": "boolean"},
-        {"type": "null"},
-    ]
-}
 
-
-class ApiResponse(BaseModel):
+class ApiResponse(BaseModel, Generic[T]):
     """标准 API 响应结构."""
 
     code: int = Field(description="状态码, 成功为 0, 失败为 -1.")
     msg: str = Field(description="面向调用方的状态说明.")
-    data: Any = Field(default=None, description="响应数据.", json_schema_extra=cast("Any", _ANY_DATA_SCHEMA))
+    data: T | None = Field(default=None, description="响应数据.")
 
 
-ErrorResponse = ApiResponse
+ErrorResponse = ApiResponse[Any]
 
 
-def success_response(data: Any) -> ApiResponse:
+def success_response(data: T) -> ApiResponse[T]:
     """构造标准成功响应."""
-    return ApiResponse(code=0, msg="ok", data=data)
+    return ApiResponse[T](code=0, msg="ok", data=data)
 
 
 def _is_sensitive_field(value: Any) -> bool:

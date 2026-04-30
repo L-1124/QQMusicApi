@@ -4,14 +4,13 @@ import inspect
 from typing import Annotated, Any
 
 from fastapi import Depends, HTTPException, Query, Request
-from pydantic import ValidationError
 
 from qqmusic_api import Client, Credential
 
 from .auth import configured_credential_for_api, credential_from_cookies, credential_has_login
 from .cache import CacheBackend, cached_response, make_cache_key
 from .deps import cache_dependency, client_dependency
-from .query_models import AutoPathModel, AutoQueryModel
+from .query_models import AutoQueryModel
 from .response import success_response
 from .schema import parse_docstring
 
@@ -58,18 +57,6 @@ def _validate_endpoint_contract(
         raise RuntimeError(f"认证路由不能使用 public 缓存: {spec.module_attr}.{spec.method_name}")
 
 
-def _path_kwargs(path_model: type[AutoPathModel] | None, path_params: dict[str, Any]) -> dict[str, Any]:
-    """校验 Path 参数并转换为 modules 方法参数."""
-    if path_model is None:
-        return {}
-    try:
-        return path_model.model_validate(dict(path_params)).to_method_kwargs()
-    except ValidationError as exc:
-        raise HTTPException(status_code=422, detail=exc.errors()) from exc
-    except _VALIDATION_ERROR_TYPES as exc:
-        raise HTTPException(status_code=422, detail="路径参数校验失败") from exc
-
-
 async def _execute_endpoint(
     request: Request,
     spec: Any,
@@ -79,6 +66,8 @@ async def _execute_endpoint(
     cache: CacheBackend,
     *,
     expose_credential: bool,
+    path_kwargs: dict[str, Any] | None = None,
+    body: Any = None,
 ) -> Any:
     """执行 Query 模型驱动的自动路由端点."""
     module = getattr(client, spec.module_attr)
@@ -87,11 +76,12 @@ async def _execute_endpoint(
         query_kwargs = query.to_method_kwargs()
     except _VALIDATION_ERROR_TYPES as exc:
         raise HTTPException(status_code=422, detail="查询参数校验失败") from exc
-    path_kwargs = _path_kwargs(spec.path_model, request.path_params)
-    conflicts = path_kwargs.keys() & query_kwargs.keys()
+    resolved_path_kwargs = path_kwargs or {}
+    body_kwargs = body.to_method_kwargs() if body is not None else {}
+    conflicts = resolved_path_kwargs.keys() & query_kwargs.keys()
     if conflicts:
         raise RuntimeError(f"Path 与 Query 参数来源冲突: {spec.module_attr}.{spec.method_name} {sorted(conflicts)!r}")
-    kwargs = {**path_kwargs, **query_kwargs}
+    kwargs = {**resolved_path_kwargs, **query_kwargs, **body_kwargs}
     cache_ttl = spec.cache.ttl
 
     if expose_credential:
@@ -118,6 +108,73 @@ async def _execute_endpoint(
     return success_response(await _call_bound_method(bound_method, kwargs))
 
 
+def _build_endpoint_signature(
+    spec: Any,
+    query_model: Any,
+    *,
+    expose_credential: bool,
+) -> inspect.Signature:
+    """为动态端点构造包含 path/query/body 参数的完整函数签名."""
+    path_model = spec.path_model
+    path_fields = {} if path_model is None else path_model.model_fields
+
+    params = [
+        inspect.Parameter("request", inspect.Parameter.POSITIONAL_OR_KEYWORD, annotation=Request),
+    ]
+
+    for field_name, field_info in path_fields.items():
+        params.append(
+            inspect.Parameter(field_name, inspect.Parameter.POSITIONAL_OR_KEYWORD, annotation=field_info.annotation)
+        )
+
+    params.append(
+        inspect.Parameter(
+            "query",
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+            annotation=Annotated[query_model, Query()],
+        )
+    )
+
+    if spec.body_model is not None:
+        params.append(inspect.Parameter("body", inspect.Parameter.POSITIONAL_OR_KEYWORD, annotation=spec.body_model))
+
+    params.append(
+        inspect.Parameter(
+            "client",
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+            default=client_dependency,
+            annotation=Client,
+        )
+    )
+    params.append(
+        inspect.Parameter(
+            "cache",
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+            default=cache_dependency,
+            annotation=CacheBackend,
+        )
+    )
+
+    if expose_credential:
+        params.append(
+            inspect.Parameter(
+                "credential",
+                inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                default=credential_dependency,
+                annotation=Credential,
+            )
+        )
+
+    return inspect.Signature(params)
+
+
+def _path_param_names(spec: Any) -> set[str]:
+    """返回路径参数名称集合."""
+    if spec.path_model is None:
+        return set()
+    return set(spec.path_model.model_fields)
+
+
 def make_endpoint(spec: Any):
     """为模块方法创建显式 Query 模型端点."""
     method = spec.method
@@ -135,31 +192,27 @@ def make_endpoint(spec: Any):
         path_model=path_model,
     )
 
+    path_param_set = _path_param_names(spec)
+    endpoint_signature = _build_endpoint_signature(spec, query_model, expose_credential=expose_credential)
+
+    async def endpoint(**kwargs: Any) -> Any:
+        path_kwargs = {k: kwargs[k] for k in path_param_set if k in kwargs}
+        body = kwargs.get("body")
+        return await _execute_endpoint(
+            request=kwargs["request"],
+            spec=spec,
+            query=kwargs["query"],
+            credential=kwargs.get("credential"),
+            client=kwargs["client"],
+            cache=kwargs["cache"],
+            expose_credential=expose_credential,
+            path_kwargs=path_kwargs,
+            body=body,
+        )
+
     doc = parse_docstring(method)
-
-    if expose_credential:
-
-        async def endpoint(
-            request: Request,
-            query: Any,
-            client: Client = client_dependency,
-            cache: CacheBackend = cache_dependency,
-            credential: Credential = credential_dependency,
-        ) -> Any:
-            return await _execute_endpoint(request, spec, query, credential, client, cache, expose_credential=True)
-
-    else:
-
-        async def endpoint(
-            request: Request,
-            query: Any,
-            client: Client = client_dependency,
-            cache: CacheBackend = cache_dependency,
-        ) -> Any:
-            return await _execute_endpoint(request, spec, query, None, client, cache, expose_credential=False)
-
     endpoint.__name__ = f"{spec.module_attr}_{spec.method_name}"
     endpoint.__doc__ = spec.description or doc["description"]
-    # 运行时动态注入真实 Query 模型类型, 绕过静态类型检查以支持动态路由生成
-    endpoint.__annotations__["query"] = Annotated[query_model, Query()]
+    object.__setattr__(endpoint, "__signature__", endpoint_signature)
+    endpoint.__annotations__ = {p.name: p.annotation for p in endpoint_signature.parameters.values()}
     return endpoint, doc

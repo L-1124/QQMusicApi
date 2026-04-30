@@ -2,6 +2,7 @@
 
 import hashlib
 import time
+from collections import OrderedDict
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
@@ -38,7 +39,7 @@ class _CacheEntry:
 class MemoryBackend:
     """内存 TTL 缓存后端."""
 
-    _store: dict[str, _CacheEntry] = field(default_factory=dict)
+    _store: OrderedDict[str, _CacheEntry] = field(default_factory=OrderedDict)
     _max_size: int = 1024
 
     async def get(self, key: str) -> Any | None:
@@ -49,11 +50,14 @@ class MemoryBackend:
         if time.monotonic() > entry.expires_at:
             del self._store[key]
             return None
+        self._store.move_to_end(key)
         return entry.data
 
     async def set(self, key: str, data: Any, ttl: int) -> None:
         """写入缓存条目."""
-        if len(self._store) >= self._max_size:
+        if key in self._store:
+            self._store.move_to_end(key)
+        elif len(self._store) >= self._max_size:
             self._evict()
         self._store[key] = _CacheEntry(data=jsonable_encoder(data), expires_at=time.monotonic() + ttl)
 
@@ -62,14 +66,13 @@ class MemoryBackend:
         self._store.clear()
 
     def _evict(self) -> None:
-        """淘汰过期条目; 若仍满则移除最早的条目."""
+        """淘汰过期条目; 若仍满则驱逐最近最少使用的条目."""
         now = time.monotonic()
         expired = [k for k, v in self._store.items() if now > v.expires_at]
         for k in expired:
             del self._store[k]
         if len(self._store) >= self._max_size:
-            oldest = min(self._store, key=lambda k: self._store[k].expires_at)
-            del self._store[oldest]
+            self._store.popitem(last=False)
 
 
 class RedisBackend:

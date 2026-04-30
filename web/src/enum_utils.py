@@ -48,3 +48,27 @@ def enum_query_values(target_type: type[Enum]) -> list[int | str]:
                 values.append(candidate)
                 seen.add(candidate)
     return values
+
+
+def flexible_enum_validator(enum_type: type[Enum]):
+    """构建灵活枚举校验器(大小写不敏感,按名称后按值匹配)."""
+
+    def validator(v: Any) -> Any:
+        if isinstance(v, enum_type):
+            return v
+        text = str(v)
+        normalized = text.casefold()
+        for member in iter_enum_members(enum_type):
+            if member.name.casefold() == normalized:
+                return member
+            if isinstance(member.value, str) and member.value.casefold() == normalized:
+                return member
+            if isinstance(member.value, int):
+                try:
+                    if int(text) == member.value:
+                        return member
+                except (ValueError, TypeError):
+                    pass
+        raise ValueError(f"无法解析为 {enum_type.__name__}: {v}")
+
+    return validator

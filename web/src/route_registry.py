@@ -72,6 +72,7 @@ from qqmusic_api.modules.user import UserApi
 from web.src.modules.login import PhoneAuthCodeData, QRCodeData, QRCodeStatusData
 from web.src.query_models import (
     AlbumSongPageQuery,
+    AutoBodyModel,
     AutoPathModel,
     AutoQueryModel,
     BizIdPath,
@@ -148,6 +149,7 @@ class RouteSpec:
     response_model: Any
     query_model: type[AutoQueryModel] | None
     path_model: type[AutoPathModel] | None
+    body_model: type[AutoBodyModel] | None
     cache: CachePolicy
     adapter: AdapterKind
     auth: AuthPolicy
@@ -331,6 +333,7 @@ def _resolve_contract(contract: RouteContract) -> RouteSpec:
         response_model=_resolve_response_model(contract),
         query_model=_resolve_query_model(contract),
         path_model=_resolve_path_model(contract),
+        body_model=_resolve_body_model(contract),
         cache=_resolve_cache_policy(contract),
         adapter=AdapterKind(contract.adapter),
         auth=AuthPolicy(contract.auth),
@@ -379,6 +382,16 @@ def _resolve_path_model(contract: RouteContract) -> type[AutoPathModel] | None:
     return model
 
 
+def _resolve_body_model(contract: RouteContract) -> type[AutoBodyModel] | None:
+    """解析 manifest 中的 Body 模型符号."""
+    if contract.body_model is None:
+        return None
+    model = _REQUEST_MODELS.get(contract.body_model)
+    if model is None or not issubclass(model, AutoBodyModel):
+        raise RuntimeError(f"未知 Body 模型: {contract.body_model}")
+    return model
+
+
 def _resolve_cache_policy(contract: RouteContract) -> CachePolicy:
     """解析 manifest 中的缓存策略符号."""
     if contract.cache is None:
@@ -412,6 +425,8 @@ def _validate_route_spec(route: RouteSpec, path_methods: set[tuple[str, str]]) -
         raise RuntimeError(f"显式路由不能声明 query_model: {route.key}")
     if route.adapter is AdapterKind.EXPLICIT and route.path_model is not None:
         raise RuntimeError(f"显式路由不能声明 path_model: {route.key}")
+    if route.adapter is AdapterKind.EXPLICIT and route.body_model is not None:
+        raise RuntimeError(f"显式路由不能声明 body_model: {route.key}")
     if route.adapter is AdapterKind.AUTO and route.query_model is None:
         raise RuntimeError(f"自动路由缺少 query_model: {route.key}")
     if route.adapter is AdapterKind.EXPLICIT and route.router_name is None:
@@ -422,6 +437,7 @@ def _validate_route_spec(route: RouteSpec, path_methods: set[tuple[str, str]]) -
         raise TypeError(f"Client 缺少模块属性: {route.module_attr}")
 
     _validate_path_model(route)
+    _validate_body_model(route)
 
 
 def _validate_path_model(route: RouteSpec) -> None:
@@ -442,6 +458,21 @@ def _validate_path_model(route: RouteSpec) -> None:
         conflicts = model_fields & set(route.query_model.model_fields)
         if conflicts:
             raise RuntimeError(f"Path 与 Query 参数来源冲突: {route.key} {sorted(conflicts)!r}")
+
+
+def _validate_body_model(route: RouteSpec) -> None:
+    """校验 Body 模型与 Query/Path 模型无字段冲突."""
+    if route.adapter is AdapterKind.EXPLICIT or route.body_model is None:
+        return
+    body_fields = set(route.body_model.model_fields)
+    if route.query_model is not None:
+        conflicts = body_fields & set(route.query_model.model_fields)
+        if conflicts:
+            raise RuntimeError(f"Body 与 Query 参数来源冲突: {route.key} {sorted(conflicts)!r}")
+    if route.path_model is not None:
+        conflicts = body_fields & set(route.path_model.model_fields)
+        if conflicts:
+            raise RuntimeError(f"Body 与 Path 参数来源冲突: {route.key} {sorted(conflicts)!r}")
 
 
 def _resolve_route_method(module_cls: type[ApiModule] | None, method_name: str) -> Any | None:

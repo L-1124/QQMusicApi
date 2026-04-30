@@ -72,8 +72,6 @@ async def _lifespan(app: FastAPI):
 def _include_dynamic_routers(
     app: FastAPI,
     route_specs: tuple[RouteSpec, ...],
-    response_models: dict[tuple[str, str], Any],
-    path_models: dict[tuple[str, str], Any],
 ) -> None:
     """按完整契约路径注册动态路由."""
     for spec in route_specs:
@@ -83,11 +81,6 @@ def _include_dynamic_routers(
             raise RuntimeError(f"自动路由缺少方法: {spec.module_attr}.{spec.method_name}")
 
         endpoint, doc = make_endpoint(spec)
-        for method in spec.methods:
-            response_models[(spec.path, method.lower())] = spec.response_model
-        if spec.path_model is not None:
-            for method in spec.methods:
-                path_models[(spec.path, method.lower())] = spec.path_model
         module_name = spec.module_cls.__name__ if spec.module_cls is not None else spec.module_attr
 
         openapi_extra = (
@@ -101,7 +94,7 @@ def _include_dynamic_routers(
             tags=[spec.module_attr],
             summary=spec.summary or doc["summary"] or f"{module_name}.{spec.method_name}",
             description=spec.description or doc["description"],
-            response_model=ApiResponse,
+            response_model=ApiResponse[spec.response_model],
             openapi_extra=openapi_extra,
         )
 
@@ -151,16 +144,12 @@ def _wrap_explicit_endpoint(route: APIRoute):
 def _include_explicit_routers(
     app: FastAPI,
     route_specs: tuple[RouteSpec, ...],
-    response_models: dict[tuple[str, str], Any],
 ) -> None:
     """按契约逐个注册显式请求体或特例参数处理路由."""
     included_routes: set[tuple[str, str]] = set()
     for spec in route_specs:
         if spec.adapter is not AdapterKind.EXPLICIT:
             continue
-
-        for method in spec.methods:
-            response_models[(spec.path, method.lower())] = spec.response_model
 
         route = _find_explicit_route(spec)
         for method in spec.methods:
@@ -171,7 +160,7 @@ def _include_explicit_routers(
                 route.path,
                 _wrap_explicit_endpoint(route),
                 methods=[method],
-                response_model=route.response_model,
+                response_model=ApiResponse[spec.response_model],
                 status_code=route.status_code,
                 tags=route.tags,
                 dependencies=route.dependencies,
@@ -292,11 +281,9 @@ def create_app() -> FastAPI:
         )
 
     route_specs = get_route_specs()
-    response_models: dict[tuple[str, str], Any] = {}
-    path_models: dict[tuple[str, str], Any] = {}
-    _include_dynamic_routers(app, route_specs, response_models, path_models)
-    _include_explicit_routers(app, route_specs, response_models)
-    install_openapi_schema(app, response_models, path_models)
+    _include_dynamic_routers(app, route_specs)
+    _include_explicit_routers(app, route_specs)
+    install_openapi_schema(app)
 
     return app
 
