@@ -1,8 +1,8 @@
 """Web 层配置管理."""
 
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict, TomlConfigSettingsSource
 
 from qqmusic_api import Credential
@@ -101,6 +101,29 @@ class AccountConfig(BaseModel):
     refresh_key: str = ""
     musickey_create_time: int = Field(default=0, ge=0)
     key_expires_in: int = Field(default=0, ge=0)
+    first_login: int = Field(default=0, ge=0)
+    bind_account_type: int = Field(default=0, ge=0)
+    need_refresh_key_in: int = Field(default=0, ge=0)
+    encrypt_uin: str = ""
+    login_type: int = Field(default=0, ge=0)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _load_credential_json(cls, data: Any) -> Any:
+        """允许账号条目直接提供 Credential JSON."""
+        if not isinstance(data, dict):
+            return data
+        raw_credential = data.get("credential") or data.get("credential_json")
+        if raw_credential is None:
+            return data
+        credential = (
+            Credential.model_validate_json(raw_credential)
+            if isinstance(raw_credential, str)
+            else Credential.model_validate(raw_credential)
+        )
+        merged = credential.model_dump()
+        merged.update({key: value for key, value in data.items() if key not in {"credential", "credential_json"}})
+        return merged
 
     def has_login(self) -> bool:
         """判断账号种子是否包含可用登录凭证."""
@@ -108,19 +131,26 @@ class AccountConfig(BaseModel):
 
     def to_credential(self) -> Credential:
         """转换为运行时 Credential."""
-        return Credential(
-            musicid=self.musicid,
-            musickey=self.musickey,
-            openid=self.openid,
-            refresh_token=self.refresh_token,
-            access_token=self.access_token,
-            expired_at=self.expired_at,
-            unionid=self.unionid,
-            str_musicid=self.str_musicid or str(self.musicid),
-            refresh_key=self.refresh_key,
-            musickeyCreateTime=self.musickey_create_time,
-            keyExpiresIn=self.key_expires_in,
-        )
+        data: dict[str, Any] = {
+            "musicid": self.musicid,
+            "musickey": self.musickey,
+            "openid": self.openid,
+            "refresh_token": self.refresh_token,
+            "access_token": self.access_token,
+            "expired_at": self.expired_at,
+            "unionid": self.unionid,
+            "str_musicid": self.str_musicid or str(self.musicid),
+            "refresh_key": self.refresh_key,
+            "musickey_create_time": self.musickey_create_time,
+            "key_expires_in": self.key_expires_in,
+            "first_login": self.first_login,
+            "bind_account_type": self.bind_account_type,
+            "need_refresh_key_in": self.need_refresh_key_in,
+            "encrypt_uin": self.encrypt_uin,
+        }
+        if self.login_type > 0:
+            data["login_type"] = self.login_type
+        return Credential.model_validate(data)
 
 
 class Settings(BaseSettings):
