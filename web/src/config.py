@@ -5,6 +5,8 @@ from typing import Literal
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict, TomlConfigSettingsSource
 
+from qqmusic_api import Credential
+
 
 class ServerConfig(BaseModel):
     """Server 模块配置."""
@@ -55,6 +57,72 @@ class SecurityConfig(BaseModel):
     cors_max_age: int = Field(default=600, ge=0, description="CORS 预检缓存秒数")
 
 
+class CredentialStoreConfig(BaseModel):
+    """全局默认账号运行时状态存储配置."""
+
+    backend: Literal["sqlite"] = Field(default="sqlite", description="运行时 Credential 存储后端, 可选值: sqlite")
+    path: str = Field(default="web/credentials.sqlite3", description="SQLite Credential 状态库路径")
+
+
+class CredentialConfig(BaseModel):
+    """全局默认登录凭证使用范围配置."""
+
+    enabled: bool = Field(default=False, description="是否启用全局默认登录凭证")
+    api: dict[str, list[str]] = Field(
+        default_factory=lambda: {"song": ["get_song_urls", "get_song_url"]},
+        description="允许使用全局默认登录凭证的 API 映射",
+    )
+    store: CredentialStoreConfig = CredentialStoreConfig()
+
+    def api_enabled(self, api_key: str) -> bool:
+        """判断指定 API 是否允许使用全局默认登录凭证."""
+        if not self.enabled:
+            return False
+        module, separator, method = api_key.partition(".")
+        if not separator:
+            return False
+        methods = self.api.get(module)
+        if methods is None:
+            return False
+        return not methods or method in methods
+
+
+class AccountConfig(BaseModel):
+    """单个全局默认登录凭证种子配置."""
+
+    musicid: int = Field(default=0, ge=0)
+    musickey: str = ""
+    openid: str = ""
+    refresh_token: str = ""
+    access_token: str = ""
+    expired_at: int = Field(default=0, ge=0)
+    unionid: str = ""
+    str_musicid: str = ""
+    refresh_key: str = ""
+    musickey_create_time: int = Field(default=0, ge=0)
+    key_expires_in: int = Field(default=0, ge=0)
+
+    def has_login(self) -> bool:
+        """判断账号种子是否包含可用登录凭证."""
+        return self.musicid > 0 and bool(self.musickey)
+
+    def to_credential(self) -> Credential:
+        """转换为运行时 Credential."""
+        return Credential(
+            musicid=self.musicid,
+            musickey=self.musickey,
+            openid=self.openid,
+            refresh_token=self.refresh_token,
+            access_token=self.access_token,
+            expired_at=self.expired_at,
+            unionid=self.unionid,
+            str_musicid=self.str_musicid or str(self.musicid),
+            refresh_key=self.refresh_key,
+            musickey_create_time=self.musickey_create_time,
+            key_expires_in=self.key_expires_in,
+        )
+
+
 class Settings(BaseSettings):
     """Web 服务全局配置项."""
 
@@ -68,6 +136,7 @@ class Settings(BaseSettings):
     server: ServerConfig = ServerConfig()
     cache: CacheConfig = CacheConfig()
     security: SecurityConfig = SecurityConfig()
+    credential: CredentialConfig = CredentialConfig()
 
     @classmethod
     def settings_customise_sources(

@@ -2,13 +2,13 @@
 
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
 from pydantic import BaseModel, Field
 from pydantic.json_schema import SkipJsonSchema
 
 from qqmusic_api import Client, Credential
 from qqmusic_api.modules.song import BaseSongFileType, SongFileInfo, SongFileType
-from web.src.auth import credential_from_cookies
+from web.src.auth import configured_credential_for_api, credential_from_cookies
 from web.src.deps import client_dependency
 from web.src.enum_utils import coerce_enum_value, iter_enum_members
 from web.src.response import ApiResponse, success_response
@@ -90,11 +90,18 @@ def _parse_query_song_values(values: list[str]) -> list[int] | list[str]:
     openapi_extra={"security": [COOKIE_SECURITY_REQUIREMENT]},
 )
 async def song_get_song_urls_post(
+    request: Request,
     body: SongUrlsRequest,
     client: Client = client_dependency,
     credential: Credential = credential_dependency,
 ):
     """批量获取歌曲文件链接."""
+    resolved_credential = await configured_credential_for_api(
+        request,
+        client,
+        "song.get_song_urls",
+        credential,
+    )
     default_file_type = _parse_song_file_type(body.file_type)
     return success_response(
         await client.song.get_song_urls(
@@ -108,7 +115,7 @@ async def song_get_song_urls_post(
                 for item in body.file_info
             ],
             file_type=default_file_type,
-            credential=credential,
+            credential=resolved_credential,
         )
     )
 
@@ -135,6 +142,7 @@ async def song_get_fav_num_by_id_get(
     openapi_extra={"security": [COOKIE_SECURITY_REQUIREMENT]},
 )
 async def song_get_song_url_get(
+    request: Request,
     mid: Annotated[str, Path(description="歌曲 MID.")],
     file_type: int = Query(
         default=DEFAULT_SONG_FILE_TYPE,
@@ -147,6 +155,12 @@ async def song_get_song_url_get(
     credential: Credential = credential_dependency,
 ):
     """根据单个歌曲 MID 获取文件链接."""
+    resolved_credential = await configured_credential_for_api(
+        request,
+        client,
+        "song.get_song_url",
+        credential,
+    )
     default_file_type = _parse_song_file_type(file_type)
     return success_response(
         await client.song.get_song_urls(
@@ -158,7 +172,7 @@ async def song_get_song_url_get(
                 )
             ],
             file_type=default_file_type,
-            credential=credential,
+            credential=resolved_credential,
         )
     )
 

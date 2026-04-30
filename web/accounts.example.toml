@@ -1,0 +1,13 @@
+# 复制为 web/accounts.toml 并填入账号信息。
+[[account]]
+musicid = 0
+musickey = ""
+openid = ""
+refresh_token = ""
+access_token = ""
+expired_at = 0
+unionid = ""
+str_musicid = ""
+refresh_key = ""
+musickey_create_time = 0
+key_expires_in = 0

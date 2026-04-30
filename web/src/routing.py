@@ -8,7 +8,7 @@ from pydantic import ValidationError
 
 from qqmusic_api import Client, Credential
 
-from .auth import credential_from_cookies
+from .auth import configured_credential_for_api, credential_from_cookies, credential_has_login
 from .cache import cached_response, make_cache_key
 from .deps import client_dependency
 from .query_models import AutoPathModel, AutoQueryModel
@@ -33,6 +33,11 @@ async def _call_bound_method(bound_method: Any, kwargs: dict[str, Any]) -> Any:
 def _uses_cookie_or_default_auth(spec: Any) -> bool:
     """判断契约是否需要 Cookie 或默认登录态."""
     return str(getattr(spec.auth, "value", spec.auth)) == _COOKIE_OR_DEFAULT_AUTH
+
+
+def _route_key(spec: Any) -> str:
+    """返回路由对应的 API 配置键."""
+    return f"{spec.module_attr}.{spec.method_name}"
 
 
 def _validate_endpoint_contract(
@@ -89,8 +94,13 @@ async def _execute_endpoint(
     cache_ttl = spec.cache.ttl
 
     if expose_credential:
-        resolved = credential or Credential()
-        if not resolved.musicid:
+        resolved = await configured_credential_for_api(
+            request,
+            client,
+            _route_key(spec),
+            credential or Credential(),
+        )
+        if not credential_has_login(resolved):
             raise HTTPException(status_code=401, detail="未提供有效的登录凭证")
         kwargs["credential"] = resolved
 

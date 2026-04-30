@@ -16,6 +16,7 @@ from qqmusic_api.core.exceptions import BaseError, NotLoginError
 
 from .cache import MemoryBackend, RedisBackend
 from .config import SecurityConfig, settings
+from .credential_store import ACCOUNT_CONFIG_FILE, CredentialStore, load_account_configs
 from .modules.login import router as login_router
 from .modules.mv import router as mv_router
 from .modules.singer import router as singer_router
@@ -53,8 +54,13 @@ _HTTP_ERROR_MESSAGES = {
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
     app.state.client = Client()
+    app.state.credential_config = settings.credential
+    app.state.credential_store = CredentialStore(settings.credential.store.path)
+    app.state.credential_store.initialize()
+    app.state.credential_store.sync_accounts(load_account_configs(ACCOUNT_CONFIG_FILE))
     yield
     await app.state.cache.close()
+    app.state.credential_store.close()
     await app.state.client.close()
 
 
