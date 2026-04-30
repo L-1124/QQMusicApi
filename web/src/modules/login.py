@@ -17,7 +17,7 @@ from qqmusic_api.models.login import (
 from web.src.auth import credential_from_cookies
 from web.src.deps import client_dependency
 from web.src.enum_utils import coerce_enum_value
-from web.src.response import ApiResponse, success_response
+from web.src.response import ApiResponse
 from web.src.schema import COOKIE_SECURITY_REQUIREMENT
 
 router = APIRouter(prefix="/login", tags=["login"])
@@ -183,7 +183,7 @@ async def login_check_expired(
     credential: Credential = credential_dependency,
 ):
     """检查登录凭证是否过期."""
-    return success_response(await client.login.check_expired(credential))
+    return await client.login.check_expired(credential)
 
 
 @router.get(
@@ -198,7 +198,7 @@ async def login_refresh_credential(
     credential: Credential = credential_dependency,
 ):
     """刷新登录凭证."""
-    return success_response(await client.login.refresh_credential(credential))
+    return await client.login.refresh_credential(credential)
 
 
 @router.get(
@@ -213,7 +213,7 @@ async def login_get_qrcode(
 ):
     """获取登录二维码."""
     qrcode = await client.login.get_qrcode(_parse_web_qr_login_type(login_type))
-    return success_response(_serialize_qrcode(qrcode))
+    return _serialize_qrcode(qrcode)
 
 
 @router.get(
@@ -231,7 +231,7 @@ async def login_check_qrcode(
     parsed_login_type = _parse_web_qr_login_type(login_type)
     qrcode = _build_qrcode_placeholder(identifier, parsed_login_type)
     result = await client.login.check_qrcode(qrcode)
-    return success_response(_serialize_qrcode_status(result, qrcode))
+    return _serialize_qrcode_status(result, qrcode)
 
 
 @router.get(
@@ -253,7 +253,7 @@ async def login_send_authcode(
         raise HTTPException(status_code=422, detail=exc.errors()) from exc
 
     result = await client.login.send_authcode(query.phone_value(), query.country_code)
-    return success_response(_serialize_phone_authcode(result))
+    return _serialize_phone_authcode(result)
 
 
 @router.get(
@@ -274,4 +274,4 @@ async def login_phone_authorize(
     except ValidationError as exc:
         raise HTTPException(status_code=422, detail=exc.errors()) from exc
 
-    return success_response(await client.login.phone_authorize(query.phone_value(), query.auth_code))
+    return await client.login.phone_authorize(query.phone_value(), query.auth_code)

@@ -9,8 +9,8 @@ from pydantic import ValidationError
 from qqmusic_api import Client, Credential
 
 from .auth import configured_credential_for_api, credential_from_cookies, credential_has_login
-from .cache import cached_response, make_cache_key
-from .deps import client_dependency
+from .cache import CacheBackend, cached_response, make_cache_key
+from .deps import cache_dependency, client_dependency
 from .query_models import AutoPathModel, AutoQueryModel
 from .response import success_response
 from .schema import parse_docstring
@@ -76,6 +76,7 @@ async def _execute_endpoint(
     query: AutoQueryModel,
     credential: Credential | None,
     client: Client,
+    cache: CacheBackend,
     *,
     expose_credential: bool,
 ) -> Any:
@@ -106,12 +107,12 @@ async def _execute_endpoint(
 
     if cache_ttl is not None:
         cache_key = make_cache_key(spec.path, kwargs)
-        hit = await request.app.state.cache.get(cache_key)
+        hit = await cache.get(cache_key)
         if hit is not None:
             return cached_response(hit, cache_ttl)
 
         result = success_response(await _call_bound_method(bound_method, kwargs))
-        await request.app.state.cache.set(cache_key, result, cache_ttl)
+        await cache.set(cache_key, result, cache_ttl)
         return cached_response(result, cache_ttl)
 
     return success_response(await _call_bound_method(bound_method, kwargs))
@@ -142,9 +143,10 @@ def make_endpoint(spec: Any):
             request: Request,
             query: Any,
             client: Client = client_dependency,
+            cache: CacheBackend = cache_dependency,
             credential: Credential = credential_dependency,
         ) -> Any:
-            return await _execute_endpoint(request, spec, query, credential, client, expose_credential=True)
+            return await _execute_endpoint(request, spec, query, credential, client, cache, expose_credential=True)
 
     else:
 
@@ -152,8 +154,9 @@ def make_endpoint(spec: Any):
             request: Request,
             query: Any,
             client: Client = client_dependency,
+            cache: CacheBackend = cache_dependency,
         ) -> Any:
-            return await _execute_endpoint(request, spec, query, None, client, expose_credential=False)
+            return await _execute_endpoint(request, spec, query, None, client, cache, expose_credential=False)
 
     endpoint.__name__ = f"{spec.module_attr}_{spec.method_name}"
     endpoint.__doc__ = spec.description or doc["description"]

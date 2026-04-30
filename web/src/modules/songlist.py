@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from qqmusic_api import Client, Credential
 from web.src.auth import credential_from_cookies
 from web.src.deps import client_dependency
-from web.src.response import ApiResponse, success_response
+from web.src.response import ApiResponse
 from web.src.schema import COOKIE_SECURITY_REQUIREMENT
 
 router = APIRouter(prefix="/songlist", tags=["songlist"])
@@ -30,15 +30,13 @@ async def _write_songlist_songs(
     tid: int,
     credential: Credential,
 ):
-    """调用歌单歌曲写操作并返回标准响应."""
+    """调用歌单歌曲写操作并返回业务数据."""
     method = getattr(client.songlist, method_name)
-    return success_response(
-        await method(
-            dirid=dirid,
-            song_info=song_info,
-            tid=tid,
-            credential=credential,
-        )
+    return await method(
+        dirid=dirid,
+        song_info=song_info,
+        tid=tid,
+        credential=credential,
     )
 
 

@@ -1,13 +1,14 @@
 """QQMusic API Web 应用工厂."""
 
+import inspect
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, cast
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 from fastapi.routing import APIRoute
 
 import qqmusic_api
@@ -17,12 +18,13 @@ from qqmusic_api.core.exceptions import BaseError, NotLoginError
 from .cache import MemoryBackend, RedisBackend
 from .config import SecurityConfig, settings
 from .credential_store import ACCOUNT_CONFIG_FILE, CredentialStore, load_account_configs
+from .deps import WebServices
 from .modules.login import router as login_router
 from .modules.mv import router as mv_router
 from .modules.singer import router as singer_router
 from .modules.song import router as song_router
 from .modules.songlist import router as songlist_router
-from .response import ApiResponse, ErrorResponse, error_response
+from .response import ApiResponse, ErrorResponse, error_response, success_response
 from .route_registry import AdapterKind, AuthPolicy, RouteSpec, get_route_specs
 from .routing import make_endpoint
 from .schema import COOKIE_SECURITY_REQUIREMENT, install_openapi_schema
@@ -53,15 +55,18 @@ _HTTP_ERROR_MESSAGES = {
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
-    app.state.client = Client(device_path="web/data/device.json")
-    app.state.credential_config = settings.credential
-    app.state.credential_store = CredentialStore(settings.credential.store.path)
-    app.state.credential_store.initialize()
-    app.state.credential_store.sync_accounts(load_account_configs(ACCOUNT_CONFIG_FILE))
+    services: WebServices = app.state.services
+    services.client = Client(device_path="web/data/device.json")
+    services.credential_config = settings.credential
+    services.credential_store = CredentialStore(settings.credential.store.path)
+    services.credential_store.initialize()
+    services.credential_store.sync_accounts(load_account_configs(ACCOUNT_CONFIG_FILE))
     yield
-    await app.state.cache.close()
-    app.state.credential_store.close()
-    await app.state.client.close()
+    await services.cache.close()
+    if services.credential_store is not None:
+        services.credential_store.close()
+    if services.client is not None:
+        await services.client.close()
 
 
 def _include_dynamic_routers(
@@ -124,6 +129,25 @@ def _http_exception_message(exc: HTTPException) -> str:
     return _HTTP_ERROR_MESSAGES.get(exc.status_code, "HTTP 请求错误")
 
 
+def _wrap_explicit_endpoint(route: APIRoute):
+    """为显式路由端点统一补齐标准成功响应."""
+
+    async def endpoint(**kwargs):
+        result = route.endpoint(**kwargs)
+        if inspect.isawaitable(result):
+            result = await result
+        if isinstance(result, (ApiResponse, Response)):
+            return result
+        return success_response(result)
+
+    endpoint.__name__ = route.endpoint.__name__
+    endpoint.__doc__ = route.endpoint.__doc__
+    endpoint.__module__ = route.endpoint.__module__
+    endpoint.__annotations__ = dict(getattr(route.endpoint, "__annotations__", {}))
+    cast("Any", endpoint).__signature__ = inspect.signature(route.endpoint)
+    return endpoint
+
+
 def _include_explicit_routers(
     app: FastAPI,
     route_specs: tuple[RouteSpec, ...],
@@ -145,7 +169,7 @@ def _include_explicit_routers(
                 continue
             app.add_api_route(
                 route.path,
-                route.endpoint,
+                _wrap_explicit_endpoint(route),
                 methods=[method],
                 response_model=route.response_model,
                 status_code=route.status_code,
@@ -194,10 +218,11 @@ def create_app() -> FastAPI:
     if settings.cache.backend == "redis":
         if settings.cache.redis_url is None:
             raise RuntimeError("Redis 缓存后端需要配置 redis_url")
-        app.state.cache = RedisBackend(url=settings.cache.redis_url, prefix=settings.cache.redis_prefix)
+        cache = RedisBackend(url=settings.cache.redis_url, prefix=settings.cache.redis_prefix)
     else:
-        app.state.cache = MemoryBackend(_max_size=settings.cache.memory_max_size)
+        cache = MemoryBackend(_max_size=settings.cache.memory_max_size)
 
+    app.state.services = WebServices(cache=cache, security=None)
     configure_security(app, settings.security)
     app.middleware("http")(apply_security_middleware)
     _configure_cors(app)

@@ -11,7 +11,7 @@ from qqmusic_api.modules.song import BaseSongFileType, SongFileInfo, SongFileTyp
 from web.src.auth import configured_credential_for_api, credential_from_cookies
 from web.src.deps import client_dependency
 from web.src.enum_utils import coerce_enum_value, iter_enum_members
-from web.src.response import ApiResponse, success_response
+from web.src.response import ApiResponse
 from web.src.schema import COOKIE_SECURITY_REQUIREMENT
 
 router = APIRouter(prefix="/song", tags=["song"])
@@ -103,20 +103,18 @@ async def song_get_song_urls_post(
         credential,
     )
     default_file_type = _parse_song_file_type(body.file_type)
-    return success_response(
-        await client.song.get_song_urls(
-            [
-                SongFileInfo(
-                    mid=item.mid,
-                    file_type=_parse_song_file_type(item.file_type) if item.file_type is not None else None,
-                    song_type=item.song_type,
-                    media_mid=item.media_mid,
-                )
-                for item in body.file_info
-            ],
-            file_type=default_file_type,
-            credential=resolved_credential,
-        )
+    return await client.song.get_song_urls(
+        [
+            SongFileInfo(
+                mid=item.mid,
+                file_type=_parse_song_file_type(item.file_type) if item.file_type is not None else None,
+                song_type=item.song_type,
+                media_mid=item.media_mid,
+            )
+            for item in body.file_info
+        ],
+        file_type=default_file_type,
+        credential=resolved_credential,
     )
 
 
@@ -131,7 +129,7 @@ async def song_get_fav_num_by_id_get(
     client: Client = client_dependency,
 ):
     """根据单个歌曲 ID 获取收藏数量."""
-    return success_response(await client.song.get_fav_num([song_id]))
+    return await client.song.get_fav_num([song_id])
 
 
 @router.get(
@@ -162,18 +160,16 @@ async def song_get_song_url_get(
         credential,
     )
     default_file_type = _parse_song_file_type(file_type)
-    return success_response(
-        await client.song.get_song_urls(
-            [
-                SongFileInfo(
-                    mid=mid,
-                    song_type=song_type,
-                    media_mid=media_mid,
-                )
-            ],
-            file_type=default_file_type,
-            credential=resolved_credential,
-        )
+    return await client.song.get_song_urls(
+        [
+            SongFileInfo(
+                mid=mid,
+                song_type=song_type,
+                media_mid=media_mid,
+            )
+        ],
+        file_type=default_file_type,
+        credential=resolved_credential,
     )
 
 
@@ -188,4 +184,4 @@ async def song_query_song_get(
     client: Client = client_dependency,
 ):
     """批量查询歌曲."""
-    return success_response(await client.song.query_song(_parse_query_song_values(value)))
+    return await client.song.query_song(_parse_query_song_values(value))

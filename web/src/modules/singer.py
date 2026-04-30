@@ -6,7 +6,7 @@ from fastapi import APIRouter, Path
 
 from qqmusic_api import Client
 from web.src.deps import client_dependency
-from web.src.response import ApiResponse, success_response
+from web.src.response import ApiResponse
 
 router = APIRouter(prefix="/singer", tags=["singer"])
 
@@ -22,4 +22,4 @@ async def singer_get_desc_by_mid_get(
     client: Client = client_dependency,
 ):
     """根据单个歌手 MID 获取描述信息."""
-    return success_response(await client.singer.get_desc([mid]))
+    return await client.singer.get_desc([mid])

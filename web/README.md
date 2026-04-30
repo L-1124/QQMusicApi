@@ -23,9 +23,9 @@ uv run web/run.py
 
 服务启动后，访问 [http://localhost:8000/docs](http://localhost:8000/docs) 查看自动生成的 API 文档。
 
-## 路由生成脚本
+## 路由契约与请求模型生成
 
-Web 路由声明以 `route_manifest.py` 为源数据。修改路由契约或简单请求模型后，应使用生成脚本同步自动生成区块。
+Web 路由声明以 `route_manifest.py` 为唯一契约源，运行时会直接解析该 manifest。修改简单请求模型后，应使用生成脚本同步 `query_models.py` 中的自动生成区块。
 
 ### 校验生成结果
 
@@ -37,18 +37,6 @@ uv run python scripts/generate_web_routes.py --check
 
 ```bash
 uv run python scripts/generate_web_routes.py --write
-```
-
-### 查看 manifest 草稿
-
-```bash
-uv run python scripts/generate_web_routes.py --print-manifest
-```
-
-### 反向写入 manifest
-
-```bash
-uv run python scripts/generate_web_routes.py --write-manifest
 ```
 
 ## 新增自动路由示例

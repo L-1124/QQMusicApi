@@ -6,7 +6,7 @@ from fastapi import APIRouter, Path, Query
 
 from qqmusic_api import Client
 from web.src.deps import client_dependency
-from web.src.response import ApiResponse, success_response
+from web.src.response import ApiResponse
 
 router = APIRouter(prefix="/mv", tags=["mv"])
 
@@ -22,7 +22,7 @@ async def mv_get_mv_urls_get(
     client: Client = client_dependency,
 ):
     """批量获取 MV 播放链接."""
-    return success_response(await client.mv.get_mv_urls(vids))
+    return await client.mv.get_mv_urls(vids)
 
 
 @router.get(
@@ -36,4 +36,4 @@ async def mv_get_mv_url_get(
     client: Client = client_dependency,
 ):
     """根据单个 MV VID 获取播放链接."""
-    return success_response(await client.mv.get_mv_urls([vid]))
+    return await client.mv.get_mv_urls([vid])

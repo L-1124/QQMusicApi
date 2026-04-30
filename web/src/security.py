@@ -13,7 +13,19 @@ from starlette.middleware.base import RequestResponseEndpoint
 from starlette.responses import Response
 
 from .config import SecurityConfig
+from .deps import get_security_services
 from .response import error_response
+
+
+@dataclass(frozen=True)
+class SecurityServices:
+    """Web 安全中间件共享组件."""
+
+    config: SecurityConfig
+    client_ip_resolver: "ClientIpResolver"
+    access_policy: "AccessPolicy"
+    rate_limiter: "InMemoryRateLimiter"
+    concurrency_limiter: "InMemoryConcurrencyLimiter"
 
 
 class ClientIpHeaderError(ValueError):
@@ -200,22 +212,23 @@ class InMemoryConcurrencyLimiter:
 
 async def apply_security_middleware(request: Request, call_next: RequestResponseEndpoint) -> Response:
     """执行客户端 IP 解析、访问控制与限流."""
-    config: SecurityConfig = request.app.state.security_config
+    services = get_security_services(request)
+    config: SecurityConfig = services.config
     if not config.enabled:
         return await call_next(request)
 
-    resolver: ClientIpResolver = request.app.state.client_ip_resolver
+    resolver: ClientIpResolver = services.client_ip_resolver
     try:
         client_ip = resolver.resolve(request)
     except ClientIpHeaderError:
         return error_response(status_code=400, msg="客户端 IP 头无效")
 
-    policy: AccessPolicy = request.app.state.access_policy
+    policy: AccessPolicy = services.access_policy
     if not policy.allows(client_ip):
         return error_response(status_code=403, msg="IP 不允许访问")
 
     if config.rate_limit_enabled:
-        limiter: InMemoryRateLimiter = request.app.state.rate_limiter
+        limiter: InMemoryRateLimiter = services.rate_limiter
         limit_result = limiter.check(client_ip)
         if not limit_result.allowed:
             return error_response(status_code=429, msg="请求过于频繁", headers=limit_result.headers)
@@ -223,7 +236,7 @@ async def apply_security_middleware(request: Request, call_next: RequestResponse
     if not config.concurrency_limit_enabled:
         return await call_next(request)
 
-    concurrency_limiter: InMemoryConcurrencyLimiter = request.app.state.concurrency_limiter
+    concurrency_limiter: InMemoryConcurrencyLimiter = services.concurrency_limiter
     acquired = await concurrency_limiter.acquire()
     if not acquired:
         return error_response(
@@ -239,16 +252,19 @@ async def apply_security_middleware(request: Request, call_next: RequestResponse
 
 def configure_security(app: FastAPI, config: SecurityConfig) -> None:
     """在 FastAPI 应用状态中安装安全组件."""
-    app.state.security_config = config
-    app.state.client_ip_resolver = ClientIpResolver(config.trusted_proxy_ips, config.client_ip_header)
-    app.state.access_policy = AccessPolicy(
-        ip_list_mode=config.ip_list_mode,
-        ip_allowlist=config.ip_allowlist,
-        ip_denylist=config.ip_denylist,
+    security = SecurityServices(
+        config=config,
+        client_ip_resolver=ClientIpResolver(config.trusted_proxy_ips, config.client_ip_header),
+        access_policy=AccessPolicy(
+            ip_list_mode=config.ip_list_mode,
+            ip_allowlist=config.ip_allowlist,
+            ip_denylist=config.ip_denylist,
+        ),
+        rate_limiter=InMemoryRateLimiter(
+            capacity=config.rate_limit_capacity,
+            window_seconds=config.rate_limit_window_seconds,
+            exempt_ips=config.rate_limit_exempt_ips,
+        ),
+        concurrency_limiter=InMemoryConcurrencyLimiter(config.concurrency_limit),
     )
-    app.state.rate_limiter = InMemoryRateLimiter(
-        capacity=config.rate_limit_capacity,
-        window_seconds=config.rate_limit_window_seconds,
-        exempt_ips=config.rate_limit_exempt_ips,
-    )
-    app.state.concurrency_limiter = InMemoryConcurrencyLimiter(config.concurrency_limit)
+    app.state.services.security = security

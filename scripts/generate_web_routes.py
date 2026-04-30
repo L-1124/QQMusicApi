@@ -5,17 +5,12 @@ import importlib
 import inspect
 import json
 import re
-from dataclasses import dataclass
 from pathlib import Path
-from textwrap import dedent
 from typing import Any
 
 _MANIFEST_PATH = Path("web/src/route_manifest.py")
-_ROUTE_REGISTRY_PATH = Path("web/src/route_registry.py")
 _QUERY_MODELS_PATH = Path("web/src/query_models.py")
 
-_ROUTE_IMPORTS_MARKER = "GENERATED WEB ROUTE IMPORTS"
-_ROUTE_DECLARATIONS_MARKER = "GENERATED WEB ROUTES"
 _REQUEST_MODELS_MARKER = "GENERATED WEB REQUEST MODELS"
 _ROUTE_TEMPLATE_RE = re.compile(r"{([^{}]+)}")
 
@@ -124,191 +119,6 @@ _MANUAL_QUERY_MODELS = {
     "ValueQuery",
 }
 
-_REQUEST_MODEL_SPECS: tuple[dict[str, Any], ...] = (
-    {
-        "name": "ValuePath",
-        "base": "AutoPathModel",
-        "docstring": "按 ID 或 MID 查询的通用 Path.",
-        "fields": (("value", "int | str", None, "资源 ID 或 MID."),),
-    },
-    {
-        "name": "SongIdPath",
-        "base": "AutoPathModel",
-        "docstring": "歌曲 ID Path.",
-        "fields": (("songid", "int", None, "歌曲 ID."),),
-    },
-    {
-        "name": "MidPath",
-        "base": "AutoPathModel",
-        "docstring": "MID Path.",
-        "fields": (("mid", "str", None, "资源 MID."),),
-    },
-    {
-        "name": "SonglistIdPath",
-        "base": "AutoPathModel",
-        "docstring": "歌单 ID Path.",
-        "fields": (("songlist_id", "int", None, "歌单 ID."),),
-    },
-    {
-        "name": "TopIdPath",
-        "base": "AutoPathModel",
-        "docstring": "排行榜 ID Path.",
-        "fields": (("top_id", "int", None, "排行榜 ID."),),
-    },
-    {
-        "name": "BizIdPath",
-        "base": "AutoPathModel",
-        "docstring": "业务歌曲 ID Path.",
-        "fields": (("biz_id", "int", None, "业务歌曲 ID."),),
-    },
-    {
-        "name": "UinPath",
-        "base": "AutoPathModel",
-        "docstring": "用户 UIN Path.",
-        "fields": (("uin", "int", None, "用户 UIN."),),
-    },
-    {
-        "name": "EuinPath",
-        "base": "AutoPathModel",
-        "docstring": "加密用户 ID Path.",
-        "fields": (("euin", "str", None, "加密用户 ID."),),
-    },
-    {
-        "name": "AlbumSongPageQuery",
-        "base": "AutoQueryModel",
-        "docstring": "专辑歌曲分页 Query.",
-        "fields": (("num", "int", "10", "返回数量."), ("page", "int", "1", "页码.")),
-    },
-    {
-        "name": "CommentListPageQuery",
-        "base": "AutoQueryModel",
-        "docstring": "评论列表分页 Query.",
-        "fields": (
-            ("page_num", "int", "1", "页码."),
-            ("page_size", "int", "15", "每页数量."),
-            ("last_comment_seq_no", "str", '""', "上一页最后一条评论序号."),
-        ),
-    },
-    {
-        "name": "CommentMomentPageQuery",
-        "base": "AutoQueryModel",
-        "docstring": "弹幕评论分页 Query.",
-        "fields": (
-            ("page_size", "int", "15", "每页数量."),
-            ("last_comment_seq_no", "str", '""', "上一页最后一条评论序号."),
-        ),
-    },
-    {
-        "name": "LyricOptionsQuery",
-        "base": "AutoQueryModel",
-        "docstring": "歌词选项 Query.",
-        "fields": (
-            ("qrc", "bool", "False", "是否返回逐字歌词."),
-            ("trans", "bool", "False", "是否返回翻译歌词."),
-            ("roma", "bool", "False", "是否返回罗马音歌词."),
-        ),
-    },
-    {
-        "name": "SingerPageQuery",
-        "base": "AutoQueryModel",
-        "docstring": "歌手资源分页 Query.",
-        "fields": (("number", "int", "10", "返回数量."), ("begin", "int", "0", "分页起始位置.")),
-    },
-    {
-        "name": "SingerSimilarPageQuery",
-        "base": "AutoQueryModel",
-        "docstring": "相似歌手分页 Query.",
-        "fields": (("number", "int", "10", "返回数量."),),
-    },
-    {
-        "name": "SingerTabPageQuery",
-        "base": "AutoQueryModel",
-        "docstring": "歌手主页 Tab 分页 Query.",
-        "fields": (("page", "int", "1", "页码."), ("num", "int", "10", "返回数量.")),
-    },
-    {
-        "name": "SongRelatedMvPageQuery",
-        "base": "AutoQueryModel",
-        "docstring": "歌曲相关 MV 分页 Query.",
-        "fields": (("last_mvid", "str | None", "None", "上一页最后一个 MV ID."),),
-    },
-    {
-        "name": "SongRelatedSonglistPageQuery",
-        "base": "AutoQueryModel",
-        "docstring": "歌曲相关歌单分页 Query.",
-        "fields": (("last", "list[int] | None", "None", "上一页游标."),),
-    },
-    {
-        "name": "SonglistDetailOptionsQuery",
-        "base": "AutoQueryModel",
-        "docstring": "歌单详情选项 Query.",
-        "fields": (
-            ("dirid", "int", "0", "目录 ID."),
-            ("num", "int", "10", "返回数量."),
-            ("page", "int", "1", "页码."),
-            ("onlysong", "bool", "False", "是否仅返回歌曲."),
-            ("tag", "bool", "True", "是否返回标签."),
-            ("userinfo", "bool", "True", "是否返回用户信息."),
-        ),
-    },
-    {
-        "name": "TopDetailOptionsQuery",
-        "base": "AutoQueryModel",
-        "docstring": "排行榜详情选项 Query.",
-        "fields": (
-            ("num", "int", "10", "返回数量."),
-            ("page", "int", "1", "页码."),
-            ("tag", "bool", "True", "是否返回标签."),
-        ),
-    },
-    {
-        "name": "UserPageQuery",
-        "base": "AutoQueryModel",
-        "docstring": "当前用户分页列表 Query.",
-        "fields": (("page", "int", "1", "页码."), ("num", "int", "10", "返回数量.")),
-    },
-)
-
-
-@dataclass(frozen=True)
-class FieldContract:
-    """自动生成请求模型字段契约."""
-
-    name: str
-    annotation: str
-    default: str | None
-    description: str
-
-
-@dataclass(frozen=True)
-class RequestModelContract:
-    """自动生成请求模型契约."""
-
-    name: str
-    base: str
-    docstring: str
-    fields: tuple[FieldContract, ...]
-
-
-@dataclass(frozen=True)
-class RouteContract:
-    """Web 路由源数据契约."""
-
-    module_attr: str
-    module_cls: str | None
-    method_name: str
-    path: str | None = None
-    methods: tuple[str, ...] = ("GET",)
-    response_model: str | None = None
-    cache: str | None = None
-    query_model: str | None = None
-    path_model: str | None = None
-    adapter: str = "auto"
-    auth: str = "none"
-    router_name: str | None = None
-    summary: str | None = None
-    description: str | None = None
-
 
 def _type_name(value: Any) -> str | None:
     """返回稳定的类型名称."""
@@ -358,218 +168,10 @@ def _literal(value: Any) -> str:
     return repr(value)
 
 
-def _format_call(class_name: str, fields: dict[str, Any], indent: str = "    ") -> str:
-    """格式化 dataclass 构造调用."""
-    lines = [f"{indent}{class_name}("]
-    for key, value in fields.items():
-        if value is None and key not in {"module_cls", "default"}:
-            continue
-        lines.append(f"{indent}    {key}={_literal(value)},")
-    lines.append(f"{indent}),")
-    return "\n".join(lines)
-
-
-def _request_model_contracts() -> tuple[RequestModelContract, ...]:
-    """返回简单请求模型源数据."""
-    contracts: list[RequestModelContract] = []
-    for spec in _REQUEST_MODEL_SPECS:
-        fields = tuple(FieldContract(*field) for field in spec["fields"])
-        contracts.append(
-            RequestModelContract(
-                name=spec["name"],
-                base=spec["base"],
-                docstring=spec["docstring"],
-                fields=fields,
-            )
-        )
-    return tuple(contracts)
-
-
-def _render_manifest(route_contracts: tuple[RouteContract, ...]) -> str:
-    """渲染 route manifest 源文件."""
-    routes = "\n".join(
-        f"        {line}"
-        for contract in route_contracts
-        for line in _format_call("RouteContract", contract.__dict__).splitlines()
-    )
-    model_blocks: list[str] = []
-    for model in _request_model_contracts():
-        field_lines = [
-            _format_call(
-                "FieldContract",
-                {
-                    "name": field.name,
-                    "annotation": field.annotation,
-                    "default": field.default,
-                    "description": field.description,
-                },
-                indent="        ",
-            )
-            for field in model.fields
-        ]
-        model_blocks.append(
-            _format_call(
-                "RequestModelContract",
-                {
-                    "name": model.name,
-                    "base": model.base,
-                    "docstring": model.docstring,
-                    "fields": f"__FIELDS_{model.name}__",
-                },
-            ).replace(
-                f'fields="__FIELDS_{model.name}__",',
-                f"fields=(\n{chr(10).join(field_lines)}\n        ),",
-            )
-        )
-    models = "\n".join(f"        {line}" for block in model_blocks for line in block.splitlines())
-    return dedent(
-        f'''\
-        """Web 路由契约源数据."""
-
-        from dataclasses import dataclass
-
-
-        @dataclass(frozen=True)
-        class RouteContract:
-            """Web 路由源数据契约."""
-
-            module_attr: str
-            module_cls: str | None
-            method_name: str
-            path: str | None = None
-            methods: tuple[str, ...] = ("GET",)
-            response_model: str | None = None
-            cache: str | None = None
-            query_model: str | None = None
-            path_model: str | None = None
-            adapter: str = "auto"
-            auth: str = "none"
-            router_name: str | None = None
-            summary: str | None = None
-            description: str | None = None
-
-
-        @dataclass(frozen=True)
-        class FieldContract:
-            """自动生成请求模型字段契约."""
-
-            name: str
-            annotation: str
-            default: str | None
-            description: str
-
-
-        @dataclass(frozen=True)
-        class RequestModelContract:
-            """自动生成请求模型契约."""
-
-            name: str
-            base: str
-            docstring: str
-            fields: tuple[FieldContract, ...]
-
-
-        ROUTE_CONTRACTS: tuple[RouteContract, ...] = (
-        {routes}
-        )
-
-
-        REQUEST_MODEL_CONTRACTS: tuple[RequestModelContract, ...] = (
-        {models}
-        )
-        '''
-    )
-
-
 def _load_manifest() -> tuple[tuple[Any, ...], tuple[Any, ...]]:
     """读取当前 manifest 契约."""
     module = importlib.import_module("web.src.route_manifest")
     return module.ROUTE_CONTRACTS, module.REQUEST_MODEL_CONTRACTS
-
-
-def _group_imports(symbols: set[str], registry: dict[str, tuple[str, str]]) -> list[str]:
-    """按模块分组生成 import 语句."""
-    grouped: dict[str, list[str]] = {}
-    for symbol in sorted(symbols):
-        if symbol in {"Any", "bool"}:
-            continue
-        module_name, import_name = registry[symbol]
-        grouped.setdefault(module_name, []).append(import_name)
-    lines: list[str] = []
-    for module_name in sorted(grouped):
-        names = sorted(grouped[module_name])
-        if len(names) == 1:
-            lines.append(f"from {module_name} import {names[0]}")
-        else:
-            lines.append(f"from {module_name} import (")
-            lines.extend(f"    {name}," for name in names)
-            lines.append(")")
-    return lines
-
-
-def _render_route_imports(route_contracts: tuple[Any, ...]) -> str:
-    """渲染 route_registry 生成 import 区块."""
-    module_symbols = {contract.module_cls for contract in route_contracts if contract.module_cls} | {"ApiModule"}
-    response_symbols = {contract.response_model for contract in route_contracts if contract.response_model} | {"Client"}
-    request_symbols = {
-        symbol
-        for contract in route_contracts
-        for symbol in (contract.query_model, contract.path_model)
-        if symbol is not None
-    }
-    module_registry = {class_name: (module_name, class_name) for module_name, class_name in _MODULE_IMPORTS.values()}
-    module_registry["ApiModule"] = ("qqmusic_api.modules._base", "ApiModule")
-    lines = [
-        *_group_imports(set(module_symbols), module_registry),
-        *_group_imports(set(response_symbols), _RESPONSE_IMPORTS),
-        "from web.src.query_models import (",
-        "    AutoPathModel,",
-        "    AutoQueryModel,",
-    ]
-    lines.extend(f"    {name}," for name in sorted(request_symbols))
-    lines.append(")")
-    return "\n".join(lines)
-
-
-def _symbol(value: str | None) -> str:
-    """渲染可空符号引用."""
-    return "None" if value is None else value
-
-
-def _render_route_declaration(contract: Any) -> str:
-    """渲染单条 RouteDeclaration."""
-    lines = ["    RouteDeclaration("]
-    lines.append(f"        module_attr={_literal(contract.module_attr)},")
-    lines.append(f"        module_cls={_symbol(contract.module_cls)},")
-    lines.append(f"        method_name={_literal(contract.method_name)},")
-    optional_values = {
-        "path": contract.path,
-        "methods": contract.methods if contract.methods != ("GET",) else None,
-        "response_model": contract.response_model,
-        "cache": contract.cache,
-        "query_model": contract.query_model,
-        "path_model": contract.path_model,
-        "adapter": "EXPLICIT" if contract.adapter == "explicit" else None,
-        "auth": "AUTH" if contract.auth == "cookie_or_default" else None,
-        "router_name": contract.router_name,
-        "summary": contract.summary,
-        "description": contract.description,
-    }
-    for field_name, value in optional_values.items():
-        if value is None:
-            continue
-        if field_name in {"response_model", "cache", "query_model", "path_model", "adapter", "auth"}:
-            lines.append(f"        {field_name}={value},")
-        else:
-            lines.append(f"        {field_name}={_literal(value)},")
-    lines.append("    ),")
-    return "\n".join(lines)
-
-
-def _render_route_declarations(route_contracts: tuple[Any, ...]) -> str:
-    """渲染 route_registry 路由声明区块."""
-    declarations = "\n".join(_render_route_declaration(contract) for contract in route_contracts)
-    return f"ROUTE_CANDIDATES: tuple[RouteDeclaration, ...] = (\n{declarations}\n)"
 
 
 def _render_query_models_block(model_contracts: tuple[Any, ...]) -> str:
@@ -710,24 +312,13 @@ def _check_models() -> list[str]:
 
 def _check_generated_fresh() -> list[str]:
     """校验生成区块与 manifest 源数据一致."""
-    route_contracts, model_contracts = _load_manifest()
-    expected_registry = _replace_generated_block(
-        _replace_generated_block(
-            _ROUTE_REGISTRY_PATH.read_text(encoding="utf-8"),
-            _ROUTE_IMPORTS_MARKER,
-            _render_route_imports(route_contracts),
-        ),
-        _ROUTE_DECLARATIONS_MARKER,
-        _render_route_declarations(route_contracts),
-    )
+    _, model_contracts = _load_manifest()
     expected_models = _replace_generated_block(
         _QUERY_MODELS_PATH.read_text(encoding="utf-8"),
         _REQUEST_MODELS_MARKER,
         _render_query_models_block(model_contracts),
     )
     errors: list[str] = []
-    if expected_registry != _ROUTE_REGISTRY_PATH.read_text(encoding="utf-8"):
-        errors.append("web/src/route_registry.py 自动生成区块不是最新, 请运行 --write。")
     if expected_models != _QUERY_MODELS_PATH.read_text(encoding="utf-8"):
         errors.append("web/src/query_models.py 自动生成区块不是最新, 请运行 --write。")
     return errors
@@ -735,37 +326,13 @@ def _check_generated_fresh() -> list[str]:
 
 def write_generated_files() -> None:
     """写入自动生成区块."""
-    route_contracts, model_contracts = _load_manifest()
-    registry = _ROUTE_REGISTRY_PATH.read_text(encoding="utf-8")
-    registry = _replace_generated_block(registry, _ROUTE_IMPORTS_MARKER, _render_route_imports(route_contracts))
-    registry = _replace_generated_block(
-        registry, _ROUTE_DECLARATIONS_MARKER, _render_route_declarations(route_contracts)
-    )
-    _ROUTE_REGISTRY_PATH.write_text(registry, encoding="utf-8")
-
+    _, model_contracts = _load_manifest()
     query_models = _QUERY_MODELS_PATH.read_text(encoding="utf-8")
     query_models = _replace_generated_block(
         query_models, _REQUEST_MODELS_MARKER, _render_query_models_block(model_contracts)
     )
     _QUERY_MODELS_PATH.write_text(query_models, encoding="utf-8")
-    print("Wrote generated Web route blocks")
-
-
-def print_manifest() -> None:
-    """打印 route manifest 源数据草稿."""
-    from web.src.route_registry import get_route_specs
-
-    route_contracts = tuple(RouteContract(**_route_contract_kwargs(spec)) for spec in get_route_specs())
-    print(_render_manifest(route_contracts), end="")
-
-
-def write_manifest() -> None:
-    """写入 route manifest 源数据."""
-    from web.src.route_registry import get_route_specs
-
-    route_contracts = tuple(RouteContract(**_route_contract_kwargs(spec)) for spec in get_route_specs())
-    _MANIFEST_PATH.write_text(_render_manifest(route_contracts), encoding="utf-8")
-    print(f"Wrote {_MANIFEST_PATH}")
+    print("Wrote generated Web request model block")
 
 
 def check() -> int:
@@ -785,19 +352,11 @@ def main() -> int:
     """命令行入口."""
     parser = argparse.ArgumentParser(description="生成或校验 Web 路由声明代码。")
     parser.add_argument("--check", action="store_true", help="校验生成内容与契约一致。")
-    parser.add_argument("--write", action="store_true", help="写入自动生成区块。")
-    parser.add_argument("--print-manifest", action="store_true", help="根据当前 route_registry 打印 manifest 源数据。")
-    parser.add_argument("--write-manifest", action="store_true", help="根据当前 route_registry 写入 manifest 源数据。")
+    parser.add_argument("--write", action="store_true", help="写入自动生成请求模型区块。")
     args = parser.parse_args()
-    selected = sum(bool(value) for value in (args.check, args.write, args.print_manifest, args.write_manifest))
+    selected = sum(bool(value) for value in (args.check, args.write))
     if selected > 1:
         parser.error("只能选择一个操作。")
-    if args.print_manifest:
-        print_manifest()
-        return 0
-    if args.write_manifest:
-        write_manifest()
-        return 0
     if args.write:
         write_generated_files()
         return 0

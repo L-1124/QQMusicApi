@@ -5,6 +5,7 @@ from fastapi import HTTPException, Request
 from qqmusic_api import Client, Credential
 
 from .credential_store import CredentialStore, credential_needs_refresh
+from .deps import get_credential_config, get_credential_store
 
 
 def _parse_cookie_int(value: str) -> int:
@@ -42,11 +43,11 @@ async def configured_credential_for_api(
     if credential_has_login(cookie_credential):
         return cookie_credential
 
-    credential_config = getattr(request.app.state, "credential_config", None)
+    credential_config = get_credential_config(request)
     if credential_config is None or not credential_config.api_enabled(api_key):
         return cookie_credential
 
-    store = getattr(request.app.state, "credential_store", None)
+    store = get_credential_store(request)
     if not isinstance(store, CredentialStore):
         return cookie_credential
 
