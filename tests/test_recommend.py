@@ -5,7 +5,7 @@ from qqmusic_api import Client
 
 async def test_get_home_feed(client: Client) -> None:
     """测试获取主页推荐响应模型."""
-    result = await client.recommend.get_home_feed()
+    result = await client.recommend.get_home_feed(page=1, direction=0, s_num=0, v_cache=[])
     assert result.shelves
     assert result.shelves[0].id > 0
 
@@ -25,7 +25,7 @@ async def test_get_radar_recommend(client: Client) -> None:
 
 async def test_get_recommend_songlist(client: Client) -> None:
     """测试获取推荐歌单响应模型."""
-    result = await client.recommend.get_recommend_songlist()
+    result = await client.recommend.get_recommend_songlist(page=1, num=25)
     assert result.songlists
     assert result.songlists[0].title
 

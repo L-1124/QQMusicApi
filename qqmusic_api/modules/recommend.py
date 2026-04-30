@@ -23,13 +23,28 @@ from ._base import ApiModule
 class RecommendApi(ApiModule):
     """推荐 API."""
 
-    def get_home_feed(self):
-        """获取主页推荐."""
-        data = {
-            "direction": 0,
-            "page": 1,
-            "s_num": 0,
+    def get_home_feed(
+        self,
+        page: int = 1,
+        direction: int = 0,
+        s_num: int = 0,
+        v_cache: list[str] | None = None,
+    ):
+        """获取主页推荐.
+
+        Args:
+            page: 页码.
+            direction: 刷新方向.
+            s_num: 已加载的卡片数量.
+            v_cache: 已曝光的卡片 ID 缓存, 防止重复推荐.
+        """
+        data: dict[str, Any] = {
+            "direction": direction,
+            "page": page,
+            "s_num": s_num,
         }
+        if v_cache is not None:
+            data["v_cache"] = v_cache
 
         def _build_home_feed_next_params(
             params: PaginationParams,
@@ -106,9 +121,14 @@ class RecommendApi(ApiModule):
             ),
         )
 
-    def get_recommend_songlist(self):
-        """获取推荐歌单."""
-        data = {"From": 0, "Size": 25}
+    def get_recommend_songlist(self, page: int = 1, num: int = 25):
+        """获取推荐歌单.
+
+        Args:
+            page: 页码.
+            num: 返回推荐歌单数量.
+        """
+        data = {"From": num * (page - 1), "Size": num}
         return self._build_request(
             "music.playlist.PlaylistSquare",
             "GetRecommendFeed",

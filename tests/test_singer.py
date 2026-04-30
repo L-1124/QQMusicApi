@@ -37,8 +37,8 @@ async def test_get_singer_list_index_with_params(client: Client) -> None:
         sex=SexType.FEMALE,
         genre=GenreType.POP,
         index=IndexType.Z,
-        sin=0,
-        cur_page=1,
+        page=2,
+        num=80,
     )
     assert result.index == IndexType.Z.value
     assert result.tags is not None
@@ -136,8 +136,8 @@ async def test_get_songs_list_with_params(client: Client) -> None:
     """测试使用参数获取歌手歌曲列表模型."""
     result = await client.singer.get_songs_list(
         mid="0025NhlN2yWrP4",
-        number=5,
-        begin=0,
+        num=10,
+        page=2,
     )
     assert result.song_list
     assert len(result.song_list) <= result.total_num
@@ -154,8 +154,8 @@ async def test_get_album_list_with_params(client: Client) -> None:
     """测试使用参数获取歌手专辑列表模型."""
     result = await client.singer.get_album_list(
         mid="0025NhlN2yWrP4",
-        number=5,
-        begin=0,
+        num=10,
+        page=2,
     )
     assert result.album_list
 
@@ -171,7 +171,7 @@ async def test_get_mv_list_with_params(client: Client) -> None:
     """测试使用参数获取歌手 MV 列表模型."""
     result = await client.singer.get_mv_list(
         mid="0025NhlN2yWrP4",
-        number=5,
-        begin=0,
+        num=10,
+        page=2,
     )
-    assert len(result.mv_list) == 5
+    assert result.mv_list

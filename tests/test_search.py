@@ -27,7 +27,7 @@ async def test_quick_search(client: Client) -> None:
 @pytest.mark.parametrize("page", [1, 2])
 async def test_general_search(client: Client, page: int) -> None:
     """测试综合搜索."""
-    result = await client.search.general_search("周杰伦", page=page)
+    result = await client.search.general_search("周杰伦", page=page, num=15, searchid="dummy")
     assert result.song.items is not None
     assert result.related.items is not None
 

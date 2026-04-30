@@ -155,8 +155,8 @@ class SingerApi(ApiModule):
         sex: int | SexType = SexType.ALL,
         genre: int | GenreType = GenreType.ALL,
         index: int | IndexType = IndexType.ALL,
-        sin: int = 0,
-        cur_page: int = 1,
+        page: int = 1,
+        num: int = 80,
     ):
         """获取按索引分页的歌手列表原始数据.
 
@@ -165,8 +165,8 @@ class SingerApi(ApiModule):
             sex: 性别类型.
             genre: 风格类型.
             index: 首字母索引.
-            sin: 起始位置.
-            cur_page: 当前页码.
+            page: 页码.
+            num: 每页返回数量.
         """
         return self._build_request(
             module="music.musichallSinger.SingerList",
@@ -176,8 +176,8 @@ class SingerApi(ApiModule):
                 "sex": int(SexType(sex)),
                 "genre": int(GenreType(genre)),
                 "index": int(IndexType(index)),
-                "sin": sin,
-                "cur_page": cur_page,
+                "sin": (page - 1) * num,
+                "cur_page": page,
             },
             response_model=SingerIndexPageResponse,
             pager_meta=PagerMeta(
@@ -273,18 +273,18 @@ class SingerApi(ApiModule):
             response_model=SimilarSingerResponse,
         )
 
-    def get_songs_list(self, mid: str, number: int = 10, begin: int = 0):
+    def get_songs_list(self, mid: str, num: int = 10, page: int = 1):
         """获取歌手的歌曲列表.
 
         Args:
             mid: 歌手 MID.
-            number: 返回歌曲数量.
-            begin: 分页起始位置.
+            num: 返回歌曲数量.
+            page: 分页页码.
         """
         return self._build_request(
             module="musichall.song_list_server",
             method="GetSingerSongList",
-            param={"singerMid": mid, "order": 1, "number": number, "begin": begin},
+            param={"singerMid": mid, "order": 1, "number": num, "begin": (page - 1) * num},
             response_model=SingerSongListResponse,
             pager_meta=PagerMeta(
                 strategy=OffsetStrategy(offset_key="begin", page_size_key="number"),
@@ -292,18 +292,18 @@ class SingerApi(ApiModule):
             ),
         )
 
-    def get_album_list(self, mid: str, number: int = 10, begin: int = 0):
+    def get_album_list(self, mid: str, num: int = 10, page: int = 1):
         """获取歌手的专辑列表.
 
         Args:
             mid: 歌手 MID.
-            number: 返回专辑数量.
-            begin: 分页起始位置.
+            num: 返回专辑数量.
+            page: 分页页码.
         """
         return self._build_request(
             module="music.musichallAlbum.AlbumListServer",
             method="GetAlbumList",
-            param={"singerMid": mid, "order": 1, "number": number, "begin": begin},
+            param={"singerMid": mid, "order": 1, "number": num, "begin": (page - 1) * num},
             response_model=SingerAlbumListResponse,
             pager_meta=PagerMeta(
                 strategy=OffsetStrategy(offset_key="begin", page_size_key="number"),
@@ -311,18 +311,18 @@ class SingerApi(ApiModule):
             ),
         )
 
-    def get_mv_list(self, mid: str, number: int = 10, begin: int = 0):
+    def get_mv_list(self, mid: str, num: int = 10, page: int = 1):
         """获取歌手 MV 列表数据.
 
         Args:
             mid: 歌手 MID.
-            number: 返回数量.
-            begin: 起始位置.
+            num: 返回数量.
+            page: 分页页码.
         """
         return self._build_request(
             module="MvService.MvInfoProServer",
             method="GetSingerMvList",
-            param={"singermid": mid, "order": 1, "count": number, "start": begin},
+            param={"singermid": mid, "order": 1, "count": num, "start": (page - 1) * num},
             response_model=SingerMvListResponse,
             pager_meta=PagerMeta(
                 strategy=OffsetStrategy(offset_key="start", page_size_key="count"),

@@ -84,6 +84,9 @@ class SearchApi(ApiModule):
         self,
         keyword: str,
         page: int = 1,
+        num: int = 15,
+        searchid: str | None = None,
+        page_start: dict[str, Any] | None = None,
         *,
         highlight: bool = True,
     ):
@@ -92,20 +95,27 @@ class SearchApi(ApiModule):
         Args:
             keyword: 关键词.
             page: 页码.
+            num: 每页返回数量.
+            searchid: 搜索会话 ID.
+            page_start: 上一页分页游标对象.
             highlight: 是否高亮关键词.
         """
+        param: dict[str, Any] = {
+            "searchid": searchid or get_searchID(),
+            "search_type": 100,
+            "page_num": num,
+            "query": keyword,
+            "page_id": page,
+            "highlight": highlight,
+            "grp": True,
+        }
+        if page_start is not None:
+            param["page_start"] = page_start
+
         return self._build_request(
             "music.adaptor.SearchAdaptor",
             "do_search_v2",
-            {
-                "searchid": get_searchID(),
-                "search_type": 100,
-                "page_num": 15,
-                "query": keyword,
-                "page_id": page,
-                "highlight": highlight,
-                "grp": True,
-            },
+            param,
             response_model=GeneralSearchResponse,
             pager_meta=PagerMeta(
                 strategy=MultiFieldContinuationStrategy(
@@ -130,6 +140,7 @@ class SearchApi(ApiModule):
         search_type: int | SearchType = SearchType.SONG,
         num: int = 10,
         page: int = 1,
+        searchid: str | None = None,
         *,
         highlight: bool = True,
     ):
@@ -140,6 +151,7 @@ class SearchApi(ApiModule):
             search_type: 搜索类型.
             num: 返回结果数量.
             page: 页码.
+            searchid: 搜索会话 ID.
             highlight: 是否高亮关键词.
         """
         normalized_search_type = int(SearchType(search_type))
@@ -147,7 +159,7 @@ class SearchApi(ApiModule):
             "music.search.SearchCgiService",
             "DoSearchForQQMusicMobile",
             {
-                "searchid": get_searchID(),
+                "searchid": searchid or get_searchID(),
                 "query": keyword,
                 "search_type": normalized_search_type,
                 "num_per_page": num,
