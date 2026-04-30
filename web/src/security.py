@@ -3,10 +3,10 @@
 import asyncio
 import math
 import time
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass
 from ipaddress import ip_address, ip_network
-from typing import Literal
+from typing import Any, Literal, cast
 
 from fastapi import FastAPI, Request
 from starlette.middleware.base import RequestResponseEndpoint
@@ -210,6 +210,18 @@ class InMemoryConcurrencyLimiter:
                 self._active -= 1
 
 
+async def _release_after_body(
+    body_iterator: AsyncIterator[bytes],
+    limiter: InMemoryConcurrencyLimiter,
+) -> AsyncIterator[bytes]:
+    """在响应体发送结束后释放并发名额."""
+    try:
+        async for chunk in body_iterator:
+            yield chunk
+    finally:
+        await limiter.release()
+
+
 async def apply_security_middleware(request: Request, call_next: RequestResponseEndpoint) -> Response:
     """执行客户端 IP 解析、访问控制与限流."""
     services = get_security_services(request)
@@ -245,9 +257,13 @@ async def apply_security_middleware(request: Request, call_next: RequestResponse
             headers={"Retry-After": str(config.concurrency_retry_after_seconds)},
         )
     try:
-        return await call_next(request)
-    finally:
+        response = await call_next(request)
+    except Exception:
         await concurrency_limiter.release()
+        raise
+    response_body = cast("Any", response).body_iterator
+    cast("Any", response).body_iterator = _release_after_body(response_body, concurrency_limiter)
+    return response
 
 
 def configure_security(app: FastAPI, config: SecurityConfig) -> None:

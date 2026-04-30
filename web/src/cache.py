@@ -1,7 +1,6 @@
 """Web 层缓存抽象与内存/Redis 实现."""
 
 import hashlib
-import logging
 import time
 from dataclasses import dataclass, field
 from typing import Any, Protocol
@@ -9,8 +8,6 @@ from typing import Any, Protocol
 import orjson
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
-
-logger = logging.getLogger(__name__)
 
 
 class CacheBackend(Protocol):
@@ -58,7 +55,7 @@ class MemoryBackend:
         """写入缓存条目."""
         if len(self._store) >= self._max_size:
             self._evict()
-        self._store[key] = _CacheEntry(data=data, expires_at=time.monotonic() + ttl)
+        self._store[key] = _CacheEntry(data=jsonable_encoder(data), expires_at=time.monotonic() + ttl)
 
     async def close(self) -> None:
         """清空内存缓存."""
