@@ -6,6 +6,7 @@ from typing import Annotated, Any, get_args, get_origin
 import orjson
 from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, WithJsonSchema, create_model
 
+from .docstrings import enum_member_description
 from .enum_utils import enum_mapping_param, int_enum_param, path_enum_param
 from .route_types import ParamOverride, ParamSource
 
@@ -60,6 +61,11 @@ def build_param_model(
         elif source is not ParamSource.PATH and _is_int_enum_annotation(annotation):
             if default is not ... and isinstance(default, IntEnum):
                 default = int(default.value)
+        raw_enum_type = _enum_type(param.annotation)
+        if raw_enum_type is not None and param.enum_mapping is None and source is not ParamSource.PATH:
+            member_desc = enum_member_description(raw_enum_type)
+            if member_desc:
+                field_kwargs["description"] = f"{description}\n\n{member_desc}"
         fields[param.name] = (annotation, Field(default=default, validate_default=True, **field_kwargs))
     return create_model(name, __base__=RequestParamModel, **fields)
 
