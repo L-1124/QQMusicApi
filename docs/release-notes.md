@@ -1,4 +1,24 @@
 
+## [[0.5.3](https://github.com/L-1124/QQMusicApi/compare/v0.5.2..v0.5.3)] - 2026-05-01
+
+### Bug 修复
+
+* **(song)** 传递歌曲链接请求凭证 ([8667e8c](https://github.com/L-1124/QQMusicApi/commit/8667e8c16a071d5b2e96e91e90441db724d71169)) by [@L-1124](https://github.com/L-1124)
+* 模型字段类型出现`int | str` ([ed2e450](https://github.com/L-1124/QQMusicApi/commit/ed2e4503fab162ebdabae7368ffd408584f1e91a)) by [@L-1124](https://github.com/L-1124)
+* 手机登录没有正常返回验证链接 ([3f69c5d](https://github.com/L-1124/QQMusicApi/commit/3f69c5d3f51353c73ab1c9f5a6637e29dc0aebe4)) by [@L-1124](https://github.com/L-1124)
+* [**breaking**] 拼写错误及其他问题 ([6bd129e](https://github.com/L-1124/QQMusicApi/commit/6bd129eed7d9d8bd1b76fbd6389840ee295d6802)) by [@Copilot](https://github.com/Copilot) in [#242](https://github.com/L-1124/QQMusicApi/pull/242)
+
+### 功能更新
+
+* **(api)** 统一分页参数，暴露搜索一致性参数 ([a3d3a5d](https://github.com/L-1124/QQMusicApi/commit/a3d3a5d36b0b1ee85628d4bafde17551ae76e5fe)) by [@L-1124](https://github.com/L-1124)
+* **(login)** 细化登录异常体系并修正请求参数 ([fb9d2e6](https://github.com/L-1124/QQMusicApi/commit/fb9d2e6ed180b7188cc059b3a98ce67ec4760c0d)) by [@L-1124](https://github.com/L-1124) in [#245](https://github.com/L-1124/QQMusicApi/pull/245)
+
+### 贡献者
+
+* @L-1124
+* @Copilot [#242](https://github.com/L-1124/QQMusicApi/pull/242)
+* @github-actions[bot]
+
 ## [[0.5.2](https://github.com/L-1124/QQMusicApi/compare/v0.5.1..v0.5.2)] - 2026-04-18
 
 ### Bug 修复
