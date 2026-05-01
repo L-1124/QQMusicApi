@@ -136,7 +136,6 @@ def create_app() -> FastAPI:
         return error_response(
             status_code=exc.status_code,
             msg=_http_exception_message(exc),
-            detail=None if isinstance(exc.detail, str) else exc.detail,
         )
 
     @app.exception_handler(RequestValidationError)
@@ -144,7 +143,6 @@ def create_app() -> FastAPI:
         return error_response(
             status_code=422,
             msg="请求参数校验失败",
-            detail=exc.errors(),
         )
 
     @app.get("/", include_in_schema=False)
