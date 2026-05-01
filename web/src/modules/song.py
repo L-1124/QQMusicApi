@@ -1,45 +1,91 @@
 """歌曲模块 Web 路由适配."""
 
-from typing import Annotated, Any
+from typing import Annotated, Any, TypeAlias
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
-from pydantic import BaseModel, Field
+from fastapi import HTTPException
+from pydantic import BaseModel, BeforeValidator, Field, WithJsonSchema
 from pydantic.json_schema import SkipJsonSchema
 
-from qqmusic_api import Client, Credential
-from qqmusic_api.modules.song import BaseSongFileType, SongFileInfo, SongFileType
-from web.src.auth import configured_credential_for_api, credential_from_cookies
-from web.src.deps import client_dependency
-from web.src.enum_utils import coerce_enum_value, iter_enum_members
-from web.src.response import ApiResponse
-from web.src.schema import COOKIE_SECURITY_REQUIREMENT
+from qqmusic_api.modules.song import (
+    BaseSongFileType,
+    EncryptedSongFileType,
+    SongFileInfo,
+    SongFileType,
+    SpecialSongFileType,
+)
+from web.src.routing.enum_utils import enum_mapping_schema, enum_mapping_validator
+from web.src.routing.route_types import EnumIntMapping, RouteContext
 
-router = APIRouter(prefix="/song", tags=["song"])
-credential_dependency = Depends(credential_from_cookies)
-SONG_FILE_TYPES: tuple[BaseSongFileType, ...] = tuple(
-    member for member in iter_enum_members(BaseSongFileType) if isinstance(member, BaseSongFileType)
+SONG_FILE_TYPES: tuple[BaseSongFileType, ...] = (
+    SongFileType.DTS_X,
+    SongFileType.MASTER,
+    SongFileType.ATMOS_2,
+    SongFileType.ATMOS_51,
+    SongFileType.ATMOS_71,
+    SongFileType.ATMOS_DB,
+    SongFileType.NAC,
+    SongFileType.FLAC,
+    SongFileType.OGG_640,
+    SongFileType.OGG_320,
+    SongFileType.OGG_192,
+    SongFileType.OGG_96,
+    SongFileType.MP3_320,
+    SongFileType.MP3_128,
+    SongFileType.ACC_192,
+    SongFileType.ACC_96,
+    SongFileType.ACC_48,
+    EncryptedSongFileType.DTS_X,
+    EncryptedSongFileType.VINYL,
+    EncryptedSongFileType.MASTER,
+    EncryptedSongFileType.ATMOS_2,
+    EncryptedSongFileType.ATMOS_51,
+    EncryptedSongFileType.ATMOS_71,
+    EncryptedSongFileType.ATMOS_DB,
+    EncryptedSongFileType.NAC,
+    EncryptedSongFileType.FLAC,
+    EncryptedSongFileType.OGG_640,
+    EncryptedSongFileType.OGG_320,
+    EncryptedSongFileType.OGG_192,
+    EncryptedSongFileType.OGG_96,
+    SpecialSongFileType.TRY,
+    SpecialSongFileType.ACCOM,
+    SpecialSongFileType.MULTI,
+    SpecialSongFileType.PIANO,
+    SpecialSongFileType.BAYIN,
+    SpecialSongFileType.GUZHENG,
+    SpecialSongFileType.QUDI,
+    SpecialSongFileType.HULUSI,
+    SpecialSongFileType.SUONA,
+    SpecialSongFileType.SHOUDIE,
+    SpecialSongFileType.GUITAR,
+    SpecialSongFileType.DRUMS,
+    SpecialSongFileType.KAZOO,
+    SpecialSongFileType.THERAPY,
 )
-DEFAULT_SONG_FILE_TYPE = SONG_FILE_TYPES.index(SongFileType.MP3_128)
-SONG_FILE_TYPE_SCHEMA: dict[str, Any] = {"type": "integer", "enum": list(range(len(SONG_FILE_TYPES)))}
-SONG_FILE_TYPE_DESCRIPTION = "\n".join(
-    [
-        "歌曲文件类型. 歌曲品质整数值映射:",
-        *(
-            f"- {index}: `{type(file_type).__name__}.{file_type.name.casefold()}`"
-            for index, file_type in enumerate(SONG_FILE_TYPES)
-        ),
-    ]
+SONG_FILE_TYPE_LABELS = tuple(
+    member.name
+    if isinstance(member, SongFileType)
+    else f"{type(member).__name__.removesuffix('SongFileType').upper()}_{member.name}"
+    for member in SONG_FILE_TYPES
 )
+SONG_FILE_TYPE_MAPPING = EnumIntMapping(SONG_FILE_TYPES, labels=SONG_FILE_TYPE_LABELS)
+SongFileTypeParam: TypeAlias = Annotated[
+    Any,
+    BeforeValidator(enum_mapping_validator(SONG_FILE_TYPE_MAPPING)),
+    WithJsonSchema(enum_mapping_schema(SONG_FILE_TYPE_MAPPING)),
+]
+DEFAULT_SONG_FILE_TYPE = SONG_FILE_TYPE_MAPPING.values[SONG_FILE_TYPE_MAPPING.members.index(SongFileType.MP3_128)]
+SONG_FILE_TYPE_SCHEMA = SONG_FILE_TYPE_MAPPING.schema()
+SONG_FILE_TYPE_DESCRIPTION = "歌曲文件类型. 歌曲品质枚举值映射:\n" + SONG_FILE_TYPE_MAPPING.description()
 
 
 class SongUrlItem(BaseModel):
     """单个歌曲文件链接请求项."""
 
     mid: str = Field(description="歌曲 MID.")
-    file_type: int | SkipJsonSchema[None] = Field(
+    file_type: SongFileTypeParam | SkipJsonSchema[None] = Field(
         default=None,
         description=SONG_FILE_TYPE_DESCRIPTION,
-        json_schema_extra=SONG_FILE_TYPE_SCHEMA,
     )
     song_type: int | SkipJsonSchema[None] = Field(default=None, description="歌曲类型.")
     media_mid: str | SkipJsonSchema[None] = Field(default=None, description="媒体文件 MID.")
@@ -49,27 +95,11 @@ class SongUrlsRequest(BaseModel):
     """批量歌曲文件链接请求体."""
 
     file_info: list[SongUrlItem] = Field(description="歌曲文件信息列表.")
-    file_type: int = Field(
+    file_type: SongFileTypeParam = Field(
         default=DEFAULT_SONG_FILE_TYPE,
+        validate_default=True,
         description=SONG_FILE_TYPE_DESCRIPTION,
-        json_schema_extra=SONG_FILE_TYPE_SCHEMA,
     )
-
-
-def _parse_song_file_type(value: int | str) -> BaseSongFileType:
-    """解析歌曲文件类型."""
-    try:
-        if isinstance(value, int) or (isinstance(value, str) and value.isdecimal()):
-            index = int(value)
-            if 0 <= index < len(SONG_FILE_TYPES):
-                return SONG_FILE_TYPES[index]
-            raise KeyError(value)
-        file_type = coerce_enum_value(value, BaseSongFileType)
-    except (KeyError, ValueError) as exc:
-        raise HTTPException(status_code=422, detail=f"未知歌曲文件类型: {value}") from exc
-    if not isinstance(file_type, BaseSongFileType):
-        raise HTTPException(status_code=422, detail=f"未知歌曲文件类型: {value}")
-    return file_type
 
 
 def _parse_query_song_values(values: list[str]) -> list[int] | list[str]:
@@ -82,106 +112,44 @@ def _parse_query_song_values(values: list[str]) -> list[int] | list[str]:
     return values
 
 
-@router.post(
-    "/get_song_urls",
-    summary="批量获取歌曲文件链接",
-    description=f"批量获取歌曲文件链接.\n\n{SONG_FILE_TYPE_DESCRIPTION}",
-    response_model=ApiResponse,
-    openapi_extra={"security": [COOKIE_SECURITY_REQUIREMENT]},
-)
-async def song_get_song_urls_post(
-    request: Request,
-    body: SongUrlsRequest,
-    client: Client = client_dependency,
-    credential: Credential = credential_dependency,
-):
+async def get_song_urls_adapter(context: RouteContext):
     """批量获取歌曲文件链接."""
-    resolved_credential = await configured_credential_for_api(
-        request,
-        client,
-        "song.get_song_urls",
-        credential,
-    )
-    default_file_type = _parse_song_file_type(body.file_type)
-    return await client.song.get_song_urls(
+    body = context.params["body"]
+    return await context.client.song.get_song_urls(
         [
             SongFileInfo(
                 mid=item.mid,
-                file_type=_parse_song_file_type(item.file_type) if item.file_type is not None else None,
+                file_type=item.file_type,
                 song_type=item.song_type,
                 media_mid=item.media_mid,
             )
             for item in body.file_info
         ],
-        file_type=default_file_type,
-        credential=resolved_credential,
+        file_type=body.file_type,
+        credential=context.params["credential"],
     )
 
 
-@router.get(
-    "/{id}/fav_num",
-    summary="获取歌曲收藏数量",
-    description="根据单个歌曲 ID 获取收藏数量.",
-    response_model=ApiResponse,
-)
-async def song_get_fav_num_by_id_get(
-    song_id: Annotated[int, Path(alias="id", description="歌曲 ID.")],
-    client: Client = client_dependency,
-):
+async def get_fav_num_by_id_adapter(context: RouteContext):
     """根据单个歌曲 ID 获取收藏数量."""
-    return await client.song.get_fav_num([song_id])
+    return await context.client.song.get_fav_num([context.params["id"]])
 
 
-@router.get(
-    "/{mid}/url",
-    summary="获取单首歌曲文件链接",
-    description=f"根据单个歌曲 MID 获取文件链接.\n\n{SONG_FILE_TYPE_DESCRIPTION}",
-    response_model=ApiResponse,
-    openapi_extra={"security": [COOKIE_SECURITY_REQUIREMENT]},
-)
-async def song_get_song_url_get(
-    request: Request,
-    mid: Annotated[str, Path(description="歌曲 MID.")],
-    file_type: int = Query(
-        default=DEFAULT_SONG_FILE_TYPE,
-        description=SONG_FILE_TYPE_DESCRIPTION,
-        json_schema_extra=SONG_FILE_TYPE_SCHEMA,
-    ),
-    song_type: int | None = Query(default=None, description="歌曲类型."),
-    media_mid: str | None = Query(default=None, description="媒体文件 MID."),
-    client: Client = client_dependency,
-    credential: Credential = credential_dependency,
-):
+async def get_song_url_adapter(context: RouteContext):
     """根据单个歌曲 MID 获取文件链接."""
-    resolved_credential = await configured_credential_for_api(
-        request,
-        client,
-        "song.get_song_url",
-        credential,
-    )
-    default_file_type = _parse_song_file_type(file_type)
-    return await client.song.get_song_urls(
+    return await context.client.song.get_song_urls(
         [
             SongFileInfo(
-                mid=mid,
-                song_type=song_type,
-                media_mid=media_mid,
+                mid=context.params["mid"],
+                song_type=context.params.get("song_type"),
+                media_mid=context.params.get("media_mid"),
             )
         ],
-        file_type=default_file_type,
-        credential=resolved_credential,
+        file_type=context.params["file_type"],
+        credential=context.params["credential"],
     )
 
 
-@router.get(
-    "/query_song",
-    summary="批量查询歌曲",
-    description="根据 id 或 mid 列表批量查询歌曲.",
-    response_model=ApiResponse,
-)
-async def song_query_song_get(
-    value: Annotated[list[str], Query(description="歌曲 ID 列表或 MID 列表.")],
-    client: Client = client_dependency,
-):
+async def query_song_adapter(context: RouteContext):
     """批量查询歌曲."""
-    return await client.song.query_song(_parse_query_song_values(value))
+    return await context.client.song.query_song(_parse_query_song_values(context.params["value"]))

@@ -1,11 +1,13 @@
 """登录模块 Web 路由适配."""
 
 import base64
+from enum import Enum
+from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import HTTPException
 from pydantic import BaseModel, Field, ValidationError, model_validator
 
-from qqmusic_api import Client, Credential
+from qqmusic_api import Credential
 from qqmusic_api.models.login import (
     QR,
     PhoneAuthCodeResult,
@@ -14,15 +16,19 @@ from qqmusic_api.models.login import (
     QRLoginResult,
     QRLoginType,
 )
-from web.src.auth import credential_from_cookies
-from web.src.deps import client_dependency
-from web.src.enum_utils import coerce_enum_value
-from web.src.response import ApiResponse
-from web.src.schema import COOKIE_SECURITY_REQUIREMENT
+from web.src.routing.enum_utils import path_enum_value
+from web.src.routing.route_types import RouteContext
 
-router = APIRouter(prefix="/login", tags=["login"])
-credential_dependency = Depends(credential_from_cookies)
-WEB_QR_LOGIN_TYPE_DESCRIPTION = "二维码登录类型. 当前 Web 层仅支持 `QQ` / `WX`, 暂不支持 `MOBILE`."
+
+class WebQRLoginType(str, Enum):
+    """Web 层支持的二维码登录类型."""
+
+    QQ = "qq"
+    WX = "wx"
+
+
+WEB_QR_LOGIN_TYPES = {WebQRLoginType.QQ: QRLoginType.QQ, WebQRLoginType.WX: QRLoginType.WX}
+WEB_QR_LOGIN_TYPE_DESCRIPTION = "二维码登录类型. 当前 Web 层仅支持 `qq` / `wx`."
 
 
 class QRCodeData(BaseModel):
@@ -126,22 +132,20 @@ PHONE_EVENT_CODES = {
 }
 
 
-def _parse_web_qr_login_type(value: str) -> QRLoginType:
-    """解析 Web 层支持的二维码登录类型参数."""
+def _validate_web_qr_login_type(login_type: WebQRLoginType) -> QRLoginType:
+    """校验并转换 Web 层支持的二维码登录类型."""
     try:
-        login_type = coerce_enum_value(value, QRLoginType)
-    except (KeyError, TypeError, ValueError) as exc:
-        raise HTTPException(status_code=422, detail=f"未知二维码登录类型: {value}") from exc
-    if login_type not in {QRLoginType.QQ, QRLoginType.WX}:
-        raise HTTPException(status_code=422, detail="Web 层暂不支持 MOBILE 二维码登录")
-    return login_type
+        return WEB_QR_LOGIN_TYPES[login_type]
+    except KeyError as exc:
+        allowed = ", ".join(path_enum_value(item) for item in WEB_QR_LOGIN_TYPES)
+        raise HTTPException(status_code=422, detail=f"Web 层暂不支持该二维码登录类型. 可选值: {allowed}") from exc
 
 
 def _serialize_qrcode(qrcode: QR) -> QRCodeData:
     """序列化二维码对象为 Web 响应数据."""
     data = base64.b64encode(qrcode.data).decode("ascii")
     return QRCodeData(
-        qr_type=qrcode.qr_type.name,
+        qr_type=path_enum_value(qrcode.qr_type),
         identifier=qrcode.identifier,
         mimetype=qrcode.mimetype,
         data=data,
@@ -156,7 +160,7 @@ def _serialize_qrcode_status(result: QRLoginResult, qrcode: QR) -> QRCodeStatusD
         done=result.done,
         credential=result.credential,
         identifier=qrcode.identifier,
-        login_type=qrcode.qr_type.name,
+        login_type=path_enum_value(qrcode.qr_type),
     )
 
 
@@ -171,107 +175,46 @@ def _build_qrcode_placeholder(identifier: str, login_type: QRLoginType) -> QR:
     return QR(data=b"", qr_type=login_type, mimetype="image/png", identifier=identifier)
 
 
-@router.get(
-    "/check_expired",
-    summary="检查登录凭证是否过期",
-    description="检查当前请求可用的登录凭证是否过期.",
-    response_model=ApiResponse,
-    openapi_extra={"security": [COOKIE_SECURITY_REQUIREMENT]},
-)
-async def login_check_expired(
-    client: Client = client_dependency,
-    credential: Credential = credential_dependency,
-):
+async def check_expired_adapter(context: RouteContext) -> bool:
     """检查登录凭证是否过期."""
-    return await client.login.check_expired(credential)
+    return await context.client.login.check_expired(context.params["credential"])
 
 
-@router.get(
-    "/refresh_credential",
-    summary="刷新登录凭证",
-    description="刷新当前请求可用的登录凭证并返回新凭证.",
-    response_model=ApiResponse,
-    openapi_extra={"security": [COOKIE_SECURITY_REQUIREMENT]},
-)
-async def login_refresh_credential(
-    client: Client = client_dependency,
-    credential: Credential = credential_dependency,
-):
+async def refresh_credential_adapter(context: RouteContext) -> Credential:
     """刷新登录凭证."""
-    return await client.login.refresh_credential(credential)
+    return await context.client.login.refresh_credential(context.params["credential"])
 
 
-@router.get(
-    "/qrcode",
-    summary="获取登录二维码",
-    description="获取指定类型的登录二维码.",
-    response_model=ApiResponse,
-)
-async def login_get_qrcode(
-    login_type: str = Query(description=WEB_QR_LOGIN_TYPE_DESCRIPTION, json_schema_extra={"enum": ["QQ", "WX"]}),
-    client: Client = client_dependency,
-):
+async def qrcode_adapter(context: RouteContext) -> QRCodeData:
     """获取登录二维码."""
-    qrcode = await client.login.get_qrcode(_parse_web_qr_login_type(login_type))
+    login_type = _validate_web_qr_login_type(context.params["login_type"])
+    qrcode = await context.client.login.get_qrcode(login_type)
     return _serialize_qrcode(qrcode)
 
 
-@router.get(
-    "/qrcode/status",
-    summary="检查二维码登录状态",
-    description="根据二维码标识符与登录类型检查二维码登录状态.",
-    response_model=ApiResponse,
-)
-async def login_check_qrcode(
-    identifier: str = Query(description="二维码标识符."),
-    login_type: str = Query(description=WEB_QR_LOGIN_TYPE_DESCRIPTION, json_schema_extra={"enum": ["QQ", "WX"]}),
-    client: Client = client_dependency,
-):
+async def qrcode_status_adapter(context: RouteContext) -> QRCodeStatusData:
     """检查二维码登录状态."""
-    parsed_login_type = _parse_web_qr_login_type(login_type)
-    qrcode = _build_qrcode_placeholder(identifier, parsed_login_type)
-    result = await client.login.check_qrcode(qrcode)
+    login_type = _validate_web_qr_login_type(context.params["login_type"])
+    qrcode = _build_qrcode_placeholder(context.params["identifier"], login_type)
+    result = await context.client.login.check_qrcode(qrcode)
     return _serialize_qrcode_status(result, qrcode)
 
 
-@router.get(
-    "/phone/authcode",
-    summary="发送手机验证码",
-    description="向明文手机号或加密手机号发送登录验证码.",
-    response_model=ApiResponse,
-)
-async def login_send_authcode(
-    phone: int | None = Query(default=None, description="明文手机号."),
-    encrypted_phone: str | None = Query(default=None, description="加密手机号."),
-    country_code: int = Query(default=86, description="国家代码."),
-    client: Client = client_dependency,
-):
+async def phone_authcode_adapter(context: RouteContext) -> PhoneAuthCodeData:
     """发送手机验证码."""
-    try:
-        query = SendAuthcodeRequest(phone=phone, encrypted_phone=encrypted_phone, country_code=country_code)
-    except ValidationError as exc:
-        raise HTTPException(status_code=422, detail=exc.errors()) from exc
-
-    result = await client.login.send_authcode(query.phone_value(), query.country_code)
+    query = _validate_model(SendAuthcodeRequest, dict(context.params))
+    result = await context.client.login.send_authcode(query.phone_value(), query.country_code)
     return _serialize_phone_authcode(result)
 
 
-@router.get(
-    "/phone/authorize",
-    summary="使用手机验证码登录",
-    description="使用明文手机号或加密手机号与短信验证码完成登录.",
-    response_model=ApiResponse,
-)
-async def login_phone_authorize(
-    auth_code: int = Query(description="短信验证码."),
-    phone: int | None = Query(default=None, description="明文手机号."),
-    encrypted_phone: str | None = Query(default=None, description="加密手机号."),
-    client: Client = client_dependency,
-):
+async def phone_authorize_adapter(context: RouteContext) -> Credential:
     """使用手机验证码登录."""
+    query = _validate_model(PhoneAuthorizeRequest, dict(context.params))
+    return await context.client.login.phone_authorize(query.phone_value(), query.auth_code)
+
+
+def _validate_model(model_type: type[BaseModel], data: dict[str, Any]) -> Any:
     try:
-        query = PhoneAuthorizeRequest(phone=phone, encrypted_phone=encrypted_phone, auth_code=auth_code)
+        return model_type.model_validate(data)
     except ValidationError as exc:
         raise HTTPException(status_code=422, detail=exc.errors()) from exc
-
-    return await client.login.phone_authorize(query.phone_value(), query.auth_code)

@@ -1,43 +1,28 @@
 """QQMusic API Web 应用工厂."""
 
-import inspect
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
-from typing import Any, cast
+from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, Response
-from fastapi.routing import APIRoute
+from fastapi.responses import HTMLResponse
 
 import qqmusic_api
 from qqmusic_api import Client
 from qqmusic_api.core.exceptions import BaseError, NotLoginError
 
-from .auth import startup_credential_health_check
-from .cache import MemoryBackend, RedisBackend
-from .config import SecurityConfig, settings
-from .credential_store import ACCOUNT_CONFIG_FILE, CredentialStore, load_account_configs
-from .deps import WebServices
-from .modules.login import router as login_router
-from .modules.mv import router as mv_router
-from .modules.singer import router as singer_router
-from .modules.song import router as song_router
-from .modules.songlist import router as songlist_router
-from .response import ApiResponse, ErrorResponse, error_response, success_response
-from .route_registry import AdapterKind, AuthPolicy, RouteSpec, get_route_specs
-from .routing import make_endpoint
-from .schema import COOKIE_SECURITY_REQUIREMENT, install_openapi_schema
-from .security import apply_security_middleware, configure_security
-
-EXPLICIT_ROUTERS = {
-    "login": login_router,
-    "song": song_router,
-    "mv": mv_router,
-    "singer": singer_router,
-    "songlist": songlist_router,
-}
+from .core.auth import startup_credential_health_check
+from .core.cache import MemoryBackend, RedisBackend
+from .core.config import SecurityConfig, settings
+from .core.credential_store import ACCOUNT_CONFIG_FILE, CredentialStore, load_account_configs
+from .core.deps import WebServices
+from .core.response import ErrorResponse, error_response
+from .core.security import apply_security_middleware, configure_security
+from .routes import ROUTES
+from .routing.docstrings import clean_schema_description
+from .routing.router_factory import include_routes, validate_routes
 
 _ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
     400: {"model": ErrorResponse},
@@ -52,6 +37,13 @@ _HTTP_ERROR_MESSAGES = {
     422: "请求参数校验失败",
     500: "服务器内部错误",
 }
+
+
+def _http_exception_message(exc: HTTPException) -> str:
+    """返回稳定且面向调用方的 HTTP 错误说明."""
+    if isinstance(exc.detail, str) and exc.detail:
+        return exc.detail
+    return _HTTP_ERROR_MESSAGES.get(exc.status_code, "HTTP 请求错误")
 
 
 @asynccontextmanager
@@ -71,108 +63,6 @@ async def _lifespan(app: FastAPI):
         await services.client.close()
 
 
-def _include_dynamic_routers(
-    app: FastAPI,
-    route_specs: tuple[RouteSpec, ...],
-) -> None:
-    for spec in route_specs:
-        if spec.adapter is not AdapterKind.AUTO:
-            continue
-        if spec.method is None:
-            raise RuntimeError(f"自动路由缺少方法: {spec.module_attr}.{spec.method_name}")
-
-        endpoint, doc = make_endpoint(spec)
-        module_name = spec.module_cls.__name__ if spec.module_cls is not None else spec.module_attr
-
-        openapi_extra = (
-            {"security": [COOKIE_SECURITY_REQUIREMENT]} if spec.auth is AuthPolicy.COOKIE_OR_DEFAULT else None
-        )
-
-        app.add_api_route(
-            spec.path,
-            endpoint,
-            methods=list(spec.methods),
-            tags=[spec.module_attr],
-            summary=spec.summary or doc["summary"] or f"{module_name}.{spec.method_name}",
-            description=spec.description or doc["description"],
-            response_model=ApiResponse[spec.response_model],
-            openapi_extra=openapi_extra,
-        )
-
-
-def _find_explicit_route(spec: RouteSpec) -> APIRoute:
-    if spec.router_name is None:
-        raise RuntimeError(f"显式路由缺少 router_name: {spec.module_attr}.{spec.method_name}")
-    router = EXPLICIT_ROUTERS.get(spec.router_name)
-    if router is None:
-        raise RuntimeError(f"未知显式路由器: {spec.router_name}")
-    spec_methods = {method.upper() for method in spec.methods}
-    for route in router.routes:
-        if not isinstance(route, APIRoute):
-            continue
-        if route.path == spec.path and spec_methods <= route.methods:
-            return route
-    raise RuntimeError(f"显式路由未在 router 中定义: {spec.path} {sorted(spec_methods)!r}")
-
-
-def _http_exception_message(exc: HTTPException) -> str:
-    """返回稳定且面向调用方的 HTTP 错误说明."""
-    if isinstance(exc.detail, str) and exc.detail:
-        return exc.detail
-    return _HTTP_ERROR_MESSAGES.get(exc.status_code, "HTTP 请求错误")
-
-
-def _wrap_explicit_endpoint(route: APIRoute):
-    """为显式路由端点统一补齐标准成功响应."""
-
-    async def endpoint(**kwargs):
-        result = route.endpoint(**kwargs)
-        if inspect.isawaitable(result):
-            result = await result
-        if isinstance(result, (ApiResponse, Response)):
-            return result
-        return success_response(result)
-
-    endpoint.__name__ = route.endpoint.__name__
-    endpoint.__doc__ = route.endpoint.__doc__
-    endpoint.__module__ = route.endpoint.__module__
-    endpoint.__annotations__ = dict(getattr(route.endpoint, "__annotations__", {}))
-    cast("Any", endpoint).__signature__ = inspect.signature(route.endpoint)
-    return endpoint
-
-
-def _include_explicit_routers(
-    app: FastAPI,
-    route_specs: tuple[RouteSpec, ...],
-) -> None:
-    included_routes: set[tuple[str, str]] = set()
-    for spec in route_specs:
-        if spec.adapter is not AdapterKind.EXPLICIT:
-            continue
-
-        route = _find_explicit_route(spec)
-        for method in spec.methods:
-            route_key = (spec.path, method.upper())
-            if route_key in included_routes:
-                continue
-            app.add_api_route(
-                route.path,
-                _wrap_explicit_endpoint(route),
-                methods=[method],
-                response_model=ApiResponse[spec.response_model],
-                status_code=route.status_code,
-                tags=route.tags,
-                dependencies=route.dependencies,
-                summary=route.summary,
-                description=route.description,
-                response_description=route.response_description,
-                deprecated=route.deprecated,
-                name=route.name,
-                openapi_extra=route.openapi_extra,
-            )
-            included_routes.add(route_key)
-
-
 def _configure_cors(app: FastAPI) -> None:
     config: SecurityConfig = settings.security
     if not config.cors_enabled:
@@ -190,6 +80,21 @@ def _configure_cors(app: FastAPI) -> None:
         allow_headers=config.cors_allow_headers,
         max_age=config.cors_max_age,
     )
+
+
+def _patch_openapi_schema_descriptions(app: FastAPI) -> None:
+    """将 models schema 描述中的 Attributes 段转为 markdown 列表."""
+    _original_openapi = app.openapi
+
+    def _cleaned_openapi():
+        schema = _original_openapi()
+        for defn in schema.get("components", {}).get("schemas", {}).values():
+            desc = defn.get("description", "")
+            if desc and "Attributes:" in desc:
+                defn["description"] = clean_schema_description(desc)
+        return schema
+
+    app.openapi = _cleaned_openapi
 
 
 def create_app() -> FastAPI:
@@ -278,10 +183,11 @@ def create_app() -> FastAPI:
 </html>"""
         )
 
-    route_specs = get_route_specs()
-    _include_dynamic_routers(app, route_specs)
-    _include_explicit_routers(app, route_specs)
-    install_openapi_schema(app)
+    route_errors = validate_routes(ROUTES)
+    if route_errors:
+        raise RuntimeError("Web 路由契约校验失败:\n" + "\n".join(f"- {error}" for error in route_errors))
+    include_routes(app, ROUTES)
+    _patch_openapi_schema_descriptions(app)
 
     return app
 

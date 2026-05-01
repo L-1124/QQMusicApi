@@ -1,25 +1,8 @@
 """歌手模块 Web 路由适配."""
 
-from typing import Annotated
-
-from fastapi import APIRouter, Path
-
-from qqmusic_api import Client
-from web.src.deps import client_dependency
-from web.src.response import ApiResponse
-
-router = APIRouter(prefix="/singer", tags=["singer"])
+from web.src.routing.route_types import RouteContext
 
 
-@router.get(
-    "/{mid}/desc",
-    summary="获取歌手描述",
-    description="根据单个歌手 MID 获取描述信息.",
-    response_model=ApiResponse,
-)
-async def singer_get_desc_by_mid_get(
-    mid: Annotated[str, Path(description="歌手 MID.")],
-    client: Client = client_dependency,
-):
+async def get_desc_by_mid_adapter(context: RouteContext):
     """根据单个歌手 MID 获取描述信息."""
-    return await client.singer.get_desc([mid])
+    return await context.client.singer.get_desc([context.params["mid"]])

@@ -1,17 +1,8 @@
 """歌单模块 Web 路由适配."""
 
-from typing import Annotated
+from fastapi import HTTPException
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-
-from qqmusic_api import Client, Credential
-from web.src.auth import credential_from_cookies
-from web.src.deps import client_dependency
-from web.src.response import ApiResponse
-from web.src.schema import COOKIE_SECURITY_REQUIREMENT
-
-router = APIRouter(prefix="/songlist", tags=["songlist"])
-credential_dependency = Depends(credential_from_cookies)
+from web.src.routing.route_types import RouteContext
 
 
 def _song_info_tuples(song_ids: list[int], song_types: list[int]) -> list[tuple[int, int]]:
@@ -21,72 +12,22 @@ def _song_info_tuples(song_ids: list[int], song_types: list[int]) -> list[tuple[
     return list(zip(song_ids, song_types, strict=True))
 
 
-async def _write_songlist_songs(
-    client: Client,
-    method_name: str,
-    *,
-    dirid: int,
-    song_info: list[tuple[int, int]],
-    tid: int,
-    credential: Credential,
-):
+async def _write_songlist_songs(context: RouteContext, method_name: str):
     """调用歌单歌曲写操作并返回业务数据."""
-    method = getattr(client.songlist, method_name)
+    method = getattr(context.client.songlist, method_name)
     return await method(
-        dirid=dirid,
-        song_info=song_info,
-        tid=tid,
-        credential=credential,
+        dirid=context.params["dirid"],
+        song_info=_song_info_tuples(context.params["song_id"], context.params["song_type"]),
+        tid=context.params["tid"],
+        credential=context.params["credential"],
     )
 
 
-@router.post(
-    "/add_songs",
-    summary="添加歌曲到歌单",
-    description="添加歌曲到歌单.",
-    response_model=ApiResponse,
-    openapi_extra={"security": [COOKIE_SECURITY_REQUIREMENT]},
-)
-async def songlist_add_songs(
-    dirid: Annotated[int, Query(description="歌单目录 ID.")],
-    song_id: Annotated[list[int], Query(description="歌曲 ID 列表.")],
-    song_type: Annotated[list[int], Query(description="歌曲类型列表.")],
-    tid: int = Query(default=0, description="歌单 TID."),
-    client: Client = client_dependency,
-    credential: Credential = credential_dependency,
-):
+async def add_songs_adapter(context: RouteContext):
     """添加歌曲到歌单."""
-    return await _write_songlist_songs(
-        client,
-        "add_songs",
-        dirid=dirid,
-        song_info=_song_info_tuples(song_id, song_type),
-        tid=tid,
-        credential=credential,
-    )
+    return await _write_songlist_songs(context, "add_songs")
 
 
-@router.post(
-    "/del_songs",
-    summary="删除歌单中的歌曲",
-    description="删除歌单中的歌曲.",
-    response_model=ApiResponse,
-    openapi_extra={"security": [COOKIE_SECURITY_REQUIREMENT]},
-)
-async def songlist_del_songs(
-    dirid: Annotated[int, Query(description="歌单目录 ID.")],
-    song_id: Annotated[list[int], Query(description="歌曲 ID 列表.")],
-    song_type: Annotated[list[int], Query(description="歌曲类型列表.")],
-    tid: int = Query(default=0, description="歌单 TID."),
-    client: Client = client_dependency,
-    credential: Credential = credential_dependency,
-):
+async def del_songs_adapter(context: RouteContext):
     """删除歌单中的歌曲."""
-    return await _write_songlist_songs(
-        client,
-        "del_songs",
-        dirid=dirid,
-        song_info=_song_info_tuples(song_id, song_type),
-        tid=tid,
-        credential=credential,
-    )
+    return await _write_songlist_songs(context, "del_songs")

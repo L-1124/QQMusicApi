@@ -11,7 +11,7 @@ if str(project_root) not in sys.path:
 
 
 if __name__ == "__main__":
-    from web.src.config import settings
+    from web.src.core.config import settings
 
     uvicorn.run(
         "web.src.app:create_app",
@@ -19,5 +19,6 @@ if __name__ == "__main__":
         host=settings.server.host,
         port=settings.server.port,
         workers=settings.server.workers,
+        reload=True,
         limit_concurrency=settings.server.limit_concurrency,
     )
