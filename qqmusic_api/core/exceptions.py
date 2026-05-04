@@ -23,7 +23,6 @@ __all__ = [
     "NetworkError",
     "NotLoginError",
     "RatelimitedError",
-    "RequestGroupResultMissingError",
     "SignInvalidError",
     "_build_api_error",
     "_extract_api_error_code",
@@ -244,16 +243,6 @@ class LoginAuthCodeError(LoginApiError):
 
 class LoginRateLimitedError(LoginApiError):
     """登录操作触发频率限制."""
-
-
-class RequestGroupResultMissingError(ApiError):
-    """RequestGroup 结果缺失异常.
-
-    当批量请求执行完成后, 某个索引位置未被任何批次写回时抛出。
-    """
-
-    def __init__(self, message: str, context: dict[str, Any] | None = None):
-        super().__init__(message, code=-1, context=context)
 
 
 class SignInvalidError(ApiError):

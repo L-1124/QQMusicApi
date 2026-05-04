@@ -133,7 +133,7 @@ class JceRequestItem(Struct):
 class JceRequest(Struct):
     """JCE 请求体."""
 
-    comm: dict[str, Any] = field(tag=0)
+    comm: dict[str, str] = field(tag=0)
     data: dict[str, JceRequestItem] = field(tag=1)
 
 

@@ -2,8 +2,6 @@
 
 from typing import TYPE_CHECKING, Any, overload
 
-import httpx
-
 from ..core.exceptions import NotLoginError
 from ..core.versioning import Platform
 
@@ -21,6 +19,7 @@ class ApiModule:
 
     def __init__(self, client: "Client") -> None:
         self._client = client
+        self._session = client._session
 
     def _require_login(self, credential: "Credential | None" = None):
         """获取并校验登录凭证.
@@ -39,39 +38,6 @@ class ApiModule:
             raise NotLoginError("接口需要有效登录凭证")
         return target_credential
 
-    def _extract_cookies(self, response: httpx.Response):
-        """从响应中提取 Cookie.
-
-        Args:
-            response: HTTP 响应对象.
-
-        Returns:
-            httpx.Cookies: 提取到的 Cookie 容器.
-        """
-        temp_cookies = httpx.Cookies()
-
-        temp_cookies.extract_cookies(response)
-        return temp_cookies
-
-    def _get_cookies(self, credential: "Credential | None" = None) -> dict[str, str]:
-        """从 Credential 提取 Cookies.
-
-        Args:
-            credential: 用户凭证对象.
-
-        Returns:
-            dict[str, str]: 包含常用 Cookie 字段的字典.
-        """
-        auth: dict[str, str] = {}
-        cred = credential or self._client.credential
-        if cred.musicid:
-            auth["uin"] = str(cred.musicid)
-            auth["qqmusic_uin"] = str(cred.musicid)
-        if cred.musickey:
-            auth["qm_keyst"] = cred.musickey
-            auth["qqmusic_key"] = cred.musickey
-        return auth
-
     async def _request(
         self,
         method: str,
@@ -79,7 +45,7 @@ class ApiModule:
         credential: "Credential | None" = None,
         platform: Platform | None = None,
         **kwargs: Any,
-    ) -> httpx.Response:
+    ):
         """发送请求并自动携带对应凭证与平台 User-Agent.
 
         Args:
@@ -109,7 +75,8 @@ class ApiModule:
         Returns:
             dict[str, int]: 包含版本信息的常用查询参数.
         """
-        return self._client._version_policy.build_query_params(platform or self._client.platform)
+        profile = self._client._version_policy.get_profile(platform or self._client.platform)
+        return {"ct": profile.ct, "cv": profile.cv}
 
     @overload
     def _build_request(

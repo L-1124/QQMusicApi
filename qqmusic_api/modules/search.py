@@ -72,7 +72,7 @@ class SearchApi(ApiModule):
         Returns:
             dict[str, Any]: 搜索结果字典.
         """
-        resp = await self._client.fetch(
+        resp = await self._client.request(
             "GET",
             "https://c.y.qq.com/splcloud/fcgi-bin/smartbox_new.fcg",
             params={"key": keyword},

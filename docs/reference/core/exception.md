@@ -10,7 +10,6 @@ Exception
    │  ├─ CredentialError
    │  │  ├─ LoginExpiredError
    │  │  └─ NotLoginError
-   │  ├─ RequestGroupResultMissingError
    │  ├─ SignInvalidError
    │  └─ RatelimitedError
    ├─ HTTPError

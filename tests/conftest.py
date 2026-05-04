@@ -14,6 +14,8 @@ from qqmusic_api.core.exceptions import LoginExpiredError, NetworkError, NotLogi
 TEST_CREDENTIAL_ENV_PREFIX = "QQMUSIC_"
 
 RATE_LIMIT_RETRY_DELAYS: tuple[float, ...] = (2.0, 4.0, 8.0)
+TEST_DEVICE_CACHE_DIR = "qqmusic_api"
+TEST_DEVICE_FILENAME = "device.json"
 
 
 def _build_credential() -> Credential:
@@ -68,7 +70,7 @@ def pytest_runtest_call(item: pytest.Item) -> Generator[None, Any, Any]:
         return
 
     exc = excinfo[1]
-    if isinstance(exc, (NotLoginError, LoginExpiredError, NetworkError)):
+    if isinstance(exc, NotLoginError | LoginExpiredError | NetworkError):
         outcome.force_exception(pytest.skip.Exception(str(exc)))
     elif isinstance(exc, RatelimitedError):
         _rerun_test_call_with_rate_limit_retry(item, RATE_LIMIT_RETRY_DELAYS)
@@ -76,9 +78,10 @@ def pytest_runtest_call(item: pytest.Item) -> Generator[None, Any, Any]:
 
 
 @pytest_asyncio.fixture
-async def client() -> AsyncIterator[Client]:
-    """创建按测试隔离的 Client 实例."""
-    test_client = Client()
+async def client(pytestconfig: pytest.Config) -> AsyncIterator[Client]:
+    """创建复用 pytest cache 设备信息的 Client 实例."""
+    device_path = pytestconfig.cache.mkdir(TEST_DEVICE_CACHE_DIR) / TEST_DEVICE_FILENAME
+    test_client = Client(device_path=str(device_path))
     yield test_client
     await test_client.close()
 
@@ -87,10 +90,11 @@ _credential = _build_credential()
 
 
 @pytest_asyncio.fixture
-async def authenticated_client() -> AsyncIterator[Client]:
-    """创建按测试隔离的 Client 实例."""
+async def authenticated_client(pytestconfig: pytest.Config) -> AsyncIterator[Client]:
+    """创建复用 pytest cache 设备信息的已认证 Client 实例."""
     if not _credential.musicid:
         raise pytest.skip("未提供有效的测试凭证, 跳过需要登录的测试")
-    test_client = Client(credential=_credential)
+    device_path = pytestconfig.cache.mkdir(TEST_DEVICE_CACHE_DIR) / TEST_DEVICE_FILENAME
+    test_client = Client(credential=_credential, device_path=str(device_path))
     yield test_client
     await test_client.close()

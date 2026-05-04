@@ -142,8 +142,8 @@ class VersionPolicy:
                 g_tk=g_tk,
                 g_tk_new_20200303=g_tk,
                 format="json",
-                in_charset="utf-8",
-                out_charset="utf-8",
+                inCharset="utf-8",
+                outCharset="utf-8",
                 notice=0,
                 need_new_code=1,
             )
@@ -152,18 +152,6 @@ class VersionPolicy:
 
         self._comm_cache[cache_key] = comm
         return comm.copy()
-
-    def build_query_params(self, platform: Platform) -> dict[str, int]:
-        """构建查询接口通用参数.
-
-        Args:
-            platform: 平台枚举.
-
-        Returns:
-            查询参数中的通用版本字段.
-        """
-        profile = self.get_profile(platform)
-        return {"ct": profile.ct, "cv": profile.cv}
 
     def get_user_agent(self, platform: Platform, device: Device) -> str:
         """根据平台获取 UA.

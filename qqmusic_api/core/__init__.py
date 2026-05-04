@@ -1,6 +1,5 @@
 """core 模块."""
 
-from .client import Client, ClientConfig
 from .exceptions import (
     ApiDataError,
     ApiError,
@@ -22,12 +21,11 @@ from .exceptions import (
     NetworkError,
     NotLoginError,
     RatelimitedError,
-    RequestGroupResultMissingError,
     SignInvalidError,
     _build_api_error,
     _extract_api_error_code,
 )
-from .request import Request, RequestGroup, RequestGroupResult
+from .request import Request
 from .versioning import DEFAULT_VERSION_POLICY, Platform, VersionPolicy, VersionProfile
 
 __all__ = [
@@ -36,7 +34,6 @@ __all__ = [
     "ApiError",
     "BaseError",
     "Client",
-    "ClientConfig",
     "CredentialError",
     "HTTPError",
     "LoginAccountBannedError",
@@ -56,9 +53,6 @@ __all__ = [
     "Platform",
     "RatelimitedError",
     "Request",
-    "RequestGroup",
-    "RequestGroupResult",
-    "RequestGroupResultMissingError",
     "SignInvalidError",
     "VersionPolicy",
     "VersionProfile",

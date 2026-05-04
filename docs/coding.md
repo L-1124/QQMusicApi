@@ -2,9 +2,8 @@
 
 `qqmusic_api` 采用 `Client + ApiModule + Request` 的结构:
 
-* `Client` 负责网络发送、平台信息、凭证和批量调度。
+* `Client` 负责网络发送、平台信息和凭证。
 * `ApiModule` 负责声明接口参数，并返回可 `await` 的 `Request`。
-* `RequestGroup` 用于批量执行多个 `Request`。
 
 ## 调用流程图
 
@@ -16,29 +15,9 @@
   -> Request
   -> await request
   -> Client.execute(request)
-  -> 根据 request.is_jce 分发:
-     -> Client.request_jce(...)
-     -> 或 Client.request_musicu(...)
+  -> Client.request_api(...)  (根据 request.is_jce 分发改用 JCE 或 JSON 协议)
   -> Client._build_result(...)
   -> 返回原始 dict / TarsDict 或 Pydantic 模型
-```
-
-### 批量请求
-
-```text
-多个模块方法
-  -> 多个 Request
-  -> Client.request_group()
-  -> RequestGroup.add(...) / extend(...)
-  -> 按 is_jce / platform / comm / credential 分组
-  -> 按 batch_size 分批
-  -> 并发发送批次
-  -> 两种消费方式:
-     -> execute_iter():
-        返回无序流式 RequestGroupResult
-        字段包括 index / success / data / error
-     -> execute():
-        返回按添加顺序回填的 list[Any | Exception]
 ```
 
 ## 编写新的 API
@@ -76,7 +55,7 @@ class SearchApi(ApiModule):
         Returns:
             dict[str, Any]: 搜索结果字典.
         """
-        resp = await self._client.fetch(
+        resp = await self._client.request(
             "GET",
             "https://c.y.qq.com/splcloud/fcgi-bin/smartbox_new.fcg",
             params={"key": keyword},
@@ -343,39 +322,4 @@ class Client:
         from ..modules.my_api import MyApi
 
         return MyApi(self)
-```
-
-## 批量请求 `RequestGroup`
-
-使用 `Client.request_group()` 可以批量提交请求。`RequestGroup` 会自动按 `platform`、`credential`、`comm` 和 `is_jce` 分组，并按 `batch_size` 分批发送。
-
-`execute()` 会返回与添加顺序一致的完整结果列表:
-
-```python
-from qqmusic_api import Client
-
-
-async def batch_query(song_ids: list[int]):
-    async with Client() as client:
-        group = client.request_group()
-        for song_id in song_ids:
-            group.add(client.song.get_detail(song_id))
-
-        return await group.execute()
-```
-
-`execute_iter()` 会按完成顺序流式返回 [`RequestGroupResult`][core.request.RequestGroupResult]，不保证与添加顺序一致:
-
-```python
-from qqmusic_api import Client
-
-
-async def batch_query_stream(song_ids: list[int]):
-    async with Client() as client:
-        group = client.request_group(batch_size=1, max_inflight_batches=4)
-        for song_id in song_ids:
-            group.add(client.song.get_detail(song_id))
-
-        async for result in group.execute_iter():
-            print(result.index, result.module, result.method, result.success)
 ```

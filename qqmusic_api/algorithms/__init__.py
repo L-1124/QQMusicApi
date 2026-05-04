@@ -2,7 +2,6 @@
 
 import zlib
 
-from .sign import sign_request
 from .tripledes import DECRYPT, tripledes_crypt, tripledes_key_setup
 
 _QRC_3DES_KEY = b"!@#)(*$%123ZXC!@!@#)(NHL"
@@ -44,5 +43,4 @@ def qrc_decrypt(encrypted_qrc: str | bytearray | bytes) -> str:
 
 __all__ = [
     "qrc_decrypt",
-    "sign_request",
 ]

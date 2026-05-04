@@ -27,11 +27,6 @@ asyncio.run(main())
 * `device_path`: 单个设备信息文件路径，传入即可复用设备信息。
 * `enable_sign`: 是否启用签名参数。
 * `platform`: 请求默认平台。
-* `max_concurrency`: 单个 `Client` 的最大并发请求数。
-* `max_connections`: 底层连接池大小。
-* `qimei_timeout`: 获取 QIMEI 的超时时间。
-
-另外也支持透传部分 `httpx.AsyncClient` 配置，例如 `proxy`、`verify`、`transport` 等。
 
 ## 全局凭证
 

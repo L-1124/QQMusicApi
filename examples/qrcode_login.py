@@ -23,7 +23,7 @@ def show_qrcode(qr: QR) -> None:
 async def qrcode_login_example(login_type: QRLoginType) -> None:
     """二维码登录示例."""
     try:
-        async with Client(verify=False) as client:
+        async with Client() as client:
             print(f"正在获取 {login_type.name} 二维码...")
             session = QRCodeLoginSession(
                 client.login,
