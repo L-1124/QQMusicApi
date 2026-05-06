@@ -4,7 +4,7 @@ import copy
 from collections.abc import Generator
 from dataclasses import dataclass
 from dataclasses import replace as dc_replace
-from typing import TYPE_CHECKING, Any, Generic, TypeVar
+from typing import TYPE_CHECKING, Any, Generic, TypeAlias, TypeVar
 
 from pydantic import BaseModel
 from tarsio import TarsDict
@@ -19,7 +19,8 @@ if TYPE_CHECKING:
 
 
 ResponseModel = TypeVar("ResponseModel", bound=BaseModel)
-RequestResultT = TypeVar("RequestResultT", bound=BaseModel | dict[str, Any] | TarsDict)
+RequestResult: TypeAlias = BaseModel | dict[str, Any] | TarsDict
+RequestResultT = TypeVar("RequestResultT", bound=RequestResult)
 
 
 @overload

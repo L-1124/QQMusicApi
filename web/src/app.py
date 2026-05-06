@@ -1,7 +1,10 @@
 """QQMusic API Web 应用工厂."""
 
+import logging
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+from http import HTTPStatus
+from time import perf_counter
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
@@ -23,6 +26,8 @@ from .core.security import apply_security_middleware, configure_security
 from .routes import ROUTES
 from .routing.docstrings import clean_schema_description
 from .routing.router_factory import include_routes, validate_routes
+
+logger = logging.getLogger(__name__)
 
 _ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
     400: {"model": ErrorResponse},
@@ -46,32 +51,66 @@ def _http_exception_message(exc: HTTPException) -> str:
     return _HTTP_ERROR_MESSAGES.get(exc.status_code, "HTTP 请求错误")
 
 
+def _status_phrase(status_code: int) -> str:
+    """返回 HTTP 状态码的简短说明."""
+    try:
+        return HTTPStatus(status_code).phrase
+    except ValueError:
+        return ""
+
+
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
+    logger.info("Web 应用启动中...")
     services: WebServices = app.state.services
-    services.client = Client(device_path="web/data/device.json")
-    services.credential_config = settings.credential
-    services.credential_store = CredentialStore(settings.credential.store.path)
-    services.credential_store.initialize()
-    services.credential_store.sync_accounts(load_account_configs(ACCOUNT_CONFIG_FILE))
-    await startup_credential_health_check(services.client, services.credential_store)
+    try:
+        logger.info("初始化 SDK Client...")
+        services.client = Client(device_path="web/data/device.json")
+        logger.debug("SDK Client 初始化完成")
+
+        logger.debug("配置全局凭证设置...")
+        services.credential_config = settings.credential
+
+        logger.info(f"初始化凭证存储: {settings.credential.store.path}")
+        services.credential_store = CredentialStore(settings.credential.store.path)
+        services.credential_store.initialize()
+
+        logger.info("同步账号种子配置...")
+        services.credential_store.sync_accounts(load_account_configs(ACCOUNT_CONFIG_FILE))
+
+        logger.info("执行启动凭证健康检查...")
+        await startup_credential_health_check(services.client, services.credential_store)
+
+        logger.info("Web 应用启动完成")
+    except Exception:
+        logger.exception("Web 应用启动失败")
+        raise
+
     yield
-    await services.cache.close()
-    if services.credential_store is not None:
-        services.credential_store.close()
-    if services.client is not None:
-        await services.client.close()
+
+    logger.info("Web 应用关闭中...")
+    try:
+        await services.cache.close()
+        if services.credential_store is not None:
+            services.credential_store.close()
+        if services.client is not None:
+            await services.client.close()
+        logger.info("Web 应用关闭完成")
+    except Exception:
+        logger.error("Web 应用关闭异常", exc_info=True)
 
 
 def _configure_cors(app: FastAPI) -> None:
     config: SecurityConfig = settings.security
     if not config.cors_enabled:
+        logger.debug("CORS 未启用")
         return
     if not config.cors_allow_origins:
         raise RuntimeError("启用 CORS 时必须配置 cors_allow_origins")
     if config.cors_allow_credentials and "*" in config.cors_allow_origins:
         raise RuntimeError("允许跨域凭据时 cors_allow_origins 不能包含通配符 *")
 
+    logger.info(f"配置 CORS, 允许来源: {config.cors_allow_origins}")
     app.add_middleware(
         CORSMiddleware,
         allow_origins=config.cors_allow_origins,
@@ -80,6 +119,13 @@ def _configure_cors(app: FastAPI) -> None:
         allow_headers=config.cors_allow_headers,
         max_age=config.cors_max_age,
     )
+
+
+def _client_host(request: Request) -> str:
+    """返回请求来源主机, 不可用时返回连字符."""
+    if request.client is None:
+        return "-"
+    return request.client.host
 
 
 def _patch_openapi_schema_descriptions(app: FastAPI) -> None:
@@ -117,6 +163,21 @@ def create_app() -> FastAPI:
     app.state.services = WebServices(cache=cache, security=None)
     configure_security(app, settings.security)
     app.middleware("http")(apply_security_middleware)
+
+    @app.middleware("http")
+    async def _log_access(request: Request, call_next):
+        start = perf_counter()
+        response = await call_next(request)
+        elapsed_ms = (perf_counter() - start) * 1000
+        status_phrase = _status_phrase(response.status_code)
+        client_host = _client_host(request)
+        status_suffix = f" {status_phrase}" if status_phrase else ""
+        logger.info(
+            f"HTTP {request.method} {request.url.path} -> {response.status_code}{status_suffix} "
+            f"({elapsed_ms:.1f} ms) from {client_host}"
+        )
+        return response
+
     _configure_cors(app)
 
     @app.exception_handler(BaseError)

@@ -8,6 +8,24 @@ from pydantic_settings import BaseSettings, SettingsConfigDict, TomlConfigSettin
 from qqmusic_api import Credential
 
 
+class LogConfig(BaseModel):
+    """日志配置."""
+
+    mode: Literal["console", "file", "both"] = Field(default="console", description="日志模式: console/file/both")
+    level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = Field(default="INFO", description="日志级别")
+    file_path: str = Field(default="web/data/logs/app.log", description="日志文件路径 (当 mode 为 file 或 both 时使用)")
+    console_format: str = Field(
+        default="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level:<8}</level> | <level>{message}</level>",
+        description="控制台日志格式",
+    )
+    file_format: str = Field(
+        default="{time:YYYY-MM-DD HH:mm:ss} | {level:<8} | {name} | {message}",
+        description="文件日志格式",
+    )
+    max_bytes: int = Field(default=10485760, ge=1, description="单个日志文件最大字节数 (10MB)")
+    backup_count: int = Field(default=5, ge=0, description="保留的备份日志文件数")
+
+
 class ServerConfig(BaseModel):
     """服务器配置."""
 
@@ -163,6 +181,7 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
+    logging: LogConfig = LogConfig()
     server: ServerConfig = ServerConfig()
     cache: CacheConfig = CacheConfig()
     security: SecurityConfig = SecurityConfig()

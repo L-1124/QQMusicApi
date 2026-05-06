@@ -2,6 +2,22 @@
 # 配置加载优先级: Init > Env > Dotenv > Toml > Defaults
 # 可通过环境变量 `QQMUSIC_` 前缀覆盖配置项，例如 `QQMUSIC_SERVER_HOST` 覆盖 `server.host`
 
+[logging]
+# 日志模式: console(控制台) / file(文件) / both(两者都输出)
+mode = "console"
+# 日志级别: DEBUG / INFO / WARNING / ERROR / CRITICAL
+level = "INFO"
+# 日志文件路径 (当 mode 为 file 或 both 时使用)
+file_path = "web/data/logs/app.log"
+# 控制台日志格式
+console_format = "<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level:<8}</level> | <level>{message}</level>"
+# 文件日志格式
+file_format = "{time:YYYY-MM-DD HH:mm:ss} | {level:<8} | {name} | {message}"
+# 单个日志文件最大字节数 (默认 10MB)
+max_bytes = 10485760
+# 保留的备份日志文件数
+backup_count = 5
+
 [server]
 # 绑定地址
 host = "127.0.0.1"
