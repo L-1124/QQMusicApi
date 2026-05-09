@@ -355,7 +355,8 @@ class LoginApi(ApiModule):
 
     async def _get_qq_qr(self) -> QR:
         """获取 QQ 授权二维码."""
-        response = await self._session.get(
+        response = await self._request(
+            "GET",
             "https://ssl.ptlogin2.qq.com/ptqrshow",
             params={
                 "appid": "716027609",
@@ -376,7 +377,8 @@ class LoginApi(ApiModule):
 
     async def _get_wx_qr(self) -> QR:
         """获取微信登录二维码."""
-        response = await self._session.get(
+        response = await self._request(
+            "GET",
             "https://open.weixin.qq.com/connect/qrconnect",
             params={
                 "appid": "wx48db31d50e334801",
@@ -395,7 +397,8 @@ class LoginApi(ApiModule):
             raise ApiDataError("获取 uuid 失败")
         uuid = matches[0]
         qrcode_data = (
-            await self._session.get(
+            await self._request(
+                "GET",
                 f"https://open.weixin.qq.com/connect/qrcode/{uuid}",
                 headers={"Referer": "https://open.weixin.qq.com/connect/qrconnect"},
                 cookies={},
