@@ -113,7 +113,7 @@ class SendAuthcodeRequest(PhoneTargetRequest):
 class PhoneAuthorizeRequest(PhoneTargetRequest):
     """手机验证码鉴权请求体."""
 
-    auth_code: int = Field(description="短信验证码.")
+    auth_code: str = Field(description="短信验证码 (字符串, 保留前导零).")
 
 
 QR_CODE_EVENT_CODES = {

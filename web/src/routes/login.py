@@ -71,7 +71,7 @@ ROUTES: tuple[WebRoute, ...] = (
         "/login/phone/authorize",
         Credential,
         params=(
-            Q("auth_code", int, description="短信验证码."),
+            Q("auth_code", str, description="短信验证码 (字符串, 保留前导零)."),
             Q("phone", int | None, None, "明文手机号."),
             Q("encrypted_phone", str | None, None, "加密手机号."),
         ),
