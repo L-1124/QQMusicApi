@@ -106,7 +106,7 @@ typeCheckingMode = "basic"
 [tool.pytest]
 addopts = ["-rxXs"]
 pythonpath = ["."]
-testpaths = ["tests", "web"]
+testpaths = ["tests"]
 asyncio_mode = "auto"
 
 [tool.ruff]
