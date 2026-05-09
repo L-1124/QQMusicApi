@@ -63,7 +63,7 @@ def test_tuple_valued_enum_never_emits_tuple_values() -> None:
     """测试元组值枚举不会在 OpenAPI 中暴露元组值."""
     schema = path_enum_schema(TabType)
 
-    assert all(not isinstance(value, list | tuple) for value in schema["enum"])
+    assert all(not isinstance(value, (list, tuple)) for value in schema["enum"])
 
 
 def test_non_int_enum_query_without_mapping_is_rejected() -> None:

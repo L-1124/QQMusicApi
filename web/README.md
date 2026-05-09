@@ -21,7 +21,7 @@ uv sync --group web
 uv run web/run.py
 ```
 
-服务启动后，访问 [http://localhost:8000/docs](http://localhost:8000/docs) 查看自动生成的 API 文档。
+服务启动后，访问 [http://localhost:8080/docs](http://localhost:8080/docs) 查看自动生成的 API 文档。
 
 ## 代码结构
 
@@ -35,15 +35,17 @@ uv run web/run.py
 
 Web 路由声明以 `web/src/routes/` 包中的 `ROUTES` 为唯一契约源。运行时只按显式 allowlist 注册路由，不扫描或自动暴露 `qqmusic_api.modules.*` 的所有公开方法。
 
-新增路由时声明 `WebRoute` 与 `ParamSpec`:
+新增路由时使用 `R()` 与 `P()` / `Q()` 辅助函数声明路由:
 
 ```python
-WebRoute(
+from ._helpers import P, Q, R
+
+R(
     module="song",
     method="get_detail",
     path="/song/{value}/detail",
     response_model=GetSongDetailResponse,
-    params=(ParamSpec("value", ParamSource.PATH, annotation=int | str),),
+    params=(P("value", int | str, "资源 ID 或 MID."),),
     cache=PUBLIC_300,
 )
 ```
@@ -54,7 +56,7 @@ WebRoute(
 * `method`: modules 层方法名。
 * `path`: Web 路由路径，Path 参数使用 `{name}`。
 * `response_model`: 响应模型类。
-* `params`: Path、Query、Body 参数声明。简单请求模型由运行时从 `ParamSpec` 构造。
+* `params`: Path、Query、Body 参数声明，使用 `P()` 声明 Path 参数、`Q()` 声明 Query 参数，或直接传入 `ParamOverride` 元组。
 * `cache`: 缓存策略，支持 `PUBLIC_60`, `PUBLIC_300`, `PUBLIC_600` 或 `None`。
 * `auth`: 认证策略，默认 `AuthPolicy.NONE`；需要 Cookie 或默认凭据时使用 `AuthPolicy.COOKIE_OR_DEFAULT`。
 * `adapter`: 特殊路由适配函数。适配器只承载特殊调用逻辑，路由元数据仍必须来自 `WebRoute`。

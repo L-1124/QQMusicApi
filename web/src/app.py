@@ -225,7 +225,7 @@ def create_app() -> FastAPI:
     async def root_status():
         return {
             "code": 0,
-            "message": "ok",
+            "msg": "ok",
             "time": datetime.now(timezone.utc).astimezone().strftime("%Y-%m-%d %H:%M:%S"),
         }
 

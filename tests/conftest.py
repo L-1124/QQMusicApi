@@ -18,8 +18,6 @@ TEST_CREDENTIAL_ENV_PREFIX = "QQMUSIC_"
 TEST_DEVICE_CACHE_DIR = "qqmusic_api"
 TEST_DEVICE_FILENAME = "device.json"
 RATE_LIMIT_RETRY_DELAYS: tuple[float, ...] = (2.0, 4.0, 8.0)
-TEST_DEVICE_CACHE_DIR = "qqmusic_api"
-TEST_DEVICE_FILENAME = "device.json"
 
 
 def _is_network_timeout_error(exc: BaseException) -> bool:
