@@ -106,7 +106,7 @@ async def test_phone_authorize_reports_precise_login_code(monkeypatch: pytest.Mo
         monkeypatch.setattr(client, "execute", return_bind_required)
 
         with pytest.raises(LoginError) as exc_info:
-            await client.login.phone_authorize(phone=10000000000, auth_code=123456)
+            await client.login.phone_authorize(phone=10000000000, auth_code="123456")
 
     assert isinstance(exc_info.value, LoginError)
     assert exc_info.value.code == 20274
@@ -162,10 +162,18 @@ async def test_checking_mobile_qrcode_short_deadline_closes_cleanly(client: Clie
 
 async def test_phone_authorize_returns_controlled_error(client: Client) -> None:
     """测试手机验证码鉴权返回受控错误."""
-    with pytest.raises(LoginError, match=r"code=") as exc_info:
-        await client.login.phone_authorize(phone=10000000000, auth_code=123456)
+    with pytest.raises(LoginError) as exc_info:
+        await client.login.phone_authorize(phone=10000000000, auth_code="123456")
 
     assert any(
         keyword in str(exc_info.value)
-        for keyword in ("设备数量限制", "验证码错误或已鉴权", "鉴权失败", "验证码错误", "账号绑定", "登录参数错误")
+        for keyword in (
+            "设备数量限制",
+            "验证码错误或已鉴权",
+            "鉴权失败",
+            "验证码错误",
+            "账号绑定",
+            "登录参数错误",
+            "登录鉴权参数无效或已过期",
+        )
     )

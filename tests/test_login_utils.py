@@ -106,5 +106,5 @@ async def test_phone_login_session_authorize_error(client: Client) -> None:
     """测试手机登录会话鉴权失败."""
     session = PhoneLoginSession(api=client.login, phone=10000000000)
     with pytest.raises(LoginError) as exc_info:
-        await session.authorize(123456)
+        await session.authorize("123456")
     assert exc_info.value.code != 0

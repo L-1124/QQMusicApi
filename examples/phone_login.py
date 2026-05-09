@@ -27,7 +27,7 @@ async def phone_login_example() -> None:
             print("验证码已发送")
 
             auth_code = (await asyncio.to_thread(input, "请输入验证码: ")).strip()
-            credential = await session.authorize(int(auth_code))
+            credential = await session.authorize(auth_code)
             print(f"登录成功! MusicID: {credential.musicid}")
 
     except LoginError as e:

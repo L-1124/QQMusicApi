@@ -63,48 +63,6 @@ def _build_result(
         return response_model.model_validate(raw)
     return raw
 
-
-@overload
-def _build_result(
-    raw: TarsDict | dict[str, Any],
-    response_model: type["ResponseModel"],
-) -> "ResponseModel": ...
-
-
-@overload
-def _build_result(
-    raw: dict[str, Any],
-    response_model: None,
-) -> dict[str, Any]: ...
-
-
-@overload
-def _build_result(
-    raw: TarsDict,
-    response_model: None,
-) -> TarsDict: ...
-
-
-def _build_result(
-    raw: TarsDict | dict[str, Any],
-    response_model: type[BaseModel] | None,
-) -> BaseModel | dict[str, Any] | TarsDict:
-    """构建响应对象.
-
-    Args:
-        raw: 原始响应数据.
-        response_model: 期望的响应模型类型, 支持 Pydantic BaseModel.
-
-    Returns:
-        构建好的响应模型实例, 或原样返回 (如果无需转换).
-    """
-    if response_model is None:
-        return raw
-    if issubclass(response_model, BaseModel):
-        return response_model.model_validate(raw)
-    return raw
-
-
 @dataclass(kw_only=True)
 class Request(Generic[RequestResultT]):
     """请求描述符."""

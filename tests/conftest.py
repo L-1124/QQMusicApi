@@ -7,6 +7,8 @@ from typing import Any
 import anyio
 import pytest
 import pytest_asyncio
+from niquests.exceptions import ConnectionError as NiquestsConnectionError
+from urllib3.exceptions import MaxRetryError
 
 from qqmusic_api import Client, Credential
 from qqmusic_api.core.exceptions import CredentialExpiredError, CredentialInvalidError, NetworkError, RatelimitedError
@@ -18,6 +20,18 @@ TEST_DEVICE_FILENAME = "device.json"
 RATE_LIMIT_RETRY_DELAYS: tuple[float, ...] = (2.0, 4.0, 8.0)
 TEST_DEVICE_CACHE_DIR = "qqmusic_api"
 TEST_DEVICE_FILENAME = "device.json"
+
+
+def _is_network_timeout_error(exc: BaseException) -> bool:
+    """判断异常是否属于可自动跳过的网络超时/连接失败."""
+    if isinstance(exc, NetworkError | TimeoutError | ConnectionError | NiquestsConnectionError | MaxRetryError):
+        return True
+    if isinstance(exc, OSError):
+        message = str(exc)
+        return any(
+            keyword in message for keyword in ("超时", "timeout", "timed out", "连接已拒绝", "Connection aborted")
+        )
+    return False
 
 
 def _build_credential() -> Credential:
@@ -80,10 +94,14 @@ def handle_unavailable_api_errors(monkeypatch: pytest.MonkeyPatch):
 
     try:
         yield
-    except (CredentialInvalidError, CredentialExpiredError, NetworkError) as exc:
+    except (CredentialInvalidError, CredentialExpiredError) as exc:
         pytest.skip(str(exc))
     except RatelimitedError as exc:
         pytest.skip(f"{exc}。指数退避重试 {len(RATE_LIMIT_RETRY_DELAYS)} 次后仍触发限流")
+    except Exception as exc:
+        if _is_network_timeout_error(exc):
+            pytest.skip(str(exc))
+        raise
 
 
 @pytest_asyncio.fixture

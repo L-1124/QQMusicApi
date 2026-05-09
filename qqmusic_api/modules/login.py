@@ -325,7 +325,7 @@ class LoginApi(ApiModule):
     async def phone_authorize(
         self,
         phone: int | str,
-        auth_code: int,
+        auth_code: str,
     ) -> Credential:
         """使用手机验证码鉴权.
 
@@ -336,7 +336,7 @@ class LoginApi(ApiModule):
         Returns:
             Credential: 登录成功后的凭证对象.
         """
-        param: dict[str, str | int] = {"code": str(auth_code), "loginMode": 1}
+        param: dict[str, str | int] = {"code": auth_code, "loginMode": 1}
         if isinstance(phone, str):
             param["encryptedPhoneNo"] = phone
         else:

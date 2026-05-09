@@ -36,7 +36,7 @@ class PhoneLoginSession:
         self.last_result = result
         return result
 
-    async def authorize(self, auth_code: int) -> Credential:
+    async def authorize(self, auth_code: str) -> Credential:
         """使用验证码完成当前会话的登录鉴权."""
         return await self.api.phone_authorize(self.phone, auth_code)
 
