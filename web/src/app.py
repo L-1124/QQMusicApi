@@ -160,10 +160,10 @@ def create_app() -> FastAPI:
 部分接口需要登录才能调用。在 Web API 接口层, 认证状态通过 **Cookies** 进行传递。
 您需要在发起 HTTP 请求时, 至少携带以下核心 Cookie 字段:
 
-- **`musicid`**: 您的账号 ID (必须, 整数)
+- **`musicid`**: 您的账号 ID (必须)
 - **`musickey`**: 身份凭据票据 (必须)
 
-根据不同登录方式, 您还可以按需提供补充字段: `openid`, `refresh_token`, `access_token`, `expired_at` (整数), `unionid`, `str_musicid`, `refresh_key`。
+根据不同登录方式, 您还可以按需提供补充字段: `openid`, `refresh_token`, `access_token`, `expired_at`, `unionid`, `str_musicid`, `refresh_key`。
 """.strip(),
         lifespan=_lifespan,
         docs_url=None,
