@@ -1,7 +1,6 @@
 """歌单相关 API."""
 
-from qqmusic_api import ApiError
-
+from ..core import CgiApiException
 from ..core.pagination import OffsetStrategy, PagerMeta, ResponseAdapter
 from ..models.request import Credential
 from ..models.songlist import CreateDeleteSonglistResp, GetSonglistDetailResponse
@@ -138,7 +137,7 @@ class SonglistApi(ApiModule):
                 preserve_bool=True,
             )
             return data.get("retCode") == 0
-        except ApiError as e:
+        except CgiApiException as e:
             if e.code == 80092:
                 return False
             raise
@@ -172,7 +171,7 @@ class SonglistApi(ApiModule):
                 credential=target_credential,
             )
             return data.get("retCode") == 0
-        except ApiError as e:
+        except CgiApiException as e:
             if e.code == 80092:
                 return False
             raise

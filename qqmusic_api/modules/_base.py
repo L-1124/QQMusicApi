@@ -2,7 +2,7 @@
 
 from typing import TYPE_CHECKING, Any, overload
 
-from ..core.exceptions import NotLoginError
+from ..core.exceptions import CredentialInvalidError
 from ..core.versioning import Platform
 
 if TYPE_CHECKING:
@@ -10,7 +10,7 @@ if TYPE_CHECKING:
 
     from ..core.client import Client
     from ..core.pagination import PagerMeta, RefreshMeta
-    from ..core.request import PaginatedRequest, RefreshableRequest, Request, ResponseModel
+    from ..core.request import AllowErrorCodes, PaginatedRequest, RefreshableRequest, Request, ResponseModel
     from ..models.request import Credential
 
 
@@ -31,11 +31,11 @@ class ApiModule:
             Credential: 校验通过的凭证对象.
 
         Raises:
-            NotLoginError: 如果凭证中缺少必要的 musicid 或 musickey.
+            CredentialInvalidError: 如果凭证中缺少必要的 musicid 或 musickey.
         """
         target_credential = credential or self._client.credential
         if not target_credential.musicid or not target_credential.musickey:
-            raise NotLoginError("接口需要有效登录凭证")
+            raise CredentialInvalidError("接口需要有效登录凭证")
         return target_credential
 
     async def _request(
@@ -44,6 +44,8 @@ class ApiModule:
         url: str,
         credential: "Credential | None" = None,
         platform: Platform | None = None,
+        *,
+        lazy: bool = False,
         **kwargs: Any,
     ):
         """发送请求并自动携带对应凭证与平台 User-Agent.
@@ -53,6 +55,7 @@ class ApiModule:
             url: 目标 URL.
             credential: 请求凭证 (默认使用客户端凭证).
             platform: 请求平台 (默认使用客户端平台).
+            lazy: 是否延迟发送请求.
             **kwargs: 透传给底层客户端的参数.
 
         Returns:
@@ -63,18 +66,12 @@ class ApiModule:
             url=url,
             credential=credential,
             platform=platform,
+            lazy=lazy,
             **kwargs,
         )
 
     def _build_query_common_params(self, platform: Platform | None = None) -> dict[str, int]:
-        """构建查询接口使用的通用版本参数.
-
-        Args:
-            platform: 目标平台.
-
-        Returns:
-            dict[str, int]: 包含版本信息的常用查询参数.
-        """
+        """构建查询接口使用的通用版本参数."""
         profile = self._client._version_policy.get_profile(platform or self._client.platform)
         return {"ct": profile.ct, "cv": profile.cv}
 
@@ -91,6 +88,7 @@ class ApiModule:
         preserve_bool: bool = False,
         credential: "Credential | None" = None,
         platform: Platform | None = None,
+        allow_error_codes: "AllowErrorCodes | None" = None,
         pager_meta: None = None,
         refresh_meta: None = None,
     ) -> "Request[dict[str, Any]]": ...
@@ -243,24 +241,11 @@ class ApiModule:
         preserve_bool: bool = False,
         credential: "Credential | None" = None,
         platform: Platform | None = None,
+        allow_error_codes: "AllowErrorCodes | None" = None,
         pager_meta: "PagerMeta | None" = None,
         refresh_meta: "RefreshMeta | None" = None,
     ) -> "Request[Any] | PaginatedRequest[Any] | RefreshableRequest[Any]":
-        """构建可 await 的请求描述符.
-
-        Args:
-            module: 接口所属模块名.
-            method: 接口方法名.
-            param: 业务参数字典.
-            response_model: 响应数据模型类, 用于自动解析结果.
-            comm: 公共参数字典.
-            is_jce: 是否使用 JCE 协议.
-            preserve_bool: 是否保留 JSON 参数中的布尔字面量.
-            credential: 指定请求凭证.
-            platform: 指定请求平台.
-            pager_meta: 连续翻页元数据声明.
-            refresh_meta: 换一批元数据声明.
-        """
+        """构建可 await 的请求描述符."""
         from ..core.request import PaginatedRequest, RefreshableRequest, Request
 
         if pager_meta is not None and refresh_meta is not None:
@@ -277,6 +262,7 @@ class ApiModule:
             "preserve_bool": preserve_bool,
             "credential": credential,
             "platform": platform,
+            "allow_error_codes": allow_error_codes,
         }
         if pager_meta is not None:
             return PaginatedRequest(**common_kwargs, pager_meta=pager_meta)

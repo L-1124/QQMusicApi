@@ -19,14 +19,47 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
-## 常用初始化参数
+## 批量并发请求
 
-`Client` 当前常用参数包括：
+`Client.gather()` 可以一次执行多个 `Request`，并按传入顺序返回解析后的结果。适合同时请求多个互不依赖的 API。
 
-* `credential`: 全局凭证。
-* `device_path`: 单个设备信息文件路径，传入即可复用设备信息。
-* `enable_sign`: 是否启用签名参数。
-* `platform`: 请求默认平台。
+```python
+import asyncio
+
+from qqmusic_api import Client
+from qqmusic_api.modules.search import SearchType
+
+
+async def main() -> None:
+    async with Client() as client:
+        results = await client.gather(
+            [
+                client.search.search_by_type("周杰伦", SearchType.SONG, num=1),
+                client.search.search_by_type("林俊杰", SearchType.SONG, num=1),
+            ]
+        )
+        print(results[0].song)
+        print(results[1].song)
+
+
+asyncio.run(main())
+```
+
+`gather()` 的返回值顺序始终与传入的请求顺序一致。
+
+如果希望单个请求失败时不立即抛出异常，可以启用 `return_exceptions`：
+
+```python
+results = await client.gather(
+    [
+        client.search.search_by_type("周杰伦", SearchType.SONG, num=1),
+        client.search.search_by_type("林俊杰", SearchType.SONG, num=1),
+    ],
+    return_exceptions=True,
+)
+```
+
+此时失败项会以异常对象的形式出现在对应位置，成功项仍返回正常的响应模型。
 
 ## 全局凭证
 

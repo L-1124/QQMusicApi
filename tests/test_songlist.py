@@ -1,6 +1,8 @@
 """歌单模块测试."""
 
-from qqmusic_api import Client
+import pytest
+
+from qqmusic_api import Client, CredentialInvalidError
 
 
 async def test_get_detail(client: Client) -> None:
@@ -39,21 +41,25 @@ async def test_get_detail_without_userinfo(client: Client) -> None:
     assert result.info.id == 7843129912
 
 
-def test_create_requires_login(client: Client) -> None:
+async def test_create_requires_login(client: Client) -> None:
     """测试创建歌单需要登录凭证."""
-    client.songlist.create("pytest-songlist")
+    with pytest.raises(CredentialInvalidError):
+        await client.songlist.create("pytest-songlist")
 
 
-def test_delete_requires_login(client: Client) -> None:
+async def test_delete_requires_login(client: Client) -> None:
     """测试删除歌单需要登录凭证."""
-    client.songlist.delete(1)
+    with pytest.raises(CredentialInvalidError):
+        await client.songlist.delete(1)
 
 
 async def test_add_songs_requires_login(client: Client) -> None:
     """测试添加歌曲到歌单需要登录凭证."""
-    await client.songlist.add_songs(dirid=1, song_info=[(100, 0)])
+    with pytest.raises(CredentialInvalidError):
+        await client.songlist.add_songs(dirid=1, song_info=[(100, 0)])
 
 
 async def test_del_songs_requires_login(client: Client) -> None:
     """测试删除歌单歌曲需要登录凭证."""
-    await client.songlist.del_songs(dirid=1, song_info=[(100, 0)])
+    with pytest.raises(CredentialInvalidError):
+        await client.songlist.del_songs(dirid=1, song_info=[(100, 0)])

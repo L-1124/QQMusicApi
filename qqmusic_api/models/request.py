@@ -120,6 +120,7 @@ class RequestItem(TypedDict):
     module: str
     method: str
     param: dict[str, Any] | dict[int, Any]
+    preserve_bool: bool
 
 
 class JceRequestItem(Struct):

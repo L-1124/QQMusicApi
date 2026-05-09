@@ -6,10 +6,13 @@ from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Generic, TypeAlias, TypeVar, cast
 
-if TYPE_CHECKING:
-    from .request import PaginatedRequest, RefreshableRequest, RequestResult
+from pydantic import BaseModel
+from tarsio import TarsDict
 
-RequestResultT = TypeVar("RequestResultT", bound="RequestResult")
+if TYPE_CHECKING:
+    from .request import PaginatedRequest, RefreshableRequest
+
+RequestResultT = TypeVar("RequestResultT", bound=BaseModel | dict[str, Any] | TarsDict)
 PaginationParams: TypeAlias = dict[str, Any] | dict[int, Any]
 NextParamsBuilder: TypeAlias = Callable[[PaginationParams, Any, "ResponseAdapter"], PaginationParams | None]
 

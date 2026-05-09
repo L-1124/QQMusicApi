@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 import anyio
 import niquests
 
-from ..core import LoginError
+from ..core.exceptions import LoginError
 from ..models.login import QR, PhoneAuthCodeResult, QRCodeLoginEvents, QRLoginResult, QRLoginStream, QRLoginType
 from ..models.request import Credential
 
@@ -105,16 +105,13 @@ class QRCodeLoginSession:
         async for result in self:
             if result.event == QRCodeLoginEvents.DONE:
                 if result.credential is None:
-                    raise LoginError("[QRCodeLogin] 登录结果缺少凭证")
+                    raise LoginError("登录结果缺少凭证", code=-1)
                 return result.credential
             if result.event == QRCodeLoginEvents.REFUSE:
-                raise LoginError("[QRCodeLogin] 用户拒绝了登录请求")
+                raise LoginError("用户拒绝了登录请求", code=-1)
             if result.event == QRCodeLoginEvents.TIMEOUT:
-                raise LoginError("[QRCodeLogin] 二维码已过期")
-            if result.event == QRCodeLoginEvents.OTHER:
-                raise LoginError("[QRCodeLogin] 二维码登录状态异常")
-
-        raise LoginError("[QRCodeLogin] 二维码登录流程意外结束")
+                raise LoginError("登录二维码已超时", code=-1)
+        raise LoginError("登录流程异常结束", code=-1)
 
     async def iter_events(self) -> QRLoginStream:
         """统一产出二维码登录事件流."""
@@ -123,7 +120,6 @@ class QRCodeLoginSession:
             QRCodeLoginEvents.DONE,
             QRCodeLoginEvents.REFUSE,
             QRCodeLoginEvents.TIMEOUT,
-            QRCodeLoginEvents.OTHER,
         }
         interval_config = (
             PollInterval(float(self.interval)) if isinstance(self.interval, int | float) else self.interval

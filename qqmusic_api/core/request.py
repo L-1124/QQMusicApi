@@ -4,14 +4,15 @@ import copy
 from collections.abc import Generator
 from dataclasses import dataclass
 from dataclasses import replace as dc_replace
-from typing import TYPE_CHECKING, Any, Generic, TypeAlias, TypeVar
+from functools import cached_property
+from typing import TYPE_CHECKING, Any, Generic, Literal, TypeVar
 
 from pydantic import BaseModel
 from tarsio import TarsDict
 from typing_extensions import overload
 
 from ..models.request import Credential
-from .pagination import PagerMeta, RefreshMeta, ResponsePager, ResponseRefresher
+from .pagination import PagerMeta, RefreshMeta, RequestResultT, ResponsePager, ResponseRefresher
 from .versioning import Platform
 
 if TYPE_CHECKING:
@@ -19,8 +20,48 @@ if TYPE_CHECKING:
 
 
 ResponseModel = TypeVar("ResponseModel", bound=BaseModel)
-RequestResult: TypeAlias = BaseModel | dict[str, Any] | TarsDict
-RequestResultT = TypeVar("RequestResultT", bound=RequestResult)
+AllowErrorCodes = Literal["all"] | set[int] | frozenset[int] | tuple[int, ...]
+
+
+@overload
+def _build_result(
+    raw: TarsDict | dict[str, Any],
+    response_model: type["ResponseModel"],
+) -> "ResponseModel": ...
+
+
+@overload
+def _build_result(
+    raw: dict[str, Any],
+    response_model: None,
+) -> dict[str, Any]: ...
+
+
+@overload
+def _build_result(
+    raw: TarsDict,
+    response_model: None,
+) -> TarsDict: ...
+
+
+def _build_result(
+    raw: TarsDict | dict[str, Any],
+    response_model: type[BaseModel] | None,
+) -> BaseModel | dict[str, Any] | TarsDict:
+    """构建响应对象.
+
+    Args:
+        raw: 原始响应数据.
+        response_model: 期望的响应模型类型, 支持 Pydantic BaseModel.
+
+    Returns:
+        构建好的响应模型实例, 或原样返回 (如果无需转换).
+    """
+    if response_model is None:
+        return raw
+    if issubclass(response_model, BaseModel):
+        return response_model.model_validate(raw)
+    return raw
 
 
 @overload
@@ -78,10 +119,27 @@ class Request(Generic[RequestResultT]):
     preserve_bool: bool = False
     credential: Credential | None = None
     platform: Platform | None = None
+    allow_error_codes: AllowErrorCodes | None = None
 
     def __await__(self) -> Generator[Any, Any, RequestResultT]:
         """使 Request 对象可被 await 执行."""
         return self._client.execute(self).__await__()
+
+    @cached_property
+    def _group_key(
+        self,
+    ) -> tuple[
+        bool,
+        Platform | None,
+        tuple[tuple[str, int | str | bool], ...] | None,
+        tuple[int, str],
+    ]:
+        """返回可批量合并执行的稳定分组键."""
+        platform = self.platform
+        credential = self.credential or self._client.credential
+        credential_key = (credential.musicid, credential.musickey)
+        comm_items = tuple(sorted(self.comm.items(), key=lambda item: item[0])) if self.comm is not None else None
+        return (self.is_jce, platform, comm_items, credential_key)
 
     def replace(self, **changes: Any) -> "Request[RequestResultT]":
         """返回一个应用了修改的新 Request 对象, 不会修改原对象."""

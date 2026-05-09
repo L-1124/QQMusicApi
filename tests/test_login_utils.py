@@ -2,8 +2,8 @@
 
 import pytest
 
-from qqmusic_api import Client, LoginError
-from qqmusic_api.models.login import QRCodeLoginEvents, QRLoginType
+from qqmusic_api import Client, Credential, LoginError
+from qqmusic_api.models.login import QRCodeLoginEvents, QRLoginResult, QRLoginType
 from qqmusic_api.modules.login_utils import PhoneLoginSession, PollInterval, QRCodeLoginSession
 
 
@@ -51,6 +51,44 @@ async def test_qrcode_login_session_iter_events(client: Client) -> None:
     assert first_event.event in set(QRCodeLoginEvents)
 
 
+async def test_qrcode_login_session_wait_returns_credential(monkeypatch: pytest.MonkeyPatch, client: Client) -> None:
+    """测试二维码登录等待成功返回凭证."""
+    credential = Credential(musicid=1, musickey="test_key")
+
+    async def iter_done(_session: QRCodeLoginSession):
+        yield QRLoginResult(event=QRCodeLoginEvents.DONE, credential=credential)
+
+    monkeypatch.setattr(QRCodeLoginSession, "iter_events", iter_done)
+    session = QRCodeLoginSession(api=client.login, login_type=QRLoginType.QQ)
+
+    assert await session.wait_qrcode_login() == credential
+
+
+@pytest.mark.parametrize(
+    ("event", "message"),
+    [
+        (QRCodeLoginEvents.REFUSE, "用户拒绝"),
+        (QRCodeLoginEvents.TIMEOUT, "已超时"),
+    ],
+)
+async def test_qrcode_login_session_wait_reports_terminal_error(
+    monkeypatch: pytest.MonkeyPatch,
+    client: Client,
+    event: QRCodeLoginEvents,
+    message: str,
+) -> None:
+    """测试二维码登录等待终态失败抛出受控异常."""
+
+    async def iter_terminal(_session: QRCodeLoginSession):
+        yield QRLoginResult(event=event)
+
+    monkeypatch.setattr(QRCodeLoginSession, "iter_events", iter_terminal)
+    session = QRCodeLoginSession(api=client.login, login_type=QRLoginType.QQ)
+
+    with pytest.raises(LoginError, match=message):
+        await session.wait_qrcode_login()
+
+
 async def test_phone_login_session_send_authcode(client: Client) -> None:
     """测试手机登录会话发送验证码."""
     session = PhoneLoginSession(api=client.login, phone=10000000000)
@@ -67,5 +105,6 @@ async def test_phone_login_session_send_authcode(client: Client) -> None:
 async def test_phone_login_session_authorize_error(client: Client) -> None:
     """测试手机登录会话鉴权失败."""
     session = PhoneLoginSession(api=client.login, phone=10000000000)
-    with pytest.raises(LoginError, match=r"code="):
+    with pytest.raises(LoginError) as exc_info:
         await session.authorize(123456)
+    assert exc_info.value.code != 0

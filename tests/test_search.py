@@ -5,23 +5,36 @@ import pytest
 from qqmusic_api import Client
 from qqmusic_api.modules.search import SearchType
 
+SEARCH_TYPE_RESULT_FIELDS = {
+    SearchType.SONG: "song",
+    SearchType.SINGER: "singer",
+    SearchType.ALBUM: "album",
+    SearchType.SONGLIST: "songlist",
+    SearchType.MV: "mv",
+    SearchType.LYRIC: "song",
+    SearchType.USER: "user",
+    SearchType.AUDIO_ALBUM: "audio_alum",
+    SearchType.AUDIO: "song",
+}
+
 
 async def test_get_hotkey(client: Client) -> None:
     """测试获取热搜词列表."""
     result = await client.search.get_hotkey()
-    assert result
+    assert result["ret_code"] == 0
+    assert result["vec_hotkey"]
 
 
 async def test_complete(client: Client) -> None:
     """测试搜索词补全建议."""
     result = await client.search.complete("周杰伦")
-    assert result
+    assert result["items"] or result["vec_related_items"] or result["vec_direct_items"]
 
 
 async def test_quick_search(client: Client) -> None:
     """测试快速搜索."""
     result = await client.search.quick_search("周杰伦")
-    assert result
+    assert any(result.get(key) for key in ("song", "singer", "album", "mv"))
 
 
 @pytest.mark.parametrize("page", [1, 2])
@@ -50,7 +63,7 @@ async def test_general_search(client: Client, page: int) -> None:
 async def test_search_by_type(client: Client, search_type: SearchType, page: int, num: int) -> None:
     """测试按类型搜索."""
     result = await client.search.search_by_type("周杰伦", search_type=search_type, page=page, num=num)
-    assert any((result.song, result.singer, result.album, result.songlist, result.user, result.audio_alum, result.mv))
+    assert getattr(result, SEARCH_TYPE_RESULT_FIELDS[search_type])
 
 
 async def test_search_by_type_with_int(client: Client) -> None:

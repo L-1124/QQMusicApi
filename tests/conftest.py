@@ -1,18 +1,20 @@
 """pytest 配置与共享 fixtures."""
 
 import os
-import time
-from collections.abc import AsyncIterator, Generator
-from typing import Any, NoReturn
+from collections.abc import AsyncIterator, Awaitable, Callable
+from typing import Any
 
+import anyio
 import pytest
 import pytest_asyncio
 
 from qqmusic_api import Client, Credential
-from qqmusic_api.core.exceptions import LoginExpiredError, NetworkError, NotLoginError, RatelimitedError
+from qqmusic_api.core.exceptions import CredentialExpiredError, CredentialInvalidError, NetworkError, RatelimitedError
 
 TEST_CREDENTIAL_ENV_PREFIX = "QQMUSIC_"
 
+TEST_DEVICE_CACHE_DIR = "qqmusic_api"
+TEST_DEVICE_FILENAME = "device.json"
 RATE_LIMIT_RETRY_DELAYS: tuple[float, ...] = (2.0, 4.0, 8.0)
 TEST_DEVICE_CACHE_DIR = "qqmusic_api"
 TEST_DEVICE_FILENAME = "device.json"
@@ -35,46 +37,53 @@ def _build_credential() -> Credential:
     return Credential.model_validate(data)
 
 
-def _skip_rate_limit_after_retries() -> NoReturn:
-    """在指数回退重试耗尽后跳过测试."""
-    pytest.skip(f"触发 API 限流, 指数回退重试 {len(RATE_LIMIT_RETRY_DELAYS)} 次后仍失败")
+async def _retry_rate_limited_call(operation: Callable[[], Awaitable[Any]]) -> Any:
+    """对测试中的 API 限流异常执行指数退避重试."""
+    for delay in (0.0, *RATE_LIMIT_RETRY_DELAYS):
+        if delay:
+            await anyio.sleep(delay)
+        try:
+            return await operation()
+        except RatelimitedError:
+            if delay == RATE_LIMIT_RETRY_DELAYS[-1]:
+                raise
+    raise RuntimeError("限流重试流程异常结束")
 
 
-def _rerun_test_call_with_rate_limit_retry(
-    item: pytest.Item,
-    delays: tuple[float, ...],
-) -> None:
-    """在调用阶段重试命中限流的测试."""
+@pytest.fixture(autouse=True)
+def handle_unavailable_api_errors(monkeypatch: pytest.MonkeyPatch):
+    """为测试 API 调用添加限流重试, 并将环境不可用异常转为跳过."""
+    original_execute = Client.execute
+    original_gather = Client.gather
+
+    async def execute_with_rate_limit_retry(client: Client, request: Any) -> Any:
+        return await _retry_rate_limited_call(lambda: original_execute(client, request))
+
+    async def gather_with_rate_limit_retry(
+        client: Client,
+        requests: list[Any],
+        *,
+        batch_size: int = 20,
+        return_exceptions: bool = False,
+    ) -> list[Any]:
+        return await _retry_rate_limited_call(
+            lambda: original_gather(
+                client,
+                requests,
+                batch_size=batch_size,
+                return_exceptions=return_exceptions,
+            ),
+        )
+
+    monkeypatch.setattr(Client, "execute", execute_with_rate_limit_retry)
+    monkeypatch.setattr(Client, "gather", gather_with_rate_limit_retry)
+
     try:
-        item.runtest()
-    except RatelimitedError:
-        if not delays:
-            _skip_rate_limit_after_retries()
-        time.sleep(delays[0])
-        _rerun_test_call_with_rate_limit_retry(item, delays[1:])
-
-
-def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
-    """为异步测试补标记."""
-    for item in items:
-        if pytest_asyncio.is_async_test(item) and item.get_closest_marker("asyncio") is None:
-            item.add_marker(pytest.mark.asyncio)
-
-
-@pytest.hookimpl(hookwrapper=True)
-def pytest_runtest_call(item: pytest.Item) -> Generator[None, Any, Any]:
-    """在测试调用阶段对限流异常做指数回退重试, 登录异常自动跳过."""
-    outcome = yield
-    excinfo = outcome.excinfo
-    if excinfo is None:
-        return
-
-    exc = excinfo[1]
-    if isinstance(exc, NotLoginError | LoginExpiredError | NetworkError):
-        outcome.force_exception(pytest.skip.Exception(str(exc)))
-    elif isinstance(exc, RatelimitedError):
-        _rerun_test_call_with_rate_limit_retry(item, RATE_LIMIT_RETRY_DELAYS)
-        outcome.force_result(None)
+        yield
+    except (CredentialInvalidError, CredentialExpiredError, NetworkError) as exc:
+        pytest.skip(str(exc))
+    except RatelimitedError as exc:
+        pytest.skip(f"{exc}。指数退避重试 {len(RATE_LIMIT_RETRY_DELAYS)} 次后仍触发限流")
 
 
 @pytest_asyncio.fixture

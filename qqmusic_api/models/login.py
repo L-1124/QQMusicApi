@@ -18,7 +18,6 @@ class QRCodeLoginEvents(Enum):
     CONF = (67, 404)
     TIMEOUT = (65, 402)
     REFUSE = (68, 403)
-    OTHER = (None, None)
 
     @classmethod
     def get_by_value(cls, value: int) -> "QRCodeLoginEvents":
@@ -28,12 +27,15 @@ class QRCodeLoginEvents(Enum):
             value: 二维码状态码.
 
         Returns:
-            QRCodeLoginEvents: 对应的登录事件成员. 若无法识别则返回 OTHER.
+            QRCodeLoginEvents: 对应的登录事件成员.
+
+        Raises:
+            ValueError: 二维码状态码无法识别.
         """
         for member in cls:
             if value in member.value:
                 return member
-        return cls.OTHER
+        raise ValueError(f"无法识别的二维码登录状态码: {value}")
 
 
 class PhoneLoginEvents(Enum):
@@ -42,7 +44,6 @@ class PhoneLoginEvents(Enum):
     SEND = 0
     CAPTCHA = 20276
     FREQUENCY = 100001
-    OTHER = None
 
 
 @dataclass(frozen=True)
