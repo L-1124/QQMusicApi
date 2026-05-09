@@ -94,10 +94,12 @@ class CredentialStore:
         credentials: list[Credential] = []
         for row in rows:
             credential = _load_credential(row[0])
-            if credential is not None and _credential_has_login(credential):
+            if credential is not None and credential_has_login(credential):
                 credentials.append(credential)
         logger.debug(f"获取有效凭证: {len(credentials)} 个")
-        return _shuffled(credentials)
+        rng = secrets.SystemRandom()
+        rng.shuffle(credentials)
+        return credentials
 
     def get(self, musicid: int) -> Credential | None:
         """按 musicid 获取凭证."""
@@ -114,7 +116,7 @@ class CredentialStore:
             logger.debug(f"凭证不存在: musicid {musicid}")
             return None
         credential = _load_credential(row[0])
-        if credential is None or not _credential_has_login(credential):
+        if credential is None or not credential_has_login(credential):
             logger.debug(f"凭证无效或缺少登录信息: musicid {musicid}")
             return None
         logger.debug(f"凭证获取成功: musicid {musicid}")
@@ -122,7 +124,7 @@ class CredentialStore:
 
     def update(self, credential: Credential) -> None:
         """保存刷新后的 Credential 并标记为有效."""
-        if not _credential_has_login(credential):
+        if not credential_has_login(credential):
             raise ValueError("Credential 缺少 musicid 或 musickey")
         logger.debug(f"更新凭证: musicid {credential.musicid}")
         with self._lock:
@@ -139,11 +141,12 @@ class CredentialStore:
         """标记账号为无效."""
         logger.warning(f"标记凭证为无效: musicid {musicid}")
         with self._lock:
-            self._connect().execute(
+            connection = self._connect()
+            connection.execute(
                 "UPDATE credentials SET valid = 0 WHERE musicid = ?",
                 (musicid,),
             )
-            self._connect().commit()
+            connection.commit()
 
     def get_all_musicids(self) -> list[int]:
         """返回全部已知 musicid."""
@@ -219,7 +222,8 @@ def credential_needs_refresh(credential: Credential) -> bool:
     return needs_refresh
 
 
-def _credential_has_login(credential: Credential) -> bool:
+def credential_has_login(credential: Credential) -> bool:
+    """判断 Credential 是否包含可用登录凭证."""
     return credential.musicid > 0 and bool(credential.musickey)
 
 
@@ -228,13 +232,3 @@ def _load_credential(value: str) -> Credential | None:
         return Credential.model_validate_json(value)
     except ValueError:
         return None
-
-
-def _shuffled(credentials: list[Credential]) -> list[Credential]:
-    remaining = list(credentials)
-    shuffled: list[Credential] = []
-    while remaining:
-        selected = secrets.choice(remaining)
-        remaining.remove(selected)
-        shuffled.append(selected)
-    return shuffled

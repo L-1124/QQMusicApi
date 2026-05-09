@@ -10,7 +10,7 @@ level = "INFO"
 # 日志文件路径 (当 mode 为 file 或 both 时使用)
 file_path = "web/data/logs/app.log"
 # 控制台日志格式
-console_format = "<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level:<8}</level> | <level>{message}</level>"
+console_format = "<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level:<8}</level> | <cyan>{name}</cyan> | <level>{message}</level>"
 # 文件日志格式
 file_format = "{time:YYYY-MM-DD HH:mm:ss} | {level:<8} | {name} | {message}"
 # 单个日志文件最大字节数 (默认 10MB)
@@ -22,9 +22,9 @@ backup_count = 5
 # 绑定地址
 host = "127.0.0.1"
 # 监听端口
-port = 8000
+port = 8080
 # 工作进程数
-workers = 4
+workers = 1
 # Uvicorn 并发连接/任务上限; 默认不启用, 由应用层并发限制先提供标准 JSON 过载响应。
 # limit_concurrency = 100
 
@@ -34,7 +34,7 @@ ttl = 60
 # 内存缓存最大条目数
 memory_max_size = 1024
 # 缓存后端 (可选: "memory" 或 "redis")
-backend = "redis"
+backend = "memory"
 # Redis 连接地址
 # 当 backend = "redis" 时需要配置此项
 # 例如: redis_url = "redis://localhost:6379/0"

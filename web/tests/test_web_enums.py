@@ -9,7 +9,7 @@ from qqmusic_api.models.login import QRLoginType
 from qqmusic_api.modules.search import SearchType
 from qqmusic_api.modules.singer import TabType
 from qqmusic_api.modules.song import BaseSongFileType, EncryptedSongFileType, SongFileType
-from web.src.routing.enum_utils import (
+from web.src.routing.params import (
     enum_mapping_param,
     int_enum_schema,
     iter_enum_members,

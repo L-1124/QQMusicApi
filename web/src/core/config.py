@@ -1,6 +1,6 @@
 """Web 层配置管理."""
 
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict, TomlConfigSettingsSource
@@ -11,11 +11,11 @@ from qqmusic_api import Credential
 class LogConfig(BaseModel):
     """日志配置."""
 
-    mode: Literal["console", "file", "both"] = Field(default="console", description="日志模式: console/file/both")
-    level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = Field(default="INFO", description="日志级别")
+    mode: Annotated[Literal["console", "file", "both"], Field(description="日志模式: console/file/both")] = "console"
+    level: Annotated[Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"], Field(description="日志级别")] = "INFO"
     file_path: str = Field(default="web/data/logs/app.log", description="日志文件路径 (当 mode 为 file 或 both 时使用)")
     console_format: str = Field(
-        default="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level:<8}</level> | <level>{message}</level>",
+        default="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level:<8}</level> | <cyan>{name}</cyan> | <level>{message}</level>",
         description="控制台日志格式",
     )
     file_format: str = Field(

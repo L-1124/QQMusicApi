@@ -10,11 +10,11 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 
 from qqmusic_api import Credential
-from qqmusic_api.core.exceptions import CredentialError
+from qqmusic_api.core.exceptions import CredentialExpiredError
 
-from ..core.auth import configured_credential_for_api, credential_has_login
+from ..core.auth import configured_credential_for_api
 from ..core.cache import cached_response, make_cache_key
-from ..core.credential_store import CredentialStore
+from ..core.credential_store import CredentialStore, credential_has_login
 from ..core.deps import get_credential_store
 from ..core.response import ApiResponse, success_response
 from .route_types import AuthPolicy, RouteContext
@@ -50,7 +50,7 @@ async def execute_route(context: RouteContext) -> Any:
     async def invoke_with_retry() -> Any:
         try:
             return await invoke()
-        except CredentialError:
+        except CredentialExpiredError:
             if credential is None:
                 raise
             logger.warning(f"凭证错误, 准备刷新凭证 {credential.musicid}")
@@ -134,7 +134,7 @@ async def _refresh_credential(context: RouteContext, credential: Credential) -> 
     store = get_credential_store(context.request)
     if not isinstance(store, CredentialStore) or not credential_has_login(credential):
         logger.error(f"无法刷新凭证 {credential.musicid}: 存储不可用或凭证无效")
-        raise CredentialError("登录凭证已失效")
+        raise CredentialExpiredError("登录凭证已失效", code=0)
     try:
         logger.info(f"刷新凭证 {credential.musicid}")
         refreshed = await context.client.login.refresh_credential(credential)

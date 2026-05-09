@@ -13,7 +13,8 @@ from qqmusic_api.modules.song import (
     SongFileType,
     SpecialSongFileType,
 )
-from web.src.routing.enum_utils import enum_mapping_schema, enum_mapping_validator
+from web.src.routing.docstrings import get_enum_member_descriptions
+from web.src.routing.params import enum_mapping_schema, enum_mapping_validator
 from web.src.routing.route_types import EnumIntMapping, RouteContext
 
 SONG_FILE_TYPES: tuple[BaseSongFileType, ...] = (
@@ -68,7 +69,16 @@ SONG_FILE_TYPE_LABELS = tuple(
     else f"{type(member).__name__.removesuffix('SongFileType').upper()}_{member.name}"
     for member in SONG_FILE_TYPES
 )
-SONG_FILE_TYPE_MAPPING = EnumIntMapping(SONG_FILE_TYPES, labels=SONG_FILE_TYPE_LABELS)
+
+_song_file_type_descriptions_map: dict[str, str] = {}
+for enum_type in {type(m) for m in SONG_FILE_TYPES}:
+    _song_file_type_descriptions_map.update(get_enum_member_descriptions(enum_type))
+
+SONG_FILE_TYPE_DESCRIPTIONS = tuple(_song_file_type_descriptions_map.get(member.name, "") for member in SONG_FILE_TYPES)
+
+SONG_FILE_TYPE_MAPPING = EnumIntMapping(
+    SONG_FILE_TYPES, labels=SONG_FILE_TYPE_LABELS, descriptions=SONG_FILE_TYPE_DESCRIPTIONS
+)
 SongFileTypeParam: TypeAlias = Annotated[
     Any,
     BeforeValidator(enum_mapping_validator(SONG_FILE_TYPE_MAPPING)),

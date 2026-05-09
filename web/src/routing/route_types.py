@@ -57,6 +57,7 @@ class EnumIntMapping(Generic[EnumT]):
     members: tuple[EnumT, ...]
     labels: tuple[str, ...] | None = None
     codes: tuple[int, ...] | None = None
+    descriptions: tuple[str, ...] | None = None
 
     def __post_init__(self) -> None:
         """校验映射长度与公开整数唯一性."""
@@ -66,6 +67,8 @@ class EnumIntMapping(Generic[EnumT]):
             raise ValueError("enum mapping labels must match members")
         if self.codes is not None and len(self.codes) != len(self.members):
             raise ValueError("enum mapping codes must match members")
+        if self.descriptions is not None and len(self.descriptions) != len(self.members):
+            raise ValueError("enum mapping descriptions must match members")
         values = self.values
         if len(set(values)) != len(values):
             raise ValueError("enum mapping integer values must be unique")
@@ -94,6 +97,11 @@ class EnumIntMapping(Generic[EnumT]):
     def description(self) -> str:
         """返回面向 OpenAPI 描述的映射文本."""
         names = self.labels or tuple(member.name.casefold() for member in self.members)
+        if self.descriptions is not None:
+            return "\n".join(
+                f"- `{value}`: {name}, {desc}" if desc else f"- `{value}`: {name}"
+                for value, name, desc in zip(self.values, names, self.descriptions, strict=True)
+            )
         return "\n".join(f"- `{value}`: {name}" for value, name in zip(self.values, names, strict=True))
 
 

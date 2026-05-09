@@ -113,6 +113,23 @@ def enum_member_description(enum_type: type[Enum]) -> str | None:
     return "\n".join(items) if items else None
 
 
+def get_enum_member_descriptions(enum_type: type[Enum]) -> dict[str, str]:
+    """从枚举类文档的 `+ MEMBER: DESC` 格式中提取成员描述字典."""
+    docstring = enum_type.__doc__ or ""
+    if not docstring:
+        return {}
+    parsed = Docstring(docstring).parse("google", warnings=False, warn_missing_types=False)
+    descriptions: dict[str, str] = {}
+    for section in parsed:
+        if section.kind is not DocstringSectionKind.text:
+            continue
+        for line in str(section.value).splitlines():
+            match = _ENUM_LIST_RE.match(line)
+            if match:
+                descriptions[match.group(1)] = match.group(2).strip()
+    return descriptions
+
+
 def clean_schema_description(docstring: str) -> str:
     """将 Attributes 段和 enum + 列表转换为 markdown 列表, 避免 Stoplight spotlight 渲染为大段文本."""
     if not docstring:

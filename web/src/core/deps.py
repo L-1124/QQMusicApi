@@ -1,7 +1,7 @@
 """Web 层依赖注入."""
 
-from dataclasses import dataclass
-from typing import Any
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 from fastapi import Depends, Request
 
@@ -11,13 +11,16 @@ from .cache import CacheBackend
 from .config import CredentialConfig
 from .credential_store import CredentialStore
 
+if TYPE_CHECKING:
+    from .security import SecurityServices
+
 
 @dataclass
 class WebServices:
     """应用生命周期内共享的服务对象."""
 
     cache: CacheBackend
-    security: Any
+    security: "SecurityServices | None" = field(default=None)
     client: Client | None = None
     credential_config: CredentialConfig | None = None
     credential_store: CredentialStore | None = None
@@ -54,7 +57,7 @@ def get_credential_store(request: Request) -> CredentialStore | None:
     return get_web_services(request).credential_store
 
 
-def get_security_services(request: Request) -> Any:
+def get_security_services(request: Request) -> "SecurityServices | None":
     """获取当前请求绑定的安全组件."""
     return get_web_services(request).security
 

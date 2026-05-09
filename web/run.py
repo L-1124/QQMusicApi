@@ -72,6 +72,8 @@ def _setup_logging(config) -> None:
         target_logger.propagate = False
         target_logger.setLevel(config.level)
 
+    logging.getLogger("niquests").setLevel(logging.WARNING)
+
     logger.info("日志系统已初始化: 模式={}, 级别={}", config.mode, config.level)
 
 

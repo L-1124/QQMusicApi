@@ -14,7 +14,14 @@ from fastapi.responses import HTMLResponse
 
 import qqmusic_api
 from qqmusic_api import Client
-from qqmusic_api.core.exceptions import BaseError, NotLoginError
+from qqmusic_api.core.exceptions import (
+    BaseApiException,
+    CredentialExpiredError,
+    CredentialInvalidError,
+    CredentialRefreshError,
+    LoginError,
+    RatelimitedError,
+)
 
 from .core.auth import startup_credential_health_check
 from .core.cache import MemoryBackend, RedisBackend
@@ -25,13 +32,14 @@ from .core.response import ErrorResponse, error_response
 from .core.security import apply_security_middleware, configure_security
 from .routes import ROUTES
 from .routing.docstrings import clean_schema_description
-from .routing.router_factory import include_routes, validate_routes
+from .routing.router_factory import include_routes
 
 logger = logging.getLogger(__name__)
 
 _ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
     400: {"model": ErrorResponse},
     401: {"model": ErrorResponse},
+    429: {"model": ErrorResponse},
     422: {"model": ErrorResponse},
 }
 _HTTP_ERROR_MESSAGES = {
@@ -51,12 +59,15 @@ def _http_exception_message(exc: HTTPException) -> str:
     return _HTTP_ERROR_MESSAGES.get(exc.status_code, "HTTP 请求错误")
 
 
-def _status_phrase(status_code: int) -> str:
-    """返回 HTTP 状态码的简短说明."""
-    try:
-        return HTTPStatus(status_code).phrase
-    except ValueError:
-        return ""
+def _base_api_exception_status_code(exc: BaseApiException) -> int:
+    """将 SDK 异常映射为对外 HTTP 状态码."""
+    if isinstance(exc, RatelimitedError):
+        return 429
+    if isinstance(exc, (CredentialInvalidError, CredentialExpiredError, CredentialRefreshError)):
+        return 401
+    if isinstance(exc, LoginError):
+        return 400
+    return 400
 
 
 @asynccontextmanager
@@ -121,13 +132,6 @@ def _configure_cors(app: FastAPI) -> None:
     )
 
 
-def _client_host(request: Request) -> str:
-    """返回请求来源主机, 不可用时返回连字符."""
-    if request.client is None:
-        return "-"
-    return request.client.host
-
-
 def _patch_openapi_schema_descriptions(app: FastAPI) -> None:
     """将 models schema 描述中的 Attributes 段转为 markdown 列表."""
     _original_openapi = app.openapi
@@ -148,6 +152,19 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="QQMusic API",
         version=qqmusic_api.__version__,
+        description="""
+提供基于 RESTful 的 QQ 音乐 API 访问服务。
+
+## 认证凭据 (Credentials)
+
+部分接口需要登录才能调用。在 Web API 接口层, 认证状态通过 **Cookies** 进行传递。
+您需要在发起 HTTP 请求时, 至少携带以下核心 Cookie 字段:
+
+- **`musicid`**: 您的账号 ID (必须, 整数)
+- **`musickey`**: 身份凭据票据 (必须)
+
+根据不同登录方式, 您还可以按需提供补充字段: `openid`, `refresh_token`, `access_token`, `expired_at` (整数), `unionid`, `str_musicid`, `refresh_key`。
+""".strip(),
         lifespan=_lifespan,
         docs_url=None,
         redoc_url=None,
@@ -169,8 +186,11 @@ def create_app() -> FastAPI:
         start = perf_counter()
         response = await call_next(request)
         elapsed_ms = (perf_counter() - start) * 1000
-        status_phrase = _status_phrase(response.status_code)
-        client_host = _client_host(request)
+        try:
+            status_phrase = HTTPStatus(response.status_code).phrase
+        except ValueError:
+            status_phrase = ""
+        client_host = request.client.host if request.client is not None else "-"
         status_suffix = f" {status_phrase}" if status_phrase else ""
         logger.info(
             f"HTTP {request.method} {request.url.path} -> {response.status_code}{status_suffix} "
@@ -180,15 +200,10 @@ def create_app() -> FastAPI:
 
     _configure_cors(app)
 
-    @app.exception_handler(BaseError)
-    async def _handle_base_error(_request: Request, exc: BaseError):
-        if isinstance(exc, NotLoginError):
-            return error_response(
-                status_code=401,
-                msg=str(exc),
-            )
+    @app.exception_handler(BaseApiException)
+    async def _handle_base_api_exception(_request: Request, exc: BaseApiException):
         return error_response(
-            status_code=400,
+            status_code=_base_api_exception_status_code(exc),
             msg=str(exc),
         )
 
@@ -242,13 +257,7 @@ def create_app() -> FastAPI:
 </html>"""
         )
 
-    route_errors = validate_routes(ROUTES)
-    if route_errors:
-        raise RuntimeError("Web 路由契约校验失败:\n" + "\n".join(f"- {error}" for error in route_errors))
     include_routes(app, ROUTES)
     _patch_openapi_schema_descriptions(app)
 
     return app
-
-
-app = create_app()

@@ -16,7 +16,7 @@ from qqmusic_api.models.login import (
     QRLoginResult,
     QRLoginType,
 )
-from web.src.routing.enum_utils import path_enum_value
+from web.src.routing.params import path_enum_value
 from web.src.routing.route_types import RouteContext
 
 
@@ -122,13 +122,11 @@ QR_CODE_EVENT_CODES = {
     QRCodeLoginEvents.CONF: 2,
     QRCodeLoginEvents.TIMEOUT: 3,
     QRCodeLoginEvents.REFUSE: 4,
-    QRCodeLoginEvents.OTHER: -1,
 }
 PHONE_EVENT_CODES = {
     PhoneLoginEvents.SEND: 0,
     PhoneLoginEvents.CAPTCHA: 1,
     PhoneLoginEvents.FREQUENCY: 2,
-    PhoneLoginEvents.OTHER: -1,
 }
 
 
@@ -156,7 +154,7 @@ def _serialize_qrcode(qrcode: QR) -> QRCodeData:
 def _serialize_qrcode_status(result: QRLoginResult, qrcode: QR) -> QRCodeStatusData:
     """序列化二维码登录状态结果."""
     return QRCodeStatusData(
-        event=QR_CODE_EVENT_CODES.get(result.event, QR_CODE_EVENT_CODES[QRCodeLoginEvents.OTHER]),
+        event=QR_CODE_EVENT_CODES.get(result.event, -1),
         done=result.done,
         credential=result.credential,
         identifier=qrcode.identifier,

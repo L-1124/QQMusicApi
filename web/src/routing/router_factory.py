@@ -2,7 +2,7 @@
 
 import inspect
 import re
-from enum import Enum, IntEnum
+from enum import IntEnum
 from typing import Annotated, Any, get_args, get_origin
 
 from fastapi import Depends, FastAPI, Path, Query, Request
@@ -28,7 +28,7 @@ from ..core.deps import cache_dependency, client_dependency
 from ..core.response import ApiResponse
 from .docstrings import MethodDocs, load_method_docs
 from .executor import collect_param_values, execute_route
-from .params import build_param_model, external_param_annotation, is_empty_model, split_params
+from .params import build_param_model, enum_type, external_param_annotation, is_empty_model, split_params
 from .route_types import COOKIE_SECURITY_REQUIREMENT, AuthPolicy, ParamOverride, ParamSource, RouteContext, WebRoute
 
 _MODULE_CLASSES: dict[str, type[Any]] = {
@@ -295,20 +295,20 @@ def _validate_param_sources(route: WebRoute, route_params: tuple[ParamOverride, 
 def _validate_enum_params(route: WebRoute, route_params: tuple[ParamOverride, ...]) -> list[str]:
     errors: list[str] = []
     for param in route_params:
-        enum_type = _enum_type(param.annotation)
-        if enum_type is None:
+        raw_enum_type = enum_type(param.annotation)
+        if raw_enum_type is None:
             continue
         if param.source is ParamSource.PATH:
             continue
-        if issubclass(enum_type, IntEnum):
+        if issubclass(raw_enum_type, IntEnum):
             continue
         if param.enum_mapping is None:
             errors.append(f"Query/Body 非 IntEnum 参数缺少显式整数映射: {route.module}.{route.method}.{param.name}")
     for param in route.param_overrides:
         if any(resolved.name == param.name for resolved in route_params):
             continue
-        enum_type = _enum_type(param.annotation)
-        if enum_type is None or param.source is ParamSource.PATH or issubclass(enum_type, IntEnum):
+        raw_enum_type = enum_type(param.annotation)
+        if raw_enum_type is None or param.source is ParamSource.PATH or issubclass(raw_enum_type, IntEnum):
             continue
         if param.enum_mapping is None:
             errors.append(f"Query/Body 非 IntEnum 参数缺少显式整数映射: {route.module}.{route.method}.{param.name}")
@@ -357,9 +357,9 @@ def _validate_auto_query_params(route: WebRoute, route_params: tuple[ParamOverri
 def _is_supported_query_annotation(annotation: Any, *, explicit: bool = False) -> bool:
     if annotation is Any:
         return False
-    enum_type = _enum_type(annotation)
-    if enum_type is not None:
-        return issubclass(enum_type, IntEnum)
+    raw_enum_type = enum_type(annotation)
+    if raw_enum_type is not None:
+        return issubclass(raw_enum_type, IntEnum)
     origin = get_origin(annotation)
     if origin is None:
         return annotation in {str, int, float, bool}
@@ -390,16 +390,3 @@ def _merged_param_docs(route: WebRoute, docs: MethodDocs) -> dict[str, str]:
 def _model_name(route: WebRoute, suffix: str) -> str:
     parts = [part.title() for part in re.split(r"[^a-zA-Z0-9]+", f"{route.module}_{route.method}") if part]
     return "".join(parts) + suffix
-
-
-def _enum_type(annotation: Any) -> type[Enum] | None:
-    if isinstance(annotation, type) and issubclass(annotation, Enum):
-        return annotation
-    origin = get_origin(annotation)
-    if origin is None:
-        return None
-    for arg in get_args(annotation):
-        enum_type = _enum_type(arg)
-        if enum_type is not None:
-            return enum_type
-    return None
