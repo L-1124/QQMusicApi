@@ -179,9 +179,14 @@ class Response(BaseModel):
                 matches = jsonpath_expr.find(data)
 
                 if matches:
-                    if len(matches) == 1:
-                        processed_data[target_key] = matches[0].value
+                    values = [match.value for match in matches]
+                    if "[*]" in jsonpath_expr_str:
+                        # 通配符路径表示提取条目列表, 即使仅命中一条也保持列表,
+                        # 兼容上游在仅有一条数据时直接返回对象而非数组的行为.
+                        processed_data[target_key] = values
+                    elif len(values) == 1:
+                        processed_data[target_key] = values[0]
                     else:
-                        processed_data[target_key] = [match.value for match in matches]
+                        processed_data[target_key] = values
 
         return processed_data

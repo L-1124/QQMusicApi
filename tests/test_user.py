@@ -1,6 +1,35 @@
 """用户模块测试."""
 
+from typing import Any
+
+import pytest
+
 from qqmusic_api import Client
+from qqmusic_api.models.user import UserCreatedSonglistResponse
+
+_PLAYLIST_PAYLOAD: dict[str, Any] = {
+    "tid": 8000000000,
+    "dirId": 201,
+    "dirName": "我喜欢",
+    "picUrl": "https://example.com/cover.jpg",
+    "songNum": 3,
+    "createTime": 1600000000,
+    "updateTime": 1700000000,
+    "uin": "10001",
+    "nick": "tester",
+    "bigpicUrl": "",
+    "albumPicUrl": "",
+    "avatar": "",
+    "identIcon": "",
+    "layerUrl": "",
+    "invalid": 0,
+    "dirShow": 1,
+    "fav_cnt": 0,
+    "play_cnt": 0,
+    "comment_cnt": 0,
+    "opType": 0,
+    "sortWeight": 0,
+}
 
 
 async def test_get_homepage(client: Client) -> None:
@@ -50,6 +79,30 @@ async def test_get_created_songlist_with_login(authenticated_client: Client) -> 
     assert result.total >= 0
     assert result.finished in (True, False)
     assert result.playlists is not None
+
+
+@pytest.mark.parametrize(
+    ("v_playlist", "expected_dirids"),
+    [
+        pytest.param(_PLAYLIST_PAYLOAD, [201], id="single-dict"),
+        pytest.param([_PLAYLIST_PAYLOAD], [201], id="single-item-list"),
+        pytest.param([_PLAYLIST_PAYLOAD, {**_PLAYLIST_PAYLOAD, "dirId": 202}], [201, 202], id="multi-item-list"),
+    ],
+)
+def test_created_songlist_coerces_single_playlist(
+    v_playlist: dict[str, Any] | list[dict[str, Any]],
+    expected_dirids: list[int],
+) -> None:
+    """测试创建歌单响应兼容上游仅一个歌单时返回单对象的形态."""
+    result = UserCreatedSonglistResponse.model_validate(
+        {
+            "total": len(expected_dirids),
+            "v_playlist": v_playlist,
+            "v_delTid": [],
+            "bFinish": True,
+        }
+    )
+    assert [playlist.dirid for playlist in result.playlists] == expected_dirids
 
 
 async def test_get_fav_song_with_login(authenticated_client: Client) -> None:
