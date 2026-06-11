@@ -335,11 +335,11 @@ class UserVipInfoResponse(Response):
         userinfo: 用户权益摘要.
     """
 
-    auto_down: int = Field(default=0, alias="autoDown")
+    auto_down: int = Field(default=0, validation_alias=AliasChoices("auto_down", "autoDown", "autodown"))
     can_renew: int = Field(default=0, alias="canRenew")
-    max_dir_num: int = Field(default=0, alias="maxDirNum")
-    max_song_num: int = Field(default=0, alias="maxSongNum")
-    song_limit_msg: str = Field(default="", alias="songLimitMsg")
+    max_dir_num: int = Field(default=0, validation_alias=AliasChoices("max_dir_num", "maxDirNum", "maxdirnum"))
+    max_song_num: int = Field(default=0, validation_alias=AliasChoices("max_song_num", "maxSongNum", "maxsongnum"))
+    song_limit_msg: str = Field(default="", validation_alias=AliasChoices("song_limit_msg", "songLimitMsg"))
     svip: int = 0
     star: int = 0
     star_start: str = Field(default="", alias="starstart")

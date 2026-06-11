@@ -36,8 +36,8 @@ async def test_relation_response_models_with_login(authenticated_client: Client)
 async def test_get_vip_info_with_login(authenticated_client: Client) -> None:
     """测试获取 VIP 信息模型."""
     result = await authenticated_client.user.get_vip_info()
-    assert result.max_dir_num >= 0
-    assert result.max_song_num >= 0
+    assert result.max_dir_num > 0
+    assert result.max_song_num > 0
     assert result.userinfo.music_level >= 0
     assert result.svip >= 0
     assert result.star >= 0
