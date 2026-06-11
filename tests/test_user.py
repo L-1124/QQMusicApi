@@ -5,7 +5,7 @@ from typing import Any
 import pytest
 
 from qqmusic_api import Client
-from qqmusic_api.models.user import UserCreatedSonglistResponse
+from qqmusic_api.models.user import UserCreatedSonglistResponse, UserFavMvResponse
 
 _PLAYLIST_PAYLOAD: dict[str, Any] = {
     "tid": 8000000000,
@@ -154,3 +154,10 @@ async def test_get_fav_mv_with_login(authenticated_client: Client) -> None:
     assert result.code == 0
     assert result.sub_code == 0
     assert result.mv_list is not None
+
+
+@pytest.mark.parametrize("sub_code_key", ["subCode", "subcode"])
+def test_fav_mv_response_accepts_subcode_spellings(sub_code_key: str) -> None:
+    """测试收藏 MV 响应兼容子返回码键名的两种大小写拼写."""
+    result = UserFavMvResponse.model_validate({"code": 0, sub_code_key: 0, "msg": "", "mvlist": []})
+    assert result.sub_code == 0

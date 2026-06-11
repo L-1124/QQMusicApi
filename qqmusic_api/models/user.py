@@ -413,6 +413,6 @@ class UserFavMvResponse(Response):
     """
 
     code: int
-    sub_code: int = Field(alias="subCode")
+    sub_code: int = Field(validation_alias=AliasChoices("subCode", "subcode"))
     msg: str
     mv_list: list[UserFavMvItem] = Field(alias="mvlist")
