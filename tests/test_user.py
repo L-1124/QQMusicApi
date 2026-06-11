@@ -46,6 +46,8 @@ async def test_get_vip_info_with_login(authenticated_client: Client) -> None:
     assert result.identity.huge_vip >= 0
     assert result.identity.year_flag >= 0
     assert result.identity.huge_year_flag >= 0
+    assert result.identity.eight >= 0
+    assert result.identity.level >= 0
 
 
 async def test_get_created_songlist_with_login(authenticated_client: Client) -> None:

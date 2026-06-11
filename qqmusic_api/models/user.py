@@ -272,7 +272,14 @@ class VipIdentity(Response):
         group_vip_start: 家庭组会员生效时间.
         group_vip_end: 家庭组会员到期时间.
         cp_lover_flag: 情侣会员标志.
+        cp_lover_start: 情侣会员生效时间.
+        cp_lover_end: 情侣会员到期时间.
         ad_vip_flag: 广告会员标志.
+        eight: 八平台会员标志.
+        eight_start: 八平台会员生效时间.
+        eight_end: 八平台会员到期时间.
+        level: 会员等级.
+        next_level: 下一会员等级.
         icon: 官方等级徽章图地址.
         purchase_url: 会员购买页地址.
     """
@@ -292,7 +299,14 @@ class VipIdentity(Response):
     group_vip_start: str = Field(default="", alias="GroupVipStart")
     group_vip_end: str = Field(default="", alias="GroupVipEnd")
     cp_lover_flag: int = Field(default=0, alias="CPLoverFlag")
+    cp_lover_start: str = Field(default="", alias="CPLoverStart")
+    cp_lover_end: str = Field(default="", alias="CPLoverEnd")
     ad_vip_flag: int = Field(default=0, alias="AdVipFlag")
+    eight: int = 0
+    eight_start: str = Field(default="", alias="eightStart")
+    eight_end: str = Field(default="", alias="eightEnd")
+    level: int = 0
+    next_level: int = Field(default=0, alias="nextlevel")
     icon: str = ""
     purchase_url: str = Field(default="", alias="purchaseUrl")
 
