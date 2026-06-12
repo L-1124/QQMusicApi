@@ -16,14 +16,14 @@ async def test_get_detail_by_id(client: Client) -> None:
 
 
 @pytest.mark.parametrize(
-    ("num", "page"),
+    ("mid", "num", "page"),
     [
-        (30, 1),
-        (5, 1),
-        (10, 2),
+        ("001uKKpF1RuJSd", 30, 1),
+        ("001gR6jO1L4MWq", 5, 1),
+        ("0041WVfh2vtlJE", 10, 2),
     ],
 )
-async def test_get_song(client: Client, num: int, page: int) -> None:
+async def test_get_song(client: Client, mid: str, num: int, page: int) -> None:
     """测试获取专辑歌曲列表."""
-    result = await client.album.get_song(100, num=num, page=page)
+    result = await client.album.get_song(mid, num=num, page=page)
     assert result is not None
