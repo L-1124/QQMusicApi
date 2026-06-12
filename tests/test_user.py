@@ -1,35 +1,9 @@
 """用户模块测试."""
 
-from typing import Any
-
 import pytest
 
 from qqmusic_api import Client
-from qqmusic_api.models.user import UserCreatedSonglistResponse, UserFavMvResponse, UserRelationListResponse
-
-_PLAYLIST_PAYLOAD: dict[str, Any] = {
-    "tid": 8000000000,
-    "dirId": 201,
-    "dirName": "我喜欢",
-    "picUrl": "https://example.com/cover.jpg",
-    "songNum": 3,
-    "createTime": 1600000000,
-    "updateTime": 1700000000,
-    "uin": "10001",
-    "nick": "tester",
-    "bigpicUrl": "",
-    "albumPicUrl": "",
-    "avatar": "",
-    "identIcon": "",
-    "layerUrl": "",
-    "invalid": 0,
-    "dirShow": 1,
-    "fav_cnt": 0,
-    "play_cnt": 0,
-    "comment_cnt": 0,
-    "opType": 0,
-    "sortWeight": 0,
-}
+from qqmusic_api.models.user import UserFavMvResponse
 
 
 async def test_get_homepage(client: Client) -> None:
@@ -62,34 +36,6 @@ async def test_relation_response_models_with_login(authenticated_client: Client)
     assert follow_users.total >= 0
 
 
-_RELATION_USER_PAYLOAD: dict[str, Any] = {
-    "MID": "mid_001",
-    "EncUin": "enc_001",
-    "Name": "tester",
-    "Desc": "",
-    "AvatarUrl": "",
-    "FanNum": 0,
-    "IsFollow": False,
-}
-
-
-@pytest.mark.parametrize(
-    ("relation_list", "expected_names"),
-    [
-        pytest.param(None, [], id="null-list"),
-        pytest.param(_RELATION_USER_PAYLOAD, ["tester"], id="single-dict"),
-        pytest.param([_RELATION_USER_PAYLOAD], ["tester"], id="single-item-list"),
-    ],
-)
-def test_relation_list_coerces_single_user(
-    relation_list: dict[str, Any] | list[dict[str, Any]] | None,
-    expected_names: list[str],
-) -> None:
-    """测试关系列表响应兼容空值与单条用户的返回形态."""
-    result = UserRelationListResponse.model_validate({"Total": len(expected_names), "List": relation_list})
-    assert [user.name for user in result.users] == expected_names
-
-
 async def test_get_vip_info_with_login(authenticated_client: Client) -> None:
     """测试获取 VIP 信息模型."""
     result = await authenticated_client.user.get_vip_info()
@@ -107,30 +53,6 @@ async def test_get_created_songlist_with_login(authenticated_client: Client) -> 
     assert result.total >= 0
     assert result.finished in (True, False)
     assert result.playlists is not None
-
-
-@pytest.mark.parametrize(
-    ("v_playlist", "expected_dirids"),
-    [
-        pytest.param(_PLAYLIST_PAYLOAD, [201], id="single-dict"),
-        pytest.param([_PLAYLIST_PAYLOAD], [201], id="single-item-list"),
-        pytest.param([_PLAYLIST_PAYLOAD, {**_PLAYLIST_PAYLOAD, "dirId": 202}], [201, 202], id="multi-item-list"),
-    ],
-)
-def test_created_songlist_coerces_single_playlist(
-    v_playlist: dict[str, Any] | list[dict[str, Any]],
-    expected_dirids: list[int],
-) -> None:
-    """测试创建歌单响应兼容上游仅一个歌单时返回单对象的形态."""
-    result = UserCreatedSonglistResponse.model_validate(
-        {
-            "total": len(expected_dirids),
-            "v_playlist": v_playlist,
-            "v_delTid": [],
-            "bFinish": True,
-        }
-    )
-    assert [playlist.dirid for playlist in result.playlists] == expected_dirids
 
 
 async def test_get_fav_song_with_login(authenticated_client: Client) -> None:

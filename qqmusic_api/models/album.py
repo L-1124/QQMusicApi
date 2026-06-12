@@ -1,6 +1,6 @@
 """Album API 返回模型定义."""
 
-from pydantic import Field, field_validator
+from pydantic import Field
 
 from .base import Album, Singer, Song
 from .request import Response
@@ -70,9 +70,3 @@ class GetAlbumSongResponse(Response):
     album_mid: str = Field(alias="albumMid")
     total_num: int = Field(alias="totalNum")
     song_list: list[Song] = Field(default_factory=list, json_schema_extra={"jsonpath": "$.songList[*].songInfo"})
-
-    @field_validator("song_list", mode="before")
-    @classmethod
-    def _coerce_song_list(cls, value: list[dict] | dict) -> list[dict]:
-        """将上游返回的单个歌曲信息统一规整为列表."""
-        return [value] if isinstance(value, dict) else value
