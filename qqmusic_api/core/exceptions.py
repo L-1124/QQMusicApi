@@ -12,7 +12,11 @@ __all__ = [
     "CredentialRefreshError",
     "GlobalApiError",
     "HTTPError",
+    "LoginAccountRestrictedError",
+    "LoginAuthExpiredError",
+    "LoginDeviceLimitError",
     "LoginError",
+    "LoginRateLimitError",
     "NetworkError",
     "RatelimitedError",
 ]
@@ -124,11 +128,75 @@ class RatelimitedError(CgiApiException):
 
 
 class LoginError(CgiApiException):
-    """登录域专属业务异常."""
+    """登录域专属业务异常.
+
+    已知错误码:
+        - 1000 / 104401 / 104400: 登录鉴权参数无效或已过期 → `LoginAuthExpiredError`
+        - 20261: 登录参数错误
+        - 20271: 验证码错误
+        - 20272: 账号绑定异常
+        - 20274: 账号绑定缺失
+        - 20277 / 20278: 账号受限 → `LoginAccountRestrictedError`
+        - 20279: 登录设备超限 → `LoginDeviceLimitError`
+        - 20450: 账号已被封禁 → `LoginAccountRestrictedError`
+        - 104604: 操作过于频繁 → `LoginRateLimitError`
+    """
 
     def __init__(
         self,
         message: str = "登录失败",
+        *,
+        code: int,
+        data: Any = None,
+    ):
+        super().__init__(message, code=code, data=data)
+
+
+class LoginAuthExpiredError(LoginError):
+    """登录鉴权参数无效或已过期."""
+
+    def __init__(
+        self,
+        message: str = "登录鉴权参数无效或已过期",
+        *,
+        code: int,
+        data: Any = None,
+    ):
+        super().__init__(message, code=code, data=data)
+
+
+class LoginDeviceLimitError(LoginError):
+    """登录设备数量超限."""
+
+    def __init__(
+        self,
+        message: str = "登录设备超限",
+        *,
+        code: int,
+        data: Any = None,
+    ):
+        super().__init__(message, code=code, data=data)
+
+
+class LoginAccountRestrictedError(LoginError):
+    """账号受限或已被封禁."""
+
+    def __init__(
+        self,
+        message: str = "账号受限",
+        *,
+        code: int,
+        data: Any = None,
+    ):
+        super().__init__(message, code=code, data=data)
+
+
+class LoginRateLimitError(LoginError):
+    """登录操作过于频繁."""
+
+    def __init__(
+        self,
+        message: str = "操作过于频繁",
         *,
         code: int,
         data: Any = None,

@@ -9,7 +9,11 @@ from qqmusic_api import (
     CredentialExpiredError,
     CredentialInvalidError,
     CredentialRefreshError,
+    LoginAccountRestrictedError,
+    LoginAuthExpiredError,
+    LoginDeviceLimitError,
     LoginError,
+    LoginRateLimitError,
 )
 from qqmusic_api.models.login import (
     QRCodeLoginEvents,
@@ -168,12 +172,52 @@ async def test_phone_authorize_returns_controlled_error(client: Client) -> None:
     assert any(
         keyword in str(exc_info.value)
         for keyword in (
-            "设备数量限制",
-            "验证码错误或已鉴权",
-            "鉴权失败",
+            "登录鉴权参数无效或已过期",
+            "登录参数错误",
             "验证码错误",
             "账号绑定",
-            "登录参数错误",
-            "登录鉴权参数无效或已过期",
+            "账号受限",
+            "登录设备超限",
+            "账号已被封禁",
+            "操作过于频繁",
+            "登录失败",
         )
     )
+
+
+@pytest.mark.parametrize(
+    ("code", "expected_type", "expected_message"),
+    [
+        (1000, LoginAuthExpiredError, "登录鉴权参数无效或已过期"),
+        (104401, LoginAuthExpiredError, "登录鉴权参数无效或已过期"),
+        (104400, LoginAuthExpiredError, "登录鉴权参数无效或已过期"),
+        (20277, LoginAccountRestrictedError, "账号受限"),
+        (20278, LoginAccountRestrictedError, "账号受限"),
+        (20279, LoginDeviceLimitError, "登录设备超限"),
+        (20450, LoginAccountRestrictedError, "账号已被封禁"),
+        (104604, LoginRateLimitError, "操作过于频繁"),
+        (20261, LoginError, "登录参数错误"),
+        (99999, LoginError, None),
+    ],
+)
+async def test_validate_result_raises_specific_subclass(
+    monkeypatch: pytest.MonkeyPatch,
+    code: int,
+    expected_type: type,
+    expected_message: str | None,
+) -> None:
+    """测试 _validate_result 按错误码抛出对应子类异常."""
+    async with Client() as client:
+
+        async def return_error(_request: object) -> dict[str, object]:
+            return {"code": code, "data": {"detail": "test"}}
+
+        monkeypatch.setattr(client, "execute", return_error)
+
+        with pytest.raises(expected_type) as exc_info:
+            await client.login.phone_authorize(phone=10000000000, auth_code="123456")
+
+    assert isinstance(exc_info.value, LoginError)
+    assert exc_info.value.code == code
+    if expected_message is not None:
+        assert expected_message in str(exc_info.value)
