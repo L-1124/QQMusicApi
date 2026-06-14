@@ -223,14 +223,14 @@ class UserHomepageBaseInfo(Response):
     """用户主页头部基础信息.
 
     Attributes:
-        encrypted_uin: 加密 UIN.
+        encrypt_uin: 加密 UIN.
         name: 用户名.
         avatar: 头像地址.
         background_image: 背景图地址.
         user_type: 用户类型标记.
     """
 
-    encrypted_uin: str = Field(alias="EncryptedUin")
+    encrypt_uin: str = Field(alias="EncryptedUin")
     name: str = Field(alias="Name")
     avatar: str = Field(alias="Avatar")
     background_image: str = Field(alias="BackgroundImage")
@@ -370,7 +370,7 @@ class RelationUser(Response):
 
     Attributes:
         mid: 用户 MID.
-        enc_uin: 加密 UIN.
+        encrypt_uin: 加密 UIN.
         name: 用户名称.
         desc: 描述文案.
         avatar_url: 头像地址.
@@ -379,7 +379,7 @@ class RelationUser(Response):
     """
 
     mid: str = Field(alias="MID")
-    enc_uin: str = Field(alias="EncUin")
+    encrypt_uin: str = Field(alias="EncUin")
     name: str = Field(alias="Name")
     desc: str = Field(alias="Desc")
     avatar_url: str = Field(alias="AvatarUrl")
@@ -468,12 +468,12 @@ class UserFavMvResponse(Response):
 
     Attributes:
         code: 返回码.
-        sub_code: 子返回码.
+        subcode: 子返回码.
         msg: 附加消息.
         mv_list: 当前页收藏 MV 列表.
     """
 
     code: int
-    sub_code: int = Field(validation_alias=AliasChoices("subCode", "subcode"))
+    subcode: int = Field(validation_alias=AliasChoices("subCode", "subcode"))
     msg: str
     mv_list: list[UserFavMvItem] = Field(alias="mvlist")

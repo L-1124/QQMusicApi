@@ -14,7 +14,7 @@ from qqmusic_api.models.user import (
 )
 
 from ..routing.route_types import AuthPolicy, WebRoute
-from ._helpers import EUIN, UIN, USER_PAGE, R
+from ._helpers import ENCRYPT_UIN, UIN, USER_PAGE, R
 
 ROUTES: tuple[WebRoute, ...] = (
     R(
@@ -28,57 +28,57 @@ ROUTES: tuple[WebRoute, ...] = (
     R(
         "user",
         "get_fans",
-        "/user/{euin}/fans",
+        "/user/{encrypt_uin}/fans",
         UserRelationListResponse,
-        params=(*EUIN, *USER_PAGE),
+        params=(*ENCRYPT_UIN, *USER_PAGE),
         auth=AuthPolicy.COOKIE_OR_DEFAULT,
     ),
     R(
         "user",
         "get_fav_album",
-        "/user/{euin}/fav/albums",
+        "/user/{encrypt_uin}/fav/albums",
         UserFavAlbumResponse,
-        params=(*EUIN, *USER_PAGE),
+        params=(*ENCRYPT_UIN, *USER_PAGE),
         auth=AuthPolicy.COOKIE_OR_DEFAULT,
     ),
     R(
         "user",
         "get_fav_mv",
-        "/user/{euin}/fav/mvs",
+        "/user/{encrypt_uin}/fav/mvs",
         UserFavMvResponse,
-        params=(*EUIN, *USER_PAGE),
+        params=(*ENCRYPT_UIN, *USER_PAGE),
         auth=AuthPolicy.COOKIE_OR_DEFAULT,
     ),
     R(
         "user",
         "get_fav_song",
-        "/user/{euin}/fav/songs",
+        "/user/{encrypt_uin}/fav/songs",
         GetSonglistDetailResponse,
-        params=(*EUIN, *USER_PAGE),
+        params=(*ENCRYPT_UIN, *USER_PAGE),
         auth=AuthPolicy.COOKIE_OR_DEFAULT,
     ),
     R(
         "user",
         "get_fav_songlist",
-        "/user/{euin}/fav/songlists",
+        "/user/{encrypt_uin}/fav/songlists",
         UserFavSonglistResponse,
-        params=(*EUIN, *USER_PAGE),
+        params=(*ENCRYPT_UIN, *USER_PAGE),
         auth=AuthPolicy.COOKIE_OR_DEFAULT,
     ),
     R(
         "user",
         "get_follow_singers",
-        "/user/{euin}/follow/singers",
+        "/user/{encrypt_uin}/follow/singers",
         UserRelationListResponse,
-        params=(*EUIN, *USER_PAGE),
+        params=(*ENCRYPT_UIN, *USER_PAGE),
         auth=AuthPolicy.COOKIE_OR_DEFAULT,
     ),
     R(
         "user",
         "get_follow_user",
-        "/user/{euin}/follow/users",
+        "/user/{encrypt_uin}/follow/users",
         UserRelationListResponse,
-        params=(*EUIN, *USER_PAGE),
+        params=(*ENCRYPT_UIN, *USER_PAGE),
         auth=AuthPolicy.COOKIE_OR_DEFAULT,
     ),
     R(
@@ -92,17 +92,17 @@ ROUTES: tuple[WebRoute, ...] = (
     R(
         "user",
         "get_homepage",
-        "/user/{euin}/homepage",
+        "/user/{encrypt_uin}/homepage",
         UserHomepageResponse,
-        params=EUIN,
+        params=ENCRYPT_UIN,
         auth=AuthPolicy.COOKIE_OR_DEFAULT,
     ),
     R(
         "user",
         "get_music_gene",
-        "/user/{euin}/music_gene",
+        "/user/{encrypt_uin}/music_gene",
         UserMusicGeneResponse,
-        params=EUIN,
+        params=ENCRYPT_UIN,
         auth=AuthPolicy.COOKIE_OR_DEFAULT,
     ),
     R("user", "get_vip_info", "/user/get_vip_info", UserVipInfoResponse, auth=AuthPolicy.COOKIE_OR_DEFAULT),

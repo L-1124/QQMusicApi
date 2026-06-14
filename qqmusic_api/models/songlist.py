@@ -62,13 +62,13 @@ class CreateDeleteSonglistResp(Response):
     """创建/删除歌单响应.
 
     Attributes:
-        retCode: 返回码 (为 0 表示成功).
+        retcode: 返回码 (为 0 表示成功).
         id: 创建成功的歌单 ID.
         dirid: 创建成功的歌单目录 ID.
         name: 创建成功的歌单名称.
     """
 
-    retCode: int
+    retcode: int = Field(alias="retCode")
     id: int = Field(json_schema_extra={"jsonpath": "$.result.tid"})
     dirid: int = Field(json_schema_extra={"jsonpath": "$.result.dirId"})
     name: str = Field(json_schema_extra={"jsonpath": "$.result.dirName"})

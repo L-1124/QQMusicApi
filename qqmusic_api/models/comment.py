@@ -125,7 +125,7 @@ class CommentListResponse(Response):
         has_ts_cm: 是否包含时间轴评论.
         share_cnt: 分享数.
         msg: 附加消息.
-        sub_code: 子返回码.
+        subcode: 子返回码.
     """
 
     comments: list[CommentItem] = Field(
@@ -142,7 +142,7 @@ class CommentListResponse(Response):
     has_ts_cm: int = Field(alias="HasTsCm")
     share_cnt: int = Field(alias="ShareCnt")
     msg: str = Field(alias="Msg")
-    sub_code: int = Field(alias="SubCode")
+    subcode: int = Field(alias="SubCode")
 
 
 class MomentCommentItem(Response):

@@ -107,7 +107,7 @@ class HomepageBaseInfo(Response):
     """歌手主页基础信息.
 
     Attributes:
-        encrypted_uin: 加密 UIN.
+        encrypt_uin: 加密 UIN.
         background_image: 背景图地址.
         avatar: 头像地址.
         name: 展示名称.
@@ -116,7 +116,7 @@ class HomepageBaseInfo(Response):
         user_type: 用户类型标记.
     """
 
-    encrypted_uin: str = Field(default="", alias="EncryptedUin")
+    encrypt_uin: str = Field(default="", alias="EncryptedUin")
     background_image: str = Field(default="", alias="BackgroundImage")
     avatar: str = Field(default="", alias="Avatar")
     name: str = Field(default="", alias="Name")

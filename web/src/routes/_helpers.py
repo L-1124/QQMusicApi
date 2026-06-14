@@ -83,7 +83,7 @@ BIZ_ID = (P("biz_id", int, "业务歌曲 ID."),)
 SONGLIST_ID = (P("songlist_id", int, "歌单 ID."),)
 TOP_ID = (P("top_id", int, "排行榜 ID."),)
 UIN = (P("uin", int, "用户 UIN."),)
-EUIN = (P("euin", str, "加密用户 ID."),)
+ENCRYPT_UIN = (P("encrypt_uin", str, "加密用户 ID."),)
 ALBUM_PAGE = (Q("num", int, 10, "返回数量."), Q("page", int, 1, "页码."))
 COMMENT_LIST_PAGE = (
     Q("page_num", int, 1, "页码."),
