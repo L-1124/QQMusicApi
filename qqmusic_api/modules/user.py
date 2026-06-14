@@ -248,7 +248,7 @@ class UserApi(ApiModule):
             pager_meta=PagerMeta(
                 strategy=OffsetStrategy(offset_key="song_begin", page_size_key="song_num"),
                 adapter=ResponseAdapter(
-                    has_more_flag="hasmore",
+                    has_more_flag="has_more",
                     total="total",
                     count=lambda response: len(response.songs),
                 ),
@@ -280,7 +280,7 @@ class UserApi(ApiModule):
             pager_meta=PagerMeta(
                 strategy=OffsetStrategy(offset_key="offset", page_size_key="size"),
                 adapter=ResponseAdapter(
-                    has_more_flag="hasmore",
+                    has_more_flag="has_more",
                     total="total",
                     count=lambda response: len(response.playlists),
                 ),
@@ -312,7 +312,7 @@ class UserApi(ApiModule):
             pager_meta=PagerMeta(
                 strategy=OffsetStrategy(offset_key="offset", page_size_key="size"),
                 adapter=ResponseAdapter(
-                    has_more_flag="hasmore",
+                    has_more_flag="has_more",
                     total="total",
                     count=lambda response: len(response.albums),
                 ),

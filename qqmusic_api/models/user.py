@@ -115,7 +115,7 @@ class UserFavSonglistResponse(Response):
     Attributes:
         number: 当前页数量或请求数量.
         total: 收藏歌单总数.
-        hasmore: 是否还有更多结果.
+        has_more: 是否还有更多结果.
         hide: 列表是否隐藏.
         playlists: 当前页收藏歌单列表.
         deleted_ids: 上游返回的删除歌单 ID 列表.
@@ -124,7 +124,7 @@ class UserFavSonglistResponse(Response):
 
     number: int
     total: int
-    hasmore: int
+    has_more: int = Field(alias="hasmore")
     hide: bool
     playlists: list[UserFavSonglistItem] = Field(json_schema_extra={"jsonpath": "$.v_list"})
     deleted_ids: list[int] = Field(alias="v_delTids")
@@ -161,7 +161,7 @@ class UserFavAlbumResponse(Response):
     Attributes:
         number: 当前页数量或请求数量.
         total: 收藏专辑总数.
-        hasmore: 是否还有更多结果.
+        has_more: 是否还有更多结果.
         hide: 列表是否隐藏.
         albums: 当前页收藏专辑列表.
         failed_album_ids: 拉取失败的专辑 ID 列表.
@@ -169,7 +169,7 @@ class UserFavAlbumResponse(Response):
 
     number: int
     total: int
-    hasmore: int
+    has_more: int = Field(alias="hasmore")
     hide: bool
     albums: list[UserFavAlbumItem] = Field(json_schema_extra={"jsonpath": "$.v_list[*]"})
     failed_album_ids: list[int] = Field(alias="v_failAlbumId")

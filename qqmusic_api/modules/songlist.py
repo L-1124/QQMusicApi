@@ -63,7 +63,7 @@ class SonglistApi(ApiModule):
             pager_meta=PagerMeta(
                 strategy=OffsetStrategy(offset_key="song_begin", page_size_key="song_num"),
                 adapter=ResponseAdapter(
-                    has_more_flag="hasmore",
+                    has_more_flag="has_more",
                     total="total",
                     count=lambda response: len(response.songs),
                 ),

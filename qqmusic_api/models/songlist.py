@@ -45,7 +45,7 @@ class GetSonglistDetailResponse(Response):
         size: 当前返回的歌曲数量.
         songs: 当前页歌曲列表.
         total: 歌单歌曲总数.
-        hasmore: 是否还有更多结果.
+        has_more: 是否还有更多结果.
     """
 
     code: int = 0
@@ -55,7 +55,7 @@ class GetSonglistDetailResponse(Response):
     size: int = Field(alias="songlist_size")
     songs: list[Song] = Field(alias="songlist")
     total: int = Field(alias="total_song_num")
-    hasmore: int = 0
+    has_more: int = Field(default=0, alias="hasmore")
 
 
 class CreateDeleteSonglistResp(Response):
