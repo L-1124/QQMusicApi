@@ -288,6 +288,46 @@ class UserApi(ApiModule):
             ),
         )
 
+    async def fav_songlist(self, songlist_id: int, *, credential: Credential | None = None) -> bool:
+        """收藏歌单 (将他人的公开歌单加入当前账号的收藏).
+
+        Args:
+            songlist_id: 歌单 ID, 即歌单的 disstid/pid (不是自建歌单的 dirid).
+            credential: 登录凭证.
+
+        Returns:
+            是否收藏成功 (歌单已在收藏中也返回 True).
+        """
+        target_credential = self._require_login(credential)
+        data = await self._build_request(
+            module="music.musicasset.PlaylistFavWrite",
+            method="FavPlaylist",
+            param={"uin": target_credential.encrypt_uin, "v_playlistId": [songlist_id]},
+            credential=target_credential,
+            require_login=True,
+        )
+        return data.get("result") == 0 and songlist_id not in (data.get("v_failedPlaylistId") or [])
+
+    async def unfav_songlist(self, songlist_id: int, *, credential: Credential | None = None) -> bool:
+        """取消收藏歌单.
+
+        Args:
+            songlist_id: 歌单 ID, 即歌单的 disstid/pid (不是自建歌单的 dirid).
+            credential: 登录凭证.
+
+        Returns:
+            是否取消成功 (歌单本就不在收藏中也返回 True).
+        """
+        target_credential = self._require_login(credential)
+        data = await self._build_request(
+            module="music.musicasset.PlaylistFavWrite",
+            method="CancelFavPlaylist",
+            param={"uin": target_credential.encrypt_uin, "v_playlistId": [songlist_id]},
+            credential=target_credential,
+            require_login=True,
+        )
+        return data.get("result") == 0 and songlist_id not in (data.get("v_failedPlaylistId") or [])
+
     def get_fav_album(
         self,
         euin: str,

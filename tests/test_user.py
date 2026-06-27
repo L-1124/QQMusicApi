@@ -122,6 +122,13 @@ def test_fav_mv_response_accepts_subcode_spellings(sub_code_key: str) -> None:
     assert result.sub_code == 0
 
 
+async def test_fav_songlist_with_login(authenticated_client: Client) -> None:
+    """测试收藏和取消收藏歌单 (自收自取, 不残留账号状态)."""
+    songlist_id = 9578424174
+    assert await authenticated_client.user.fav_songlist(songlist_id) is True
+    assert await authenticated_client.user.unfav_songlist(songlist_id) is True
+
+
 async def test_dislike_song_with_login(authenticated_client: Client) -> None:
     """测试不喜欢和取消不喜欢歌曲."""
     song_id = 398282803
