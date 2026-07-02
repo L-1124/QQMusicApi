@@ -70,3 +70,52 @@ class GetAlbumSongResponse(Response):
     album_mid: str = Field(validation_alias="albumMid")
     total_num: int = Field(validation_alias="totalNum")
     song_list: list[Song] = Field(default_factory=list, json_schema_extra={"jsonpath": "$.songList[*].songInfo"})
+
+
+class NewAlbumItem(Album):
+    """新碟上架列表中的单张专辑摘要.
+
+    Attributes:
+        singers: 专辑署名歌手列表.
+        release_time: 发行日期, 格式通常为 YYYY-MM-DD.
+        type: 专辑类型.
+        area: 地区标识.
+        genre: 流派标识.
+        language: 语种标识.
+    """
+
+    singers: list[Singer] = Field(default_factory=list)
+    release_time: str = ""
+    type: int = 0
+    area: int = 0
+    genre: int = 0
+    language: int = 0
+
+
+class GetNewAlbumResponse(Response):
+    """新碟上架接口的响应体.
+
+    Attributes:
+        total: 该地区下新碟总数.
+        albums: 当前页新碟列表.
+    """
+
+    total: int = 0
+    albums: list[NewAlbumItem] = Field(default_factory=list)
+
+
+class AlbumFavWriteResponse(Response):
+    """收藏 / 取消收藏专辑的写操作响应.
+
+    Attributes:
+        result: 操作结果码, 0 表示成功.
+        failed_album_id: 操作失败的专辑 ID 列表, 全部成功时为空.
+    """
+
+    result: int = 0
+    failed_album_id: list[int] = Field(default_factory=list, validation_alias="v_failedAlbumId")
+
+    @property
+    def success(self) -> bool:
+        """是否操作成功 (result 为 0 且无失败项)."""
+        return self.result == 0 and not self.failed_album_id
