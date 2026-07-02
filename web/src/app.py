@@ -176,8 +176,8 @@ def create_app() -> FastAPI:
 根据不同登录方式, 您还可以按需提供补充字段: `openid`, `refresh_token`, `access_token`, `expired_at`, `unionid`, `str_musicid`, `refresh_key`。
 """.strip(),
         lifespan=_lifespan,
-        docs_url=None,
-        redoc_url=None,
+        docs_url="/swagger",
+        redoc_url="/redoc",
         responses=_ERROR_RESPONSES,
     )
     if settings.cache.backend == "redis":

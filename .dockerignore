@@ -22,5 +22,3 @@ dist
 .prek_cache
 *.toml
 !pyproject.toml
-!web/config.toml
-!web/accounts.toml

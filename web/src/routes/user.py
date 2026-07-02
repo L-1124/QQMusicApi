@@ -2,6 +2,7 @@
 
 from qqmusic_api.models.songlist import GetSonglistDetailResponse
 from qqmusic_api.models.user import (
+    DislikeListData,
     UserCreatedSonglistResponse,
     UserFavAlbumResponse,
     UserFavMvResponse,
@@ -13,8 +14,8 @@ from qqmusic_api.models.user import (
     UserVipInfoResponse,
 )
 
-from ..routing.route_types import AuthPolicy, WebRoute
-from ._helpers import EUIN, UIN, USER_PAGE, R
+from ..routing.route_types import AuthPolicy, HttpMethod, WebRoute
+from ._helpers import EUIN, UIN, USER_PAGE, P, Q, R
 
 ROUTES: tuple[WebRoute, ...] = (
     R(
@@ -106,4 +107,80 @@ ROUTES: tuple[WebRoute, ...] = (
         auth=AuthPolicy.COOKIE_OR_DEFAULT,
     ),
     R("user", "get_vip_info", "/user/get_vip_info", UserVipInfoResponse, auth=AuthPolicy.COOKIE_OR_DEFAULT),
+    # -- 收藏/取消收藏歌单 --
+    R(
+        "user",
+        "fav_songlist",
+        "/user/fav/songlists",
+        bool,
+        methods=(HttpMethod.POST,),
+        params=(Q("songlist_id", int, description="歌单 ID (disstid/pid)."),),
+        auth=AuthPolicy.COOKIE_OR_DEFAULT,
+        summary="收藏歌单",
+        description="收藏他人的公开歌单至当前账号.歌单已在收藏中也返回成功.",
+    ),
+    R(
+        "user",
+        "unfav_songlist",
+        "/user/fav/songlists/{songlist_id}",
+        bool,
+        methods=(HttpMethod.DELETE,),
+        params=(P("songlist_id", int, "歌单 ID (disstid/pid)."),),
+        auth=AuthPolicy.COOKIE_OR_DEFAULT,
+        summary="取消收藏歌单",
+        description="取消收藏他人的公开歌单.歌单本就不在收藏中也返回成功.",
+    ),
+    # -- 不喜欢 --
+    R(
+        "user",
+        "get_dislike_list",
+        "/user/dislikes",
+        DislikeListData,
+        params=(
+            Q("cmd", int, 3, "类型: 2=歌手 / 3=歌曲 / 4=风格."),
+            Q("page", int, 1, "页码."),
+            Q("lastid", int, 0, "分页游标."),
+        ),
+        auth=AuthPolicy.COOKIE_OR_DEFAULT,
+        summary="获取不喜欢列表",
+        description="获取用户的不喜欢列表, 支持按类型和分页筛选.",
+    ),
+    R(
+        "user",
+        "add_dislike",
+        "/user/dislikes",
+        bool,
+        methods=(HttpMethod.POST,),
+        params=(
+            Q("id_type", int, description="类型: 1=歌曲 / 2=歌手 / 3=风格."),
+            Q("values", list[int], description="对应的 ID 列表."),
+        ),
+        auth=AuthPolicy.COOKIE_OR_DEFAULT,
+        summary="添加不喜欢",
+        description="添加不喜欢项 (歌曲/歌手/风格).",
+    ),
+    R(
+        "user",
+        "cancel_dislike",
+        "/user/dislikes",
+        bool,
+        methods=(HttpMethod.DELETE,),
+        params=(
+            Q("id_type", int, description="类型: 1=歌曲 / 2=歌手 / 3=风格."),
+            Q("values", list[int], description="对应的 ID 列表."),
+        ),
+        auth=AuthPolicy.COOKIE_OR_DEFAULT,
+        summary="取消不喜欢",
+        description="取消不喜欢项 (歌曲/歌手/风格).",
+    ),
+    R(
+        "user",
+        "cancel_all_dislike_song",
+        "/user/dislikes/songs",
+        bool,
+        methods=(HttpMethod.DELETE,),
+        auth=AuthPolicy.COOKIE_OR_DEFAULT,
+        summary="清空所有不喜欢歌曲",
+        description="清空用户的所有不喜欢歌曲列表.",
+    ),
 )

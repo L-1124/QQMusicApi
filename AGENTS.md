@@ -47,6 +47,27 @@
 * 新增页面必须同步更新 `zensical.toml` 的 `nav`。
 * 文档构建工具实际使用 `zensical`，配置文件是 `zensical.toml`。
 
+## Release workflow
+
+1. 更新 `qqmusic_api/__init__.py` 中的 `__version__` 为待发布版本。
+2. 提交版本号变更：
+
+   ```bash
+   git add qqmusic_api/__init__.py
+   git commit -m "🧹 chore(release): x.x.x"
+   ```
+
+3. 在**该提交上**打 tag 并推送：
+
+   ```bash
+   git tag v0.x.x
+   git push origin v0.x.x
+   ```
+
+4. CI 自动执行：
+   * **release.yml**：`uv build` → `uv publish`（PyPI）→ 创建 GitHub Release（git-cliff 自动生成 release body）
+   * **docs.yml**（release published 后触发）：更新 `docs/release-notes.md` → 导出 `web/requirements.txt` → commit → 构建文档站 → 部署 GitHub Pages
+
 ## Agent behavior
 
 * **核心规约**：遵循 `docs/contributing.md` 中的详细规约。**在执行任务前，必须完整阅读该指南以确保合规。**

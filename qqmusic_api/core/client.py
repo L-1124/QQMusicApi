@@ -17,7 +17,7 @@ from urllib3.util.retry import Retry
 from ..algorithms import zzc_sign
 from ..models.request import Credential, JceRequest, JceRequestItem, JceResponse, JceResponseItem, RequestItem
 from ..utils.common import bool_to_int
-from ..utils.device import DeviceManager
+from ..utils.device import Device, DeviceManager
 from ..utils.qimei import QimeiManager
 from .exceptions import (
     ApiDataError,
@@ -109,7 +109,6 @@ class Client:
 
         self._version_policy: VersionPolicy = DEFAULT_VERSION_POLICY
         self._session_lock = anyio.Lock()
-        self._session_cache: dict[str, Any] | None = None
         self._qimei_manager = QimeiManager(
             device_store=self._device_store,
             app_version=self._version_policy.get_qimei_app_version(),
@@ -119,27 +118,21 @@ class Client:
 
     async def _ensure_session(self) -> None:
         """获取 `Platform.ANDROID` 会话信息."""
-        device = await self._device_store.get_device()
-        current_time = int(time.time())
-        is_expired = device.session_save_time is None or (current_time - device.session_save_time) >= 86400
 
-        if not is_expired and self._session_cache is not None:
+        def _is_session_valid(dev: "Device") -> bool:
+            return (
+                dev.session_save_time is not None
+                and (int(time.time()) - dev.session_save_time) < 86400
+                and bool(dev.session_uid and dev.session_sid)
+            )
+
+        device = await self._device_store.get_device()
+        if _is_session_valid(device):
             return
 
         async with self._session_lock:
             device = await self._device_store.get_device()
-            current_time = int(time.time())
-            is_expired = device.session_save_time is None or (current_time - device.session_save_time) >= 86400
-
-            if not is_expired and self._session_cache is not None:
-                return
-
-            if not is_expired and device.session_uid and device.session_sid:
-                self._session_cache = {
-                    "uid": device.session_uid,
-                    "sid": device.session_sid,
-                    "vkey": device.session_vkey,
-                }
+            if _is_session_valid(device):
                 return
 
             finalcomm = self._version_policy.build_comm(
@@ -186,12 +179,7 @@ class Client:
             device.session_uid = str(session_data["uid"])
             device.session_sid = session_data["sid"]
             device.session_vkey = session_data.get("vkey")
-            device.session_save_time = current_time
-            self._session_cache = {
-                "uid": device.session_uid,
-                "sid": device.session_sid,
-                "vkey": device.session_vkey,
-            }
+            device.session_save_time = int(time.time())
             await self._device_store.save_device()
 
     @cached_property

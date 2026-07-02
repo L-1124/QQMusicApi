@@ -150,4 +150,6 @@ async def _refresh_credential(context: RouteContext, credential: Credential) -> 
 def _wrap_success(result: Any) -> Any:
     if isinstance(result, ApiResponse | Response):
         return result
+    if isinstance(result, bool):
+        return success_response(None) if result else ApiResponse(code=-1, msg="操作失败")
     return success_response(result)

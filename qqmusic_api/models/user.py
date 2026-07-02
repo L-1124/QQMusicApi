@@ -497,7 +497,7 @@ class DislikeItem(BaseModel):
     time: int = Field(validation_alias="Time")
 
 
-class DislikeListData(BaseModel):
+class DislikeListData(Response):
     """GetDislikeList 响应数据.
 
     Attributes:

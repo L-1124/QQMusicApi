@@ -70,6 +70,7 @@ def include_routes(app: FastAPI, routes: tuple[WebRoute, ...]) -> None:
         openapi_extra = (
             {"security": [COOKIE_SECURITY_REQUIREMENT]} if route.auth is AuthPolicy.COOKIE_OR_DEFAULT else None
         )
+        actual_response_model = type(None) if route.response_model is bool else route.response_model
         app.add_api_route(
             route.path,
             endpoint,
@@ -77,7 +78,7 @@ def include_routes(app: FastAPI, routes: tuple[WebRoute, ...]) -> None:
             tags=list(route.tags or (route.module,)),
             summary=summary,
             description=description,
-            response_model=ApiResponse[route.response_model],
+            response_model=ApiResponse[actual_response_model],
             response_model_by_alias=False,
             openapi_extra=openapi_extra,
         )

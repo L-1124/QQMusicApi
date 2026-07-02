@@ -1,6 +1,5 @@
 """辅助功能工具入口."""
 
-import asyncio
 import hashlib
 import time
 import typing
@@ -10,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import anyio
+from anyio import to_thread
 
 from ..core.exceptions import ApiDataError
 from ..models.helper import (
@@ -21,6 +21,8 @@ from ..models.helper import (
 from ..models.request import Credential
 
 if typing.TYPE_CHECKING:
+    import os
+
     from .helper import BUSINESS_TYPE, HelperApi
 
 # 分块上传阈值
@@ -77,12 +79,12 @@ class UploadFileSession:
         token: str,
         bucket_name: str,
         object_key: str,
-        *,
         file_size: int = 0,
     ) -> dict[str, Any]:
         """执行单个 COS 上传的同步方法, 支持分块上传与自动重试."""
         try:
             from qcloud_cos import CosConfig, CosS3Client
+            from qcloud_cos.cos_exception import CosClientError, CosServiceError
         except ImportError as exc:
             raise ImportError("请先安装 `cos-python-sdk-v5` 库以支持文件直传.") from exc
 
@@ -95,24 +97,39 @@ class UploadFileSession:
         )
         use_multipart = file_size > _MULTIPART_THRESHOLD
         s3_client = CosS3Client(config)
-        if use_multipart:
-            resp = s3_client.upload_file(
-                Bucket=bucket_name,
-                LocalFilePath=str(file_path),
-                Key=object_key,
-                StorageClass="STANDARD",
-                EnableMD5=False,
-            )
-        else:
-            with open(file_path, "rb") as fp:
-                resp = s3_client.put_object(
-                    Bucket=bucket_name,
-                    Body=fp,
-                    Key=object_key,
-                    StorageClass="STANDARD",
-                    EnableMD5=False,
-                )
-        return dict(resp)
+
+        for attempt in range(_UPLOAD_RETRIES + 1):
+            try:
+                if use_multipart:
+                    resp = s3_client.upload_file(
+                        Bucket=bucket_name,
+                        LocalFilePath=str(file_path),
+                        Key=object_key,
+                        StorageClass="STANDARD",
+                        EnableMD5=False,
+                    )
+                else:
+                    with open(file_path, "rb") as fp:
+                        resp = s3_client.put_object(
+                            Bucket=bucket_name,
+                            Body=fp,
+                            Key=object_key,
+                            StorageClass="STANDARD",
+                            EnableMD5=False,
+                        )
+                return dict(resp)
+            except CosServiceError as e:  # noqa: PERF203
+                if attempt < _UPLOAD_RETRIES and e.get_status_code() in _RETRY_HTTP_STATUSES:
+                    time.sleep(2**attempt)
+                    continue
+                raise
+            except CosClientError:
+                if attempt < _UPLOAD_RETRIES:
+                    time.sleep(2**attempt)
+                    continue
+                raise
+
+        raise RuntimeError("Upload to COS failed after max retries")
 
     async def prepare(self, file_paths: Sequence[str | Path]) -> None:
         """准备上传,获取或复用有效的临时凭证(按文件 SHA1 去重)."""
@@ -120,7 +137,16 @@ class UploadFileSession:
         if not paths:
             raise ValueError("至少需要提供一个文件路径.")
 
-        file_infos = await asyncio.gather(*(self._get_file_info(anyio.Path(p)) for p in paths))
+        file_info_map: dict[int, InitUploadFileDict] = {}
+        async with anyio.create_task_group() as tg:
+
+            async def _get_info(idx: int, p: anyio.Path):
+                file_info_map[idx] = await self._get_file_info(p)
+
+            for i, p in enumerate(paths):
+                tg.start_soon(_get_info, i, anyio.Path(p))
+
+        file_infos = [file_info_map[i] for i in range(len(paths))]
         current_shas = tuple(info["FileSha1"] for info in file_infos)
 
         if self._last_file_shas != current_shas:
@@ -170,7 +196,7 @@ class UploadFileSession:
         token = auth_info.token
 
         # 并发直传 COS
-        semaphore = asyncio.Semaphore(self.max_concurrency)
+        semaphore = anyio.Semaphore(self.max_concurrency)
 
         async def _upload_worker(
             path: Path,
@@ -183,7 +209,7 @@ class UploadFileSession:
             file_size: int = 0,
         ) -> None:
             async with semaphore:
-                await asyncio.to_thread(
+                await to_thread.run_sync(
                     self._upload_to_cos,
                     path,
                     region,
@@ -192,32 +218,41 @@ class UploadFileSession:
                     token,
                     bucket_name,
                     object_key,
-                    file_size=file_size,
+                    file_size,
                 )
 
-        upload_tasks = []
         finish_results: list[FinishUploadResultDict] = []
-        stat_info = [Path(p).stat() for p in file_paths]  # noqa: ASYNC240
 
-        for i, file_info in enumerate(files_info):
-            buckets = file_info.buckets
-            if not buckets:
-                raise ApiDataError(f"获取上传凭证失败: 文件 {file_paths[i]} 未返回目标存储桶信息.")
+        stat_map: dict[int, os.stat_result] = {}
+        async with anyio.create_task_group() as tg:
 
-            target_bucket = buckets[0]
-            bucket_info = target_bucket.bucket
-            bucket_name = bucket_info.name
-            region = bucket_info.region
-            object_key = file_info.object_key
-            upload_status = target_bucket.upload_status
-            fsize = stat_info[i].st_size if i < len(stat_info) else 0
+            async def _get_stat(idx: int, p: str | Path):
+                stat_map[idx] = await anyio.Path(p).stat()
 
-            if not all([secret_id, secret_key, token, object_key, bucket_name, region]):
-                raise ApiDataError(f"获取上传凭证失败: 文件 {file_paths[i]} 上传凭证信息不完整.")
+            for i, p in enumerate(file_paths):
+                tg.start_soon(_get_stat, i, p)
 
-            if upload_status != 1:
-                upload_tasks.append(
-                    _upload_worker(
+        async with anyio.create_task_group() as tg:
+            for i, file_info in enumerate(files_info):
+                buckets = file_info.buckets
+                if not buckets:
+                    raise ApiDataError(f"获取上传凭证失败: 文件 {file_paths[i]} 未返回目标存储桶信息.")
+
+                target_bucket = buckets[0]
+                bucket_info = target_bucket.bucket
+                bucket_name = bucket_info.name
+                region = bucket_info.region
+                object_key = file_info.object_key
+                upload_status = target_bucket.upload_status
+                stat = stat_map.get(i)
+                fsize = stat.st_size if stat is not None else 0
+
+                if not all([secret_id, secret_key, token, object_key, bucket_name, region]):
+                    raise ApiDataError(f"获取上传凭证失败: 文件 {file_paths[i]} 上传凭证信息不完整.")
+
+                if upload_status != 1:
+                    tg.start_soon(
+                        _upload_worker,
                         Path(file_paths[i]),
                         region,
                         secret_id,
@@ -227,16 +262,13 @@ class UploadFileSession:
                         object_key,
                         fsize,
                     )
+
+                finish_results.append(
+                    {
+                        "Storage": {"Bucket": {"Name": bucket_name, "Region": region}, "ObjectKey": object_key},
+                        "UploadResult": 0,
+                    }
                 )
-
-            finish_results.append(
-                {
-                    "Storage": {"Bucket": {"Name": bucket_name, "Region": region}, "ObjectKey": object_key},
-                    "UploadResult": 0,
-                }
-            )
-
-        await asyncio.gather(*upload_tasks)
         finish_data = await self.api.finish_upload(
             bus_id=self.bus_id,
             results=finish_results,

@@ -1,4 +1,44 @@
 
+## [[0.6.8](https://github.com/L-1124/QQMusicApi/compare/v0.6.7..v0.6.8)] - 2026-07-01
+
+### Bug 修复
+
+* **(web)** 禁用 FastAPI 默认按别名响应，使 JSON 输出与 Python 原生变量名保持一致 ([32459a5](https://github.com/L-1124/QQMusicApi/commit/32459a54c03d8a0a738f1917f9eb19fc6f9ac4ef)) by [@L-1124](https://github.com/L-1124)
+
+### 功能更新
+
+* **(core)** 新增 SignatureRequiredError 错误码 2000 处理 ([a73313a](https://github.com/L-1124/QQMusicApi/commit/a73313a91549a156358ad9311d0e20d7401b861b)) by [@L-1124](https://github.com/L-1124)
+* **(core)** _ensure_session 添加 24h 保活机制 ([2290a32](https://github.com/L-1124/QQMusicApi/commit/2290a32304bcd9052365f60c67f2d4f6b00e4d7e)) by [@L-1124](https://github.com/L-1124)
+* **(helper)** 新增辅助功能接口 ([eb0c40c](https://github.com/L-1124/QQMusicApi/commit/eb0c40c1461826955a1eb005afb723438730142a)) by [@L-1124](https://github.com/L-1124)
+* **(login)** 支持登出API ([73f2a7e](https://github.com/L-1124/QQMusicApi/commit/73f2a7ee9ad1d48cbec2d6aa9dbf844f44b573c2)) by [@L-1124](https://github.com/L-1124)
+* **(lyric)** [**breaking**] 彻底移除 crypt 字段，隐式处理加密状态 ([80edc40](https://github.com/L-1124/QQMusicApi/commit/80edc40e41331f6b5c11146d5daf6eccf344181f)) by [@L-1124](https://github.com/L-1124)
+* **(lyric)** [**breaking**] 移除 decrypt 方法，改为默认解密 ([24949c4](https://github.com/L-1124/QQMusicApi/commit/24949c4df8c63b02b35dd69c30e2a8f40d234dfb)) by [@L-1124](https://github.com/L-1124)
+* **(song)** 添加特殊歌曲文件类型 TRY_OGG_640 ([fef7e8c](https://github.com/L-1124/QQMusicApi/commit/fef7e8ceb220aa477ea7d8498f8ebfd240f72cc6)) by [@L-1124](https://github.com/L-1124)
+* **(user)** 新增收藏/取消收藏歌单 API ([7865434](https://github.com/L-1124/QQMusicApi/commit/7865434782dd205815222fe716f52bac9f84aeec)) by [@jinzhongjia](https://github.com/jinzhongjia) in [#281](https://github.com/L-1124/QQMusicApi/pull/281)
+* **(user)** 新增 FeedbackBlack 黑名单 API ([4340554](https://github.com/L-1124/QQMusicApi/commit/4340554aaaafaef175eead7ebced596538bc65e2)) by [@L-1124](https://github.com/L-1124)
+* **(web)** 启用 FastAPI 内置 Swagger UI 和 ReDoc，更新文档地址说明 ([a3245ad](https://github.com/L-1124/QQMusicApi/commit/a3245ad3d3863c7f7eec94352d169a32ba4478c6)) by [@L-1124](https://github.com/L-1124)
+* **(web)** 重构 Dockerfile 为多阶段构建，修复非 root 用户 uv 缓存权限问题 ([00e16a3](https://github.com/L-1124/QQMusicApi/commit/00e16a37b62e989de37232e8af7e77167a28e823)) by [@L-1124](https://github.com/L-1124)
+
+### 功能重构
+
+* **(core)** 移除 _session_cache 冗余缓存，简化会话验证逻辑 ([0b12b9d](https://github.com/L-1124/QQMusicApi/commit/0b12b9d041a8be24ad84d60bd2ceaed76b81fe92)) by [@L-1124](https://github.com/L-1124)
+* **(models)** [**breaking**] 将所有模型中的 alias 统一替换为 validation_alias，隔离序列化字段名 ([c611b91](https://github.com/L-1124/QQMusicApi/commit/c611b91d607d36327662a80d0e126a6958b21bd5)) by [@L-1124](https://github.com/L-1124)
+* **(modules)** 移除冗余的 _require_login 调用，统一使用 require_login 参数 ([1a666f4](https://github.com/L-1124/QQMusicApi/commit/1a666f45ae968c235066c07e8b3e82096c3fc668)) by [@L-1124](https://github.com/L-1124)
+* **(modules)** 将 _require_login 收敛到 _build_request 的 require_login 参数中 ([d1a92ca](https://github.com/L-1124/QQMusicApi/commit/d1a92ca07d5a98f3f443453e5fc77b8f8c8dc44e)) by [@L-1124](https://github.com/L-1124)
+
+### 文档更新
+
+* **(coding)** 更新需登录接口的编码规范，使用 require_login 参数替代 _require_login ([9e56215](https://github.com/L-1124/QQMusicApi/commit/9e562152ec8039b3045ae6c51006401c93b36a36)) by [@L-1124](https://github.com/L-1124)
+* **(dislike)** 更新不喜欢列表项和响应数据的文档说明 ([5dbf711](https://github.com/L-1124/QQMusicApi/commit/5dbf711e46a69f99940f048504446b9e074fd21f)) by [@L-1124](https://github.com/L-1124)
+* **(login)** 更新二维码和手机验证码登录状态的文档注释 ([f31d4d0](https://github.com/L-1124/QQMusicApi/commit/f31d4d0132cb61a9935ebea92657fcfa6591926c)) by [@L-1124](https://github.com/L-1124)
+* **(readme)** 添加 DeepWiki 相关链接 ([fcea758](https://github.com/L-1124/QQMusicApi/commit/fcea758b80a824cb513a8bdfc8b247da786f5a1e)) by [@L-1124](https://github.com/L-1124)
+
+### 贡献者
+
+* @L-1124
+* @jinzhongjia [#281](https://github.com/L-1124/QQMusicApi/pull/281)
+* @github-actions[bot]
+
 ## [[0.6.7](https://github.com/L-1124/QQMusicApi/compare/v0.6.6..v0.6.7)] - 2026-06-17
 
 ### 功能更新

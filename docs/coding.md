@@ -221,20 +221,23 @@ class Singer(Response):
 
 ### 需登录的接口
 
-需要登录的接口应通过 `_require_login` 校验凭证：
+需要登录的接口通过 `_build_request` 的 `require_login` 参数校验凭证：
 
 ```python
 def get_vip_info(self, *, credential: Credential | None = None):
     """获取 VIP 信息."""
-    target_credential = self._require_login(credential)
     return self._build_request(
         module="VipLogin.VipLoginInter",
         method="vip_login_base",
         param={},
-        credential=target_credential,
+        credential=credential,
         response_model=UserVipInfoResponse,
+        require_login=True,
     )
 ```
+
+> 若接口需要凭证对象的字段来构建请求参数，
+> 仍可显式调用 `_require_login` 获取凭证对象。
 
 ## 翻页与换一批
 

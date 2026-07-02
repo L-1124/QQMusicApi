@@ -183,15 +183,16 @@ class LoginApi(ApiModule):
 
     async def logout(self, credential: Credential | None = None) -> None:
         """登出当前账号."""
-        target = self._require_login(credential)
         await self._build_request(
             module="music.login.LoginServer",
             method="Logout",
             param={},
-            credential=target,
+            credential=credential,
             allow_error_codes=_ERROR_CODE,
+            require_login=True,
         )
-        self._client.credential = Credential()  # 清除凭证
+        if credential is None:
+            self._client.credential = Credential()
 
     async def get_qrcode(self, login_type: QRLoginType) -> QR:
         """获取指定类型的登录二维码.

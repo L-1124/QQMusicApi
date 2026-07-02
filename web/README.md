@@ -29,7 +29,14 @@ pip install -r web/requirements.txt
 uv run --no-sync web/run.py
 ```
 
-服务启动后，访问 [http://localhost:8080/docs](http://localhost:8080/docs) 查看自动生成的 API 文档。
+服务启动后，可通过以下地址查看 API 文档:
+
+|                 地址                 | 说明               |
+|:------------------------------------:|--------------------|
+|    `http://localhost:8080/swagger`   | Swagger UI         |
+|     `http://localhost:8080/redoc`    | ReDo               |
+|     `http://localhost:8080/docs`     | Stoplight Elements |
+| `http://localhost:8080/openapi.json` | OpenAPI            |
 
 ### Docker 部署
 
@@ -38,15 +45,36 @@ uv run --no-sync web/run.py
 docker build -t qqmusic-api-web -f web/Dockerfile .
 
 # 运行容器
-docker run -p 8080:8080 \
+docker run -d -p 8080:8080 --name qqmusic-api-web \
   -v ./web/data:/app/web/data \
+  -v ./web/accounts.toml:/app/web/accounts.toml:ro \
+  -v ./web/config.toml:/app/web/config.toml:ro \
   qqmusic-api-web
 ```
 
 使用 docker-compose:
 
 ```bash
+# 首次使用请复制示例文件并编辑:
+cp web/docker-compose.example.yml web/docker-compose.yml
+# 然后启动:
 docker compose -f web/docker-compose.yml up -d
+```
+
+### wslc 部署
+
+[`wslc`](https://learn.microsoft.com/zh-cn/windows/wsl/) 是 Windows 自带的 WSL 容器管理工具。
+
+```bash
+# 构建镜像
+wslc build -t qqmusic-api-web -f web/Dockerfile .
+
+# 运行容器
+wslc run -d -p 8080:8080 --name qqmusic-api-web \
+  -v ./web/data:/app/web/data \
+  -v ./web/accounts.toml:/app/web/accounts.toml:ro \
+  -v ./web/config.toml:/app/web/config.toml:ro \
+  qqmusic-api-web
 ```
 
 挂载说明:

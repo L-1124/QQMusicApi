@@ -8,7 +8,7 @@ from ..routing.route_types import PUBLIC_60, PUBLIC_600, WebRoute
 from ._helpers import KEYWORD, SEARCH_BY_TYPE, SEARCH_GENERAL, Q, R
 
 ROUTES: tuple[WebRoute, ...] = (
-    R("search", "complete", "/search/complete", Any, params=KEYWORD, cache=PUBLIC_60),
+    R("search", "complete", "/search/complete", dict, params=KEYWORD, cache=PUBLIC_60),
     R(
         "search",
         "general_search",
@@ -27,8 +27,8 @@ ROUTES: tuple[WebRoute, ...] = (
         ),
         cache=PUBLIC_60,
     ),
-    R("search", "get_hotkey", "/search/get_hotkey", Any, cache=PUBLIC_600),
-    R("search", "quick_search", "/search/quick_search", Any, params=KEYWORD, cache=PUBLIC_60),
+    R("search", "get_hotkey", "/search/get_hotkey", dict, cache=PUBLIC_600),
+    R("search", "quick_search", "/search/quick_search", dict, params=KEYWORD, cache=PUBLIC_60),
     R(
         "search",
         "search_by_type",

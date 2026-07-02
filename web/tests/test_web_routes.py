@@ -13,7 +13,7 @@ def test_app_creation_and_route_validation_succeed() -> None:
     app = create_app()
 
     assert validate_routes(ROUTES) == ()
-    assert len(app.openapi()["paths"]) == len(ROUTES)
+    assert len(app.openapi()["paths"]) == len({route.path for route in ROUTES})
 
 
 def test_registered_route_count_matches_contract() -> None:
