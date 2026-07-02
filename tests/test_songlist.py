@@ -63,3 +63,22 @@ async def test_del_songs_requires_login(client: Client) -> None:
     """测试删除歌单歌曲需要登录凭证."""
     with pytest.raises(CredentialInvalidError):
         await client.songlist.del_songs(dirid=1, song_info=[(100, 0)])
+
+
+async def test_like_song_requires_login(client: Client) -> None:
+    """测试收藏歌曲到我喜欢需要登录凭证."""
+    with pytest.raises(CredentialInvalidError):
+        await client.songlist.like_song([(100, 0)])
+
+
+async def test_unlike_song_requires_login(client: Client) -> None:
+    """测试从我喜欢移除歌曲需要登录凭证."""
+    with pytest.raises(CredentialInvalidError):
+        await client.songlist.unlike_song([(100, 0)])
+
+
+async def test_like_song_roundtrip(authenticated_client: Client) -> None:
+    """测试收藏与取消收藏歌曲可逆往返."""
+    song = (await authenticated_client.recommend.get_recommend_newsong(type=1)).songs[0]
+    assert await authenticated_client.songlist.like_song([(song.id, song.type)])
+    assert await authenticated_client.songlist.unlike_song([(song.id, song.type)])

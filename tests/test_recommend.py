@@ -1,5 +1,7 @@
 """推荐模块测试."""
 
+import pytest
+
 from qqmusic_api import Client
 
 
@@ -35,3 +37,11 @@ async def test_get_recommend_newsong(client: Client) -> None:
     result = await client.recommend.get_recommend_newsong()
     assert result.songs
     assert result.songs[0].mid
+
+
+@pytest.mark.parametrize(("area_type", "lan"), [(1, "内地"), (2, "欧美"), (6, "港台")])
+async def test_get_recommend_newsong_by_type(client: Client, area_type: int, lan: str) -> None:
+    """测试按地区类型获取推荐新歌."""
+    result = await client.recommend.get_recommend_newsong(type=area_type)
+    assert result.lan == lan
+    assert result.songs
