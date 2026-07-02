@@ -175,3 +175,43 @@ class SonglistApi(ApiModule):
             if e.code == 80092:
                 return False
             raise
+
+    async def like_song(
+        self,
+        song_info: list[tuple[int, int]],
+        *,
+        credential: Credential | None = None,
+    ) -> bool:
+        """收藏歌曲到 "我喜欢" 歌单.
+
+        Note:
+            "我喜欢" 歌单的目录 ID 固定为 201, 本方法即以 dirid=201 调用 `add_songs`.
+
+        Args:
+            song_info: 歌曲信息列表, 每项为 `(song_id, song_type)`.
+            credential: 登录凭证.
+
+        Returns:
+            操作成功与否 (歌曲已在 "我喜欢" 中也返回 True).
+        """
+        return await self.add_songs(201, song_info, credential=credential)
+
+    async def unlike_song(
+        self,
+        song_info: list[tuple[int, int]],
+        *,
+        credential: Credential | None = None,
+    ) -> bool:
+        """从 "我喜欢" 歌单移除歌曲.
+
+        Note:
+            "我喜欢" 歌单的目录 ID 固定为 201, 本方法即以 dirid=201 调用 `del_songs`.
+
+        Args:
+            song_info: 歌曲信息列表, 每项为 `(song_id, song_type)`.
+            credential: 登录凭证.
+
+        Returns:
+            操作成功与否 (歌曲不在 "我喜欢" 中也返回 True).
+        """
+        return await self.del_songs(201, song_info, credential=credential)
