@@ -10,6 +10,7 @@ import orjson as json
 from niquests import AsyncSession, AsyncTokenBucketLimiter, PreparedRequest, RetryConfiguration
 from niquests.exceptions import RequestException
 from niquests.models import Response
+from niquests.packages.urllib3.util.retry import Retry
 from niquests.typing import AsyncHookType, ProxyType, TLSClientCertType, TLSVerifyType
 from tarsio import TarsDict
 
