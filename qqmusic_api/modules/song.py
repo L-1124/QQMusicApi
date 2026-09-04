@@ -283,8 +283,11 @@ class SongApi(ApiModule):
             credential: 凭据对象.
 
         Raises:
-            ValueError: 当 `mid` 数量超过上限时抛出.
+            ValueError: 当 `mid` 数量超过上限时抛出. 超限时上游返回错误且无结果, 故提前拒绝.
         """
+        if len(file_info) > self._GET_SONG_URLS_MAX_MID:
+            raise ValueError(f"mid 数量不能超过 {self._GET_SONG_URLS_MAX_MID}, 当前为 {len(file_info)}")
+
         encrypted = isinstance(file_type, EncryptedSongFileType)
         module, method = (
             ("music.vkey.GetVkey", "UrlGetVkey") if not encrypted else ("music.vkey.GetEVkey", "CgiGetEVkey")

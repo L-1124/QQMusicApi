@@ -52,6 +52,13 @@ async def test_get_song_urls(client: Client, file_type: SongFileType | Encrypted
     assert len(result.data) == 1
 
 
+def test_get_song_urls_exceed_limit(client: Client) -> None:
+    """测试获取歌曲链接超出 mid 数量上限时抛出异常."""
+    oversized = [SongFileInfo(mid="003w2xz20QlUZt")] * (client.song._GET_SONG_URLS_MAX_MID + 1)
+    with pytest.raises(ValueError, match="mid 数量不能超过"):
+        client.song.get_song_urls(oversized)
+
+
 @pytest.mark.parametrize("value", [100, "003w2xz20QlUZt"])
 async def test_get_detail(client: Client, value: int | str) -> None:
     """测试获取歌曲详情."""
