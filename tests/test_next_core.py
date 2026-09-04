@@ -3,16 +3,25 @@
 from typing import Any, cast
 
 import pytest
+from niquests.exceptions import RequestException
 from pydantic import BaseModel
 
 from qqmusic_api.core.exceptions import (
+    ApiDataError,
     CgiApiException,
     CredentialExpiredError,
+    CredentialInvalidError,
+    GlobalApiError,
+    HTTPError,
+    NetworkError,
     RatelimitedError,
     SignatureRequiredError,
 )
+from qqmusic_api.core.versioning import Platform
+from qqmusic_api.models.request import Credential
 from qqmusic_api.next.endpoint import CgiEndpoint
 from qqmusic_api.next.errcode import resolve_cgi_error
+from qqmusic_api.next.pipeline import Pipeline, RequestEvent
 from qqmusic_api.next.transport import NiquestsTransport
 
 pytestmark = pytest.mark.core
@@ -122,3 +131,140 @@ def test_parse_data_raises_mapped_error() -> None:
     endpoint = CgiEndpoint(module="m", method="n", response_model=_StubModel)
     with pytest.raises(RatelimitedError):
         endpoint.parse_data({"code": 2001, "data": {}})
+
+
+class _StubResponse:
+    def __init__(self, payload: Any, status_code: int = 200) -> None:
+        self.status_code = status_code
+        self._payload = payload
+        self.content = b"{}" if payload is not None else b""
+        self.text = "stub"
+
+    def json(self) -> Any:
+        return self._payload
+
+
+class _StubContext:
+    def __init__(self, credential: Credential | None = None) -> None:
+        self.credential = credential or Credential()
+        self.calls: list[dict[str, Any]] = []
+
+    async def build_api_kwargs(
+        self,
+        data: Any,
+        comm: Any = None,
+        credential: Any = None,
+        platform: Any = None,
+        *,
+        override_comm: bool = False,
+        sign: bool = False,
+    ) -> tuple[str, dict[str, Any], dict[str, str], dict[str, str]]:
+        self.calls.append(
+            {
+                "data": list(data),
+                "comm": comm,
+                "credential": credential,
+                "platform": platform,
+                "override_comm": override_comm,
+                "sign": sign,
+            }
+        )
+        payload: dict[str, Any] = {"comm": {}}
+        for idx, item in enumerate(data):
+            payload[f"req_{idx}"] = item
+        return "https://stub.example/cgi", payload, {}, {}
+
+
+class _DummyTransport:
+    def __init__(self, response: Any = None, error: Exception | None = None) -> None:
+        self._response = response
+        self._error = error
+        self.calls: list[dict[str, Any]] = []
+
+    async def post(self, url: str, *, json: Any, params: Any, headers: Any) -> Any:
+        self.calls.append({"url": url, "json": json, "params": params, "headers": headers})
+        if self._error is not None:
+            raise self._error
+        return self._response
+
+
+def _ok_envelope(data: dict[str, Any] | None = None) -> _StubResponse:
+    return _StubResponse({"code": 0, "req_0": {"code": 0, "data": data or {}}})
+
+
+async def test_pipeline_execute_returns_parsed_model() -> None:
+    """测试管道成功路径返回解析模型, 且布尔参数按旧语义转整型."""
+    transport = _DummyTransport(_ok_envelope({"x": 1}))
+    pipeline = Pipeline(_StubContext(), transport)
+
+    result = await pipeline.execute(CgiEndpoint(module="m", method="n", response_model=_StubModel), {"k": True})
+
+    assert result == _StubModel(x=1)
+    assert transport.calls[0]["json"]["req_0"] == {"module": "m", "method": "n", "param": {"k": 1}}
+
+
+async def test_pipeline_preserve_bool_keeps_boolean() -> None:
+    """测试 preserve_bool 端点保留布尔值."""
+    transport = _DummyTransport(_ok_envelope())
+    pipeline = Pipeline(_StubContext(), transport)
+
+    await pipeline.execute(CgiEndpoint(module="m", method="n", preserve_bool=True, disable_parse=True), {"k": True})
+
+    assert transport.calls[0]["json"]["req_0"]["param"] == {"k": True}
+
+
+async def test_pipeline_wraps_network_error_and_emits_event() -> None:
+    """测试网络异常被包装为 NetworkError 并发出携带错误的事件."""
+    events: list[RequestEvent] = []
+    pipeline = Pipeline(_StubContext(), _DummyTransport(error=RequestException("boom")), on_event=events.append)
+
+    with pytest.raises(NetworkError):
+        await pipeline.execute(CgiEndpoint(module="m", method="n"), {})
+
+    assert len(events) == 1
+    assert events[0].endpoint == "m/n"
+    assert isinstance(events[0].error, NetworkError)
+    assert events[0].path == "v2"
+    assert events[0].elapsed >= 0
+
+
+async def test_pipeline_raises_global_error_on_envelope_failure() -> None:
+    """测试外层信封 code 非零时抛出 GlobalApiError."""
+    pipeline = Pipeline(_StubContext(), _DummyTransport(_StubResponse({"code": 500})))
+    with pytest.raises(GlobalApiError):
+        await pipeline.execute(CgiEndpoint(module="m", method="n"), {})
+
+
+async def test_pipeline_raises_http_error_on_bad_status() -> None:
+    """测试 HTTP 状态码非 200 时抛出 HTTPError."""
+    pipeline = Pipeline(_StubContext(), _DummyTransport(_StubResponse({}, status_code=503)))
+    with pytest.raises(HTTPError):
+        await pipeline.execute(CgiEndpoint(module="m", method="n"), {})
+
+
+async def test_pipeline_raises_data_error_on_missing_subresponse() -> None:
+    """测试缺少 req_0 子响应时抛出 ApiDataError."""
+    pipeline = Pipeline(_StubContext(), _DummyTransport(_StubResponse({"code": 0})))
+    with pytest.raises(ApiDataError):
+        await pipeline.execute(CgiEndpoint(module="m", method="n"), {})
+
+
+async def test_pipeline_rejects_require_login_without_credential() -> None:
+    """测试 require_login 端点缺少凭证时抛出 CredentialInvalidError."""
+    pipeline = Pipeline(_StubContext(), _DummyTransport())
+    with pytest.raises(CredentialInvalidError):
+        await pipeline.execute(CgiEndpoint(module="m", method="n", require_login=True), {})
+
+
+async def test_pipeline_passes_credential_and_platform_to_context() -> None:
+    """测试端点 platform 与调用方 credential 透传到上下文."""
+    context = _StubContext()
+    pipeline = Pipeline(context, _DummyTransport(_ok_envelope()))
+    cred = Credential(musicid=123, musickey="k")
+
+    await pipeline.execute(
+        CgiEndpoint(module="m", method="n", platform=Platform.WEB, disable_parse=True), {}, credential=cred
+    )
+
+    assert context.calls[0]["platform"] is Platform.WEB
+    assert context.calls[0]["credential"] is cred
