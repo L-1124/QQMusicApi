@@ -23,30 +23,34 @@ def _build_pipeline(client: Client) -> Pipeline:
 
 
 async def test_pilot_get_detail_matches_legacy(client: Client) -> None:
-    """测试新管道获取歌曲详情与旧路径结果一致."""
+    """测试新管道获取歌曲详情与旧路径结果及上游模块一致."""
     descriptor = client.song.get_detail(100)
+    endpoint = GET_SONG_DETAIL
     legacy = await descriptor
-    pilot = await _call_with_skip(lambda: _build_pipeline(client).execute(GET_SONG_DETAIL, descriptor.param))
+    pilot = await _call_with_skip(lambda: _build_pipeline(client).execute(endpoint, descriptor.param))
 
+    assert (descriptor.module, descriptor.method) == (endpoint.module, endpoint.method)
     assert pilot.track.id == legacy.track.id
     assert pilot.track.mid == legacy.track.mid
 
 
 async def test_pilot_query_song_matches_legacy(client: Client) -> None:
-    """测试新管道查询歌曲信息与旧路径结果一致."""
+    """测试新管道查询歌曲信息与旧路径结果及上游模块一致."""
     descriptor = client.song.query_song([SongQueryInfo(id=107479170)])
+    endpoint = QUERY_SONG
     legacy = await descriptor
-    pilot = await _call_with_skip(lambda: _build_pipeline(client).execute(QUERY_SONG, descriptor.param))
+    pilot = await _call_with_skip(lambda: _build_pipeline(client).execute(endpoint, descriptor.param))
 
+    assert (descriptor.module, descriptor.method) == (endpoint.module, endpoint.method)
     assert [track.mid for track in pilot.tracks] == [track.mid for track in legacy.tracks]
 
 
 async def test_pilot_get_song_urls_matches_legacy(client: Client) -> None:
-    """测试新管道获取歌曲链接与旧路径返回结构一致."""
+    """测试新管道获取歌曲链接与旧路径返回结构与上游模块一致."""
     descriptor = client.song.get_song_urls([SongFileInfo(mid="003w2xz20QlUZt", file_type=SongFileType.MP3_128)])
+    endpoint = song_urls_endpoint(SongFileType.MP3_128)
     legacy = await descriptor
-    pilot = await _call_with_skip(
-        lambda: _build_pipeline(client).execute(song_urls_endpoint(SongFileType.MP3_128), descriptor.param)
-    )
+    pilot = await _call_with_skip(lambda: _build_pipeline(client).execute(endpoint, descriptor.param))
 
+    assert (descriptor.module, descriptor.method) == (endpoint.module, endpoint.method)
     assert len(pilot.data) == len(legacy.data) == 1

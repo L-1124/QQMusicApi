@@ -1,4 +1,4 @@
-"""Next 内核 Core 层单元测试. 全部使用桩数据, 不发起网络请求."""
+"""Next 内核 Core 层单元测试. 使用桩数据与离线描述符构造, 不发起网络请求."""
 
 from collections.abc import AsyncIterator
 from typing import Any, cast
