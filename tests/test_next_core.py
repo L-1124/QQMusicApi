@@ -3,6 +3,7 @@
 from typing import Any, cast
 
 import pytest
+from pydantic import BaseModel
 
 from qqmusic_api.core.exceptions import (
     CgiApiException,
@@ -10,6 +11,7 @@ from qqmusic_api.core.exceptions import (
     RatelimitedError,
     SignatureRequiredError,
 )
+from qqmusic_api.next.endpoint import CgiEndpoint
 from qqmusic_api.next.errcode import resolve_cgi_error
 from qqmusic_api.next.transport import NiquestsTransport
 
@@ -77,3 +79,46 @@ async def test_niquests_transport_forwards_session_kwargs() -> None:
     assert call["cert"] == "cert.pem"
     assert call["verify"] == "ca-bundle.pem"
     assert session.gather_calls == [("raw-response",)]
+
+
+class _StubModel(BaseModel):
+    x: int = 0
+
+
+def test_parse_data_returns_model_on_success() -> None:
+    """测试成功码时按 response_model 建模."""
+    endpoint = CgiEndpoint(module="m", method="n", response_model=_StubModel)
+    assert endpoint.parse_data({"code": 0, "data": {"x": 1}}) == _StubModel(x=1)
+
+
+def test_parse_data_allow_error_codes_returns_raw() -> None:
+    """测试命中允许错误码时返回原始子响应."""
+    endpoint = CgiEndpoint(module="m", method="n", allow_error_codes={2}, response_model=_StubModel)
+    raw = {"code": 2, "data": {"x": 1}}
+    assert endpoint.parse_data(raw) == raw
+
+
+def test_parse_data_parse_on_allow_takes_precedence() -> None:
+    """测试 parse_on_allow 优先于 disable_parse, 命中允许码仍建模."""
+    endpoint = CgiEndpoint(
+        module="m",
+        method="n",
+        allow_error_codes={2},
+        parse_on_allow=True,
+        disable_parse=True,
+        response_model=_StubModel,
+    )
+    assert endpoint.parse_data({"code": 2, "data": {"x": 1}}) == _StubModel(x=1)
+
+
+def test_parse_data_disable_parse_returns_data() -> None:
+    """测试 disable_parse 时返回未建模的 data 字典."""
+    endpoint = CgiEndpoint(module="m", method="n", disable_parse=True, response_model=_StubModel)
+    assert endpoint.parse_data({"code": 0, "data": {"x": 1}}) == {"x": 1}
+
+
+def test_parse_data_raises_mapped_error() -> None:
+    """测试业务错误码经注册表映射为对应异常."""
+    endpoint = CgiEndpoint(module="m", method="n", response_model=_StubModel)
+    with pytest.raises(RatelimitedError):
+        endpoint.parse_data({"code": 2001, "data": {}})
