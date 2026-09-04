@@ -1,11 +1,14 @@
 """Next 内核 Core 层单元测试. 全部使用桩数据, 不发起网络请求."""
 
+from collections.abc import AsyncIterator
 from typing import Any, cast
 
 import pytest
+import pytest_asyncio
 from niquests.exceptions import RequestException
 from pydantic import BaseModel
 
+from qqmusic_api import Client
 from qqmusic_api.core.exceptions import (
     ApiDataError,
     CgiApiException,
@@ -19,7 +22,9 @@ from qqmusic_api.core.exceptions import (
 )
 from qqmusic_api.core.versioning import Platform
 from qqmusic_api.models.request import Credential
+from qqmusic_api.modules.song import EncryptedSongFileType, SongFileInfo, SongFileType, SongQueryInfo
 from qqmusic_api.next.endpoint import CgiEndpoint
+from qqmusic_api.next.endpoints.song import GET_SONG_DETAIL, QUERY_SONG, song_urls_endpoint
 from qqmusic_api.next.errcode import resolve_cgi_error
 from qqmusic_api.next.pipeline import Pipeline, RequestEvent
 from qqmusic_api.next.transport import NiquestsTransport
@@ -268,3 +273,44 @@ async def test_pipeline_passes_credential_and_platform_to_context() -> None:
 
     assert context.calls[0]["platform"] is Platform.WEB
     assert context.calls[0]["credential"] is cred
+
+
+@pytest_asyncio.fixture
+async def bare_client(tmp_path: Any) -> AsyncIterator[Client]:
+    """创建不触发网络的最小 Client 实例, 用于构造请求描述符."""
+    instance = Client(device_path=str(tmp_path / "device.json"))
+    yield instance
+    await instance.close()
+
+
+async def test_get_song_detail_endpoint_matches_descriptor(bare_client: Client) -> None:
+    """测试歌曲详情端点声明与模块生成的描述符逐字段一致."""
+    descriptor = bare_client.song.get_detail(100)
+    assert GET_SONG_DETAIL.module == descriptor.module
+    assert GET_SONG_DETAIL.method == descriptor.method
+    assert GET_SONG_DETAIL.platform is descriptor.platform
+    assert GET_SONG_DETAIL.response_model is descriptor.response_model
+    assert GET_SONG_DETAIL.sign == descriptor.sign
+    assert GET_SONG_DETAIL.preserve_bool == descriptor.preserve_bool
+    assert descriptor.param == {"song_id": 100}
+
+
+async def test_query_song_endpoint_matches_descriptor(bare_client: Client) -> None:
+    """测试查询歌曲端点声明与模块生成的描述符逐字段一致."""
+    descriptor = bare_client.song.query_song([SongQueryInfo(id=107479170)])
+    assert QUERY_SONG.module == descriptor.module
+    assert QUERY_SONG.method == descriptor.method
+    assert QUERY_SONG.platform is descriptor.platform
+    assert QUERY_SONG.response_model is descriptor.response_model
+    assert descriptor.param["ids"] == [107479170]
+
+
+@pytest.mark.parametrize("file_type", [SongFileType.MP3_128, EncryptedSongFileType.FLAC])
+async def test_song_urls_endpoint_matches_descriptor(bare_client: Client, file_type: Any) -> None:
+    """测试歌曲链接端点工厂与模块描述符一致, 覆盖明文与加密分发."""
+    # 模块的端点分发只看顶层 file_type 参数, 与逐项覆盖无关, 故必须显式传入顶层参数.
+    descriptor = bare_client.song.get_song_urls([SongFileInfo(mid="003w2xz20QlUZt", file_type=file_type)], file_type)
+    endpoint = song_urls_endpoint(file_type)
+    assert endpoint.module == descriptor.module
+    assert endpoint.method == descriptor.method
+    assert endpoint.response_model is descriptor.response_model
