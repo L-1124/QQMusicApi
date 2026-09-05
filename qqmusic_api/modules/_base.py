@@ -1,19 +1,11 @@
 """API 模块基类."""
 
+from __future__ import annotations
+
 from typing import TYPE_CHECKING, Any, Literal, overload
 
-import niquests
-from niquests.typing import (
-    AsyncBodyType,
-    BodyType,
-    CookiesType,
-    HeadersType,
-    HttpMethodType,
-    QueryParameterType,
-)
 from typing_extensions import Unpack
 
-from ..core.pagination import PagerStrategy
 from ..core.request import (
     CgiRequest,
     CgiRequestOptions,
@@ -22,23 +14,34 @@ from ..core.request import (
     PaginatedCgiRequest,
     ResponseModel,
 )
-from ..core.versioning import Platform
-from ..models.request import Credential
 
 if TYPE_CHECKING:
+    from niquests.typing import (
+        AsyncBodyType,
+        BodyType,
+        CookiesType,
+        HeadersType,
+        HttpMethodType,
+        QueryParameterType,
+    )
+
     from ..core.client import Client
+    from ..core.pagination import PagerStrategy
+    from ..core.transport import HttpRawResponse
+    from ..core.versioning import Platform
+    from ..models.request import Credential
 
 
 class ApiModule:
     """API 模块基类."""
 
-    def __init__(self, client: "Client") -> None:
+    def __init__(self, client: Client) -> None:
         self._client = client
-        self._session = client._session
 
     def _build_version_params(self, platform: Platform | None = None) -> dict[str, int]:
         """构建查询接口使用的版本参数."""
-        profile = self._client._context.version_policy.get_profile(platform or self._client._context.platform)
+        defaults = self._client._defaults
+        profile = defaults.version_policy.get_profile(platform or defaults.platform)
         return {"ct": profile.ct, "cv": profile.cv}
 
     @overload
@@ -163,7 +166,7 @@ class ApiModule:
         response_model: type[ResponseModel] | None = None,
         disable_parse: Literal[True],
         **options: Unpack[HttpRequestOptions],
-    ) -> HttpRequest[niquests.Response]: ...
+    ) -> HttpRequest[HttpRawResponse]: ...
 
     @overload
     def _build_http(

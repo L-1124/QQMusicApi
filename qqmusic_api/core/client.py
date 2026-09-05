@@ -1,23 +1,29 @@
-"""API 客户端核心实现. 整合网络传输、鉴权与业务模块访问."""
+"""API 客户端组合根与公开门面. 组装请求内核并委托执行."""
 
-from collections import defaultdict
+from __future__ import annotations
+
 from functools import cached_property
-from typing import TYPE_CHECKING, Any, Literal, cast, overload
+from typing import TYPE_CHECKING, Any, Literal, overload
 
-import anyio
-from niquests import AsyncSession, AsyncTokenBucketLimiter, PreparedRequest, RetryConfiguration
-from niquests.exceptions import RequestException
-from niquests.models import Response
-from niquests.typing import AsyncHookType, ProxyType, TLSClientCertType, TLSVerifyType
-from typing_extensions import Self, sentinel
+from typing_extensions import Self
 
 from ..models.request import Credential
-from .api_context import ApiContext
-from .exceptions import ApiDataError, NetworkError
-from .request import BaseRequest, CgiRequest, HttpRequest, ResultT
-from .versioning import Platform
+from ..utils.device import DeviceManager
+from ..utils.qimei import QimeiManager
+from .android_session import AndroidSessionManager
+from .engine import RequestEngine
+from .executors.cgi import CgiExecutor
+from .executors.http import HttpExecutor
+from .preparation import CgiPreparer, HttpPreparer
+from .runtime import ClientDefaults
+from .transport import NiquestsTransport
+from .versioning import DEFAULT_VERSION_POLICY, Platform
 
 if TYPE_CHECKING:
+    from niquests import PreparedRequest
+    from niquests.models import Response
+    from niquests.typing import AsyncHookType, ProxyType, TLSClientCertType, TLSVerifyType
+
     from ..modules.album import AlbumApi
     from ..modules.comment import CommentApi
     from ..modules.helper import HelperApi
@@ -32,8 +38,7 @@ if TYPE_CHECKING:
     from ..modules.songlist import SonglistApi
     from ..modules.top import TopApi
     from ..modules.user import UserApi
-
-MISSING = sentinel("MISSING")
+    from .request import BaseRequest, ResultT
 
 
 class Client:
@@ -52,6 +57,7 @@ class Client:
         cert: TLSClientCertType | None = None,
         hooks: AsyncHookType[PreparedRequest | Response] | None = None,
         verify: TLSVerifyType | None = None,
+        transport: NiquestsTransport | None = None,
     ):
         """初始化客户端实例.
 
@@ -66,131 +72,202 @@ class Client:
             cert: TLS 客户端证书配置, 详见 niquests 文档.
             verify: TLS 证书验证配置, 详见 niquests 文档.
             hooks: 请求/响应钩子, 详见 niquests 文档.
+            transport: 外部注入的传输实例, 仅用于测试; 缺省时内部构建.
         """
-        self._session = AsyncSession(
-            multiplexed=True,
-            hooks=AsyncTokenBucketLimiter(rate=rate or 10, capacity=capacity or 50),
-            happy_eyeballs=True,
-            retries=RetryConfiguration(
-                total=connect_retries or 2,
-                connect=connect_retries or 2,
-                read=0,
-                redirect=0,
-                status=0,
-                other=0,
-                backoff_factor=0.2,
-            ),
-            allow_incoming_cookies=False,
+        self._defaults = ClientDefaults(
+            credential=credential or Credential(),
+            platform=platform or Platform.ANDROID,
+            version_policy=DEFAULT_VERSION_POLICY,
         )
-        self.proxies = proxies
-        self.cert = cert
-        self.verify = verify
-        self.hooks = hooks
-
-        self._context = ApiContext(credential, platform=platform, device_path=device_path, session=self._session)
+        self._device_store = DeviceManager(device_path)
+        self._transport = transport or NiquestsTransport(
+            rate=rate or 10,
+            capacity=capacity or 50,
+            connect_retries=connect_retries if connect_retries is not None else 2,
+            proxies=proxies,
+            cert=cert,
+            verify=verify,
+            hooks=hooks,
+        )
+        self._qimei_manager = QimeiManager(
+            device_store=self._device_store,
+            app_version=self._defaults.version_policy.get_qimei_app_version(),
+            sdk_version=self._defaults.version_policy.get_qimei_sdk_version(),
+            transport=self._transport,
+        )
+        self._android_session = AndroidSessionManager(
+            device_store=self._device_store,
+            qimei_manager=self._qimei_manager,
+            version_policy=self._defaults.version_policy,
+            transport=self._transport,
+        )
+        self._cgi_executor = CgiExecutor(
+            defaults=self._defaults,
+            preparer=CgiPreparer(
+                android_session=self._android_session,
+                device_store=self._device_store,
+                qimei_manager=self._qimei_manager,
+                version_policy=self._defaults.version_policy,
+            ),
+            transport=self._transport,
+        )
+        self._http_executor = HttpExecutor(
+            defaults=self._defaults,
+            preparer=HttpPreparer(
+                device_store=self._device_store,
+                version_policy=self._defaults.version_policy,
+            ),
+            transport=self._transport,
+        )
+        self._engine = RequestEngine(cgi_executor=self._cgi_executor, http_executor=self._http_executor)
 
     @property
     def credential(self) -> Credential:
         """获取当前全局凭证."""
-        return self._context.credential
+        return self._defaults.credential
 
     @credential.setter
     def credential(self, value: Credential | None):
-        self._context.credential = value or Credential()
+        self._defaults.credential = value or Credential()
+
+    @property
+    def platform(self) -> Platform:
+        """获取当前全局默认平台."""
+        return self._defaults.platform
+
+    @platform.setter
+    def platform(self, value: Platform):
+        self._defaults.platform = value
+
+    @property
+    def proxies(self) -> ProxyType | None:
+        """获取代理配置."""
+        return self._transport.proxies
+
+    @proxies.setter
+    def proxies(self, value: ProxyType | None):
+        self._transport.proxies = value
+
+    @property
+    def cert(self) -> TLSClientCertType | None:
+        """获取 TLS 客户端证书配置."""
+        return self._transport.cert
+
+    @cert.setter
+    def cert(self, value: TLSClientCertType | None):
+        self._transport.cert = value
+
+    @property
+    def verify(self) -> TLSVerifyType | None:
+        """获取 TLS 证书验证配置."""
+        return self._transport.verify
+
+    @verify.setter
+    def verify(self, value: TLSVerifyType | None):
+        self._transport.verify = value
+
+    @property
+    def hooks(self) -> AsyncHookType[PreparedRequest | Response] | None:
+        """获取请求/响应钩子."""
+        return self._transport.hooks
+
+    @hooks.setter
+    def hooks(self, value: AsyncHookType[PreparedRequest | Response] | None):
+        self._transport.hooks = value
 
     @cached_property
-    def helper(self) -> "HelperApi":
+    def helper(self) -> HelperApi:
         """辅助模块."""
         from ..modules.helper import HelperApi
 
         return HelperApi(self)
 
     @cached_property
-    def comment(self) -> "CommentApi":
+    def comment(self) -> CommentApi:
         """评论模块."""
         from ..modules.comment import CommentApi
 
         return CommentApi(self)
 
     @cached_property
-    def private_message(self) -> "PrivateMessageApi":
+    def private_message(self) -> PrivateMessageApi:
         """私信模块."""
         from ..modules.private_message import PrivateMessageApi
 
         return PrivateMessageApi(self)
 
     @cached_property
-    def recommend(self) -> "RecommendApi":
+    def recommend(self) -> RecommendApi:
         """推荐模块."""
         from ..modules.recommend import RecommendApi
 
         return RecommendApi(self)
 
     @cached_property
-    def top(self) -> "TopApi":
+    def top(self) -> TopApi:
         """排行榜模块."""
         from ..modules.top import TopApi
 
         return TopApi(self)
 
     @cached_property
-    def album(self) -> "AlbumApi":
+    def album(self) -> AlbumApi:
         """专辑模块."""
         from ..modules.album import AlbumApi
 
         return AlbumApi(self)
 
     @cached_property
-    def mv(self) -> "MvApi":
+    def mv(self) -> MvApi:
         """MV 模块."""
         from ..modules.mv import MvApi
 
         return MvApi(self)
 
     @cached_property
-    def login(self) -> "LoginApi":
+    def login(self) -> LoginApi:
         """登录模块."""
         from ..modules.login import LoginApi
 
         return LoginApi(self)
 
     @cached_property
-    def search(self) -> "SearchApi":
+    def search(self) -> SearchApi:
         """搜索模块."""
         from ..modules.search import SearchApi
 
         return SearchApi(self)
 
     @cached_property
-    def lyric(self) -> "LyricApi":
+    def lyric(self) -> LyricApi:
         """歌词模块."""
         from ..modules.lyric import LyricApi
 
         return LyricApi(self)
 
     @cached_property
-    def singer(self) -> "SingerApi":
+    def singer(self) -> SingerApi:
         """歌手模块."""
         from ..modules.singer import SingerApi
 
         return SingerApi(self)
 
     @cached_property
-    def song(self) -> "SongApi":
+    def song(self) -> SongApi:
         """歌曲模块."""
         from ..modules.song import SongApi
 
         return SongApi(self)
 
     @cached_property
-    def songlist(self) -> "SonglistApi":
+    def songlist(self) -> SonglistApi:
         """歌单模块."""
         from ..modules.songlist import SonglistApi
 
         return SonglistApi(self)
 
     @cached_property
-    def user(self) -> "UserApi":
+    def user(self) -> UserApi:
         """用户模块."""
         from ..modules.user import UserApi
 
@@ -204,7 +281,7 @@ class Client:
 
     async def close(self):
         """关闭客户端连接."""
-        await self._session.close()
+        await self._transport.close()
 
     async def execute(self, request: BaseRequest[ResultT]) -> ResultT:
         """执行单个请求描述符并解析响应结果.
@@ -212,69 +289,7 @@ class Client:
         Args:
             request: 请求描述符实例.
         """
-        match request:
-            case CgiRequest():
-                if request.require_login:
-                    cred = request.credential or self._context.credential
-                    if not cred or not cred.musicid or not cred.musickey:
-                        from .exceptions import CredentialInvalidError
-
-                        raise CredentialInvalidError("请求需要登录, 未提供有效的登录凭证")
-
-                req_item = request._build_args()
-
-                url, payload, params, headers = await self._context.build_api_kwargs(
-                    data=[req_item],
-                    comm=request.comm,
-                    credential=request.credential,
-                    platform=request.platform,
-                    override_comm=request.override_comm,
-                    sign=request.sign,
-                )
-
-                try:
-                    resp = await self._session.post(
-                        url,
-                        json=payload,
-                        params=params,
-                        headers=headers,
-                        proxies=self.proxies,
-                        hooks=self.hooks,
-                        cert=self.cert,
-                        verify=self.verify,
-                    )
-                    await self._session.gather(resp)
-                except RequestException as exc:
-                    raise NetworkError(str(exc)) from exc
-
-                raw_data = self._unwrap_cgi_batch(resp, expected_count=1)[0]
-
-                return request._parse_response(raw_data)
-
-            case HttpRequest():
-                request = cast("HttpRequest", request)
-                kwargs = await self._context.prepare_http_kwargs(
-                    credential=request.credential,
-                    **request._build_args(),
-                )
-
-                try:
-                    resp = await self._session.request(
-                        request.method,
-                        request.url,
-                        **kwargs,
-                        proxies=self.proxies,
-                        hooks=self.hooks,
-                        cert=self.cert,
-                        verify=self.verify,
-                    )
-                    await self._session.gather(resp)
-                except RequestException as exc:
-                    raise NetworkError(str(exc)) from exc
-
-                return request._parse_response(resp)
-            case _:
-                raise TypeError(f"不支持的请求类型: {type(request)}")
+        return await self._engine.execute(request)
 
     @overload
     async def gather(
@@ -347,185 +362,4 @@ class Client:
                 异常).
             ApiDataError: 当内部依赖的结果未能完整回填时抛出 (一般不应发生).
         """
-        if batch_size <= 0:
-            raise ValueError("batch_size 必须大于 0")
-        if not requests:
-            return []
-
-        results: list[Any] = [MISSING] * len(requests)
-        all_task: defaultdict[str, list[tuple[int, BaseRequest[Any]]]] = defaultdict(list)
-        for idx, req in enumerate(requests):
-            all_task[req._protocol].append((idx, req))
-
-        async def _gather_cgi(tasks: list[tuple[int, CgiRequest]]):
-            batch_responses = []
-            grouped_indices: defaultdict[Any, list[tuple[int, CgiRequest[Any]]]] = defaultdict(list)
-            for orig_idx, req in tasks:
-                if req.require_login:
-                    cred = req.credential or self._context.credential
-                    if not cred or not cred.musicid or not cred.musickey:
-                        from .exceptions import CredentialInvalidError
-
-                        exc = CredentialInvalidError("请求需要登录, 未提供有效的登录凭证")
-                        if return_exceptions:
-                            results[orig_idx] = exc
-                            continue
-                        raise exc
-                grouped_indices[req._group_key].append((orig_idx, req))
-
-            for group in grouped_indices.values():
-                base_req = group[0][1]
-                for start in range(0, len(group), batch_size):
-                    chunk = group[start : start + batch_size]
-                    chunk_orig_indices = [item[0] for item in chunk]
-
-                    url, payload, params, headers = await self._context.build_api_kwargs(
-                        data=[r[1]._build_args() for r in chunk],
-                        comm=base_req.comm,
-                        credential=base_req.credential,
-                        platform=base_req.platform,
-                        override_comm=base_req.override_comm,
-                        sign=base_req.sign,
-                    )
-
-                    try:
-                        resp = await self._session.post(
-                            url,
-                            json=payload,
-                            params=params,
-                            headers=headers,
-                            proxies=self.proxies,
-                            hooks=self.hooks,
-                            cert=self.cert,
-                            verify=self.verify,
-                        )
-                    except RequestException as exc:
-                        error = NetworkError(str(exc))
-                        if return_exceptions:
-                            for req_index in chunk_orig_indices:
-                                results[req_index] = error
-                            continue
-                        raise error from exc
-                    batch_responses.append((chunk_orig_indices, resp))
-
-            if not batch_responses:
-                return
-
-            try:
-                await self._session.gather(*(resp for _, resp in batch_responses))
-            except RequestException as exc:
-                error = NetworkError(str(exc))
-                if return_exceptions:
-                    for batch_indices, _ in batch_responses:
-                        for req_index in batch_indices:
-                            results[req_index] = error
-                    return
-                raise error from exc
-
-            for batch_indices, response in batch_responses:
-                try:
-                    data = self._unwrap_cgi_batch(response, len(batch_indices))
-                except Exception as exc:
-                    if return_exceptions:
-                        for req_index in batch_indices:
-                            results[req_index] = exc
-                        continue
-                    raise
-
-                for batch_index, req_index in enumerate(batch_indices):
-                    request = cast("CgiRequest", requests[req_index])
-                    try:
-                        results[req_index] = request._parse_response(data[batch_index])
-                    except Exception as exc:
-                        if return_exceptions:
-                            results[req_index] = exc
-                        else:
-                            raise
-
-        async def _gather_http(tasks: list[tuple[int, HttpRequest]]):
-            http_responses = []
-            for orig_idx, req in tasks:
-                kwargs = await self._context.prepare_http_kwargs(
-                    credential=req.credential,
-                    **req._build_args(),
-                )
-
-                try:
-                    resp = await self._session.request(
-                        req.method,
-                        req.url,
-                        **kwargs,
-                        proxies=self.proxies,
-                        hooks=self.hooks,
-                        cert=self.cert,
-                        verify=self.verify,
-                    )
-                except RequestException as exc:
-                    error = NetworkError(str(exc))
-                    if return_exceptions:
-                        results[orig_idx] = error
-                        continue
-                    raise error from exc
-                http_responses.append((orig_idx, req, resp))
-
-            if not http_responses:
-                return
-
-            try:
-                await self._session.gather(*(resp for _, _, resp in http_responses))
-            except RequestException as exc:
-                error = NetworkError(str(exc))
-                if return_exceptions:
-                    for orig_idx, _, _ in http_responses:
-                        results[orig_idx] = error
-                    return
-                raise error from exc
-
-            for orig_idx, req, resp in http_responses:
-                try:
-                    results[orig_idx] = req._parse_response(resp)
-                except Exception as exc:  # noqa: PERF203
-                    if return_exceptions:
-                        results[orig_idx] = exc
-                    else:
-                        raise
-
-        async with anyio.create_task_group() as tg:
-            for protocol, tasks in all_task.items():
-                if protocol == CgiRequest._protocol:
-                    tasks = cast("list[tuple[int, CgiRequest]]", tasks)
-                    tg.start_soon(_gather_cgi, tasks)
-                elif protocol == HttpRequest._protocol:
-                    tasks = cast("list[tuple[int, HttpRequest]]", tasks)
-                    tg.start_soon(_gather_http, tasks)
-
-        missing = [i for i, res in enumerate(results) if res is MISSING]
-        if missing:
-            raise ApiDataError(f"缺少以下索引结果: {missing}")
-
-        return results
-
-    def _unwrap_cgi_batch(self, response: Response, expected_count: int) -> list[dict[str, Any]]:
-        """拆解并校验 CGI 批量响应的外层信封."""
-        from .exceptions import ApiDataError, GlobalApiError, HTTPError
-
-        if response.status_code != 200:
-            raise HTTPError(
-                f"HTTP 请求状态码异常: {response.status_code}",
-                status_code=cast("int", response.status_code),
-            )
-        if not response.content:
-            raise ApiDataError("响应无内容")
-        try:
-            resp = response.json()
-        except Exception as exc:
-            raise ApiDataError("响应内容非有效 JSON 格式") from exc
-        code: int = cast("dict", resp).pop("code", 0)
-
-        if code != 0:
-            raise GlobalApiError("Module 请求失败", code=code, data=response.text)
-
-        try:
-            return [resp[f"req_{i}"] for i in range(expected_count)]
-        except KeyError as exc:
-            raise ApiDataError(f"CGI 响应格式异常, 缺少预期的子响应: {exc}") from exc
+        return await self._engine.gather(requests, batch_size=batch_size, return_exceptions=return_exceptions)

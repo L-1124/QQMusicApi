@@ -6,15 +6,15 @@ import re
 from collections.abc import Callable
 from contextlib import aclosing
 from time import time
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 import anyio
-from niquests.exceptions import HTTPError, ReadTimeout, RequestException
 
 from ..core import (
     ApiDataError,
     CredentialRefreshError,
+    HTTPError,
     LoginAccountRestrictedError,
     LoginAuthExpiredError,
     LoginDeviceLimitError,
@@ -23,6 +23,8 @@ from ..core import (
     NetworkError,
     Platform,
 )
+from ..core.mqtt import MqttConfig, MqttSessionFactory, PahoMqttSessionFactory, PropertyId
+from ..core.transport import PreparedRequest, TransportError, TransportTimeout
 from ..models.login import (
     QR,
     PhoneAuthCodeResult,
@@ -34,9 +36,10 @@ from ..models.login import (
 )
 from ..models.request import Credential
 from ..utils import hash33
-from ..utils.mqtt import Client as MqttClient
-from ..utils.mqtt import PropertyId
 from ._base import ApiModule
+
+if TYPE_CHECKING:
+    from ..core.client import Client
 
 _QQ_STATUS_RE = re.compile(r"ptuiCB\((.*?)\)")
 _QQ_ARGS_RE = re.compile(r"'((?:\\.|[^'])*)'")
@@ -50,6 +53,16 @@ _ERROR_CODE = 1000, 104401, 104400, 20261, 20271, 20272, 20274, 20277, 20278, 20
 # TODO: 登录和刷新时设置 `deviceName`
 class LoginApi(ApiModule):
     """登录相关的 API."""
+
+    def __init__(self, client: "Client", *, mqtt_factory: MqttSessionFactory | None = None) -> None:
+        """初始化登录模块.
+
+        Args:
+            client: 客户端实例.
+            mqtt_factory: MQTT 会话工厂, 缺省时使用 Paho 实现.
+        """
+        super().__init__(client)
+        self._mqtt_factory = mqtt_factory or PahoMqttSessionFactory()
 
     def _validate_result(self, resp: dict[str, Any]) -> dict[str, Any]:
         code = resp.get("code", 0)
@@ -88,7 +101,7 @@ class LoginApi(ApiModule):
             bool: 是否已过期.
         """
         target = credential or self._client.credential
-        if self._client._context.platform == Platform.WEB:
+        if self._client.platform == Platform.WEB:
             resp = await self._build_http(
                 "GET",
                 "https://c6.y.qq.com/rsc/fcgi-bin/fcg_get_profile_homepage.fcg",
@@ -246,6 +259,15 @@ class LoginApi(ApiModule):
             NetworkError: MQTT 建连、订阅或消息监听过程中发生网络错误.
         """
         client_id = f"{int(time() * 1000)}{random.randint(1000, 9999)}"
+        session = self._mqtt_factory.create(
+            MqttConfig(
+                client_id=client_id,
+                host="mu.y.qq.com",
+                port=443,
+                path="/ws/handshake",
+                keep_alive=45,
+            ),
+        )
 
         def get_timeout_left() -> float | None:
             """返回当前 deadline 剩余秒数."""
@@ -263,18 +285,12 @@ class LoginApi(ApiModule):
             with anyio.fail_after(timeout_left):
                 return await operation()
 
-        async with MqttClient(
-            client_id=client_id,
-            host="mu.y.qq.com",
-            port=443,
-            path="/ws/handshake",
-            keep_alive=45,
-        ) as client:
+        try:
             try:
-                await await_before_deadline(lambda: self._connect_mobile_mqtt(client, qrcode.identifier))
+                await await_before_deadline(lambda: self._connect_mobile_mqtt(session, qrcode.identifier))
                 topic = f"management.qrcode_login/{qrcode.identifier}"
                 await await_before_deadline(
-                    lambda: client.subscribe(
+                    lambda: session.subscribe(
                         topic,
                         properties={PropertyId.USER_PROPERTY: [("authorization", "tmelogin"), ("pubsub", "unicast")]},
                     ),
@@ -288,7 +304,7 @@ class LoginApi(ApiModule):
             yield QRLoginResult(event=QRCodeLoginEvents.SCAN)
 
             try:
-                async with aclosing(client.messages()) as messages:
+                async with aclosing(session.messages()) as messages:
                     while True:
                         try:
                             message = await await_before_deadline(lambda: anext(messages))
@@ -326,6 +342,8 @@ class LoginApi(ApiModule):
                             return
             except ConnectionError as exc:
                 raise NetworkError(str(exc)) from exc
+        finally:
+            await session.close()
 
     async def send_authcode(
         self,
@@ -472,7 +490,7 @@ class LoginApi(ApiModule):
             method="CreateQRCode",
             param={"tmeAppID": "qqmusic", **self._build_version_params()},
             comm={"ct": 23, "cv": 0},
-            platform=Platform.ANDROID if self._client._context.platform == Platform.WEB else None,
+            platform=Platform.ANDROID if self._client.platform == Platform.WEB else None,
         )
 
         if data is None:
@@ -553,15 +571,21 @@ class LoginApi(ApiModule):
         """检查微信二维码状态."""
         uuid = qrcode.identifier
         try:
-            response = await self._session.get(
-                "https://lp.open.weixin.qq.com/connect/l/qrconnect",
-                params={"uuid": uuid, "_": str(int(time()) * 1000)},
-                headers={"Referer": "https://open.weixin.qq.com/"},
-                timeout=35.0,
+            response = await self._client._transport.start(
+                PreparedRequest(
+                    method="GET",
+                    url="https://lp.open.weixin.qq.com/connect/l/qrconnect",
+                    kwargs={
+                        "params": {"uuid": uuid, "_": str(int(time()) * 1000)},
+                        "headers": {"Referer": "https://open.weixin.qq.com/"},
+                        "timeout": 35.0,
+                    },
+                ),
             )
-        except ReadTimeout:
+            await self._client._transport.resolve([response])
+        except TransportTimeout:
             return QRLoginResult(event=QRCodeLoginEvents.SCAN)
-        except RequestException as exc:
+        except TransportError as exc:
             raise NetworkError(str(exc)) from exc
 
         match = _WX_STATUS_RE.search(response.text or "")
@@ -582,9 +606,9 @@ class LoginApi(ApiModule):
 
         return QRLoginResult(event=event, credential=await self._authorize_wx_qr(wx_code))
 
-    async def _connect_mobile_mqtt(self, client: MqttClient, qrcode_id: str) -> None:
+    async def _connect_mobile_mqtt(self, session: Any, qrcode_id: str) -> None:
         """建立手机客户端二维码 MQTT 连接."""
-        await client.connect(
+        await session.connect(
             properties={
                 PropertyId.AUTH_METHOD: "pass",
                 PropertyId.USER_PROPERTY: [
