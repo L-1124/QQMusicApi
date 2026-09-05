@@ -203,7 +203,7 @@ class NiquestsTransport:
         if not responses:
             return
         try:
-            # RawResponse 协议由 niquests Response 结构化满足, 此处回到具体类型边界.
+            # 传入 resolve 的响应均由本会话 start 产生, 必为 niquests Response.
             await self._client.gather(*cast("list[Response]", responses))
         except Timeout as exc:
             raise TransportTimeout(str(exc)) from exc

@@ -1,5 +1,6 @@
 """请求调度引擎单元测试 (桩执行器驱动, 不发起真实网络)."""
 
+from collections.abc import Sequence
 from typing import Any, cast
 
 import pytest
@@ -34,18 +35,18 @@ class StubCgiExecutor:
 
     async def execute_many(
         self,
-        indexed: list[tuple[int, Any]],
+        requests: Sequence[tuple[int, Any]],
         *,
         batch_size: int,
         return_exceptions: bool = False,
     ) -> list[tuple[int, Any]]:
         """记录批量调用并按预置行为返回."""
-        self.calls.append(("many", indexed))
+        self.calls.append(("many", requests))
         self.received_batch_size = batch_size
         self.received_return_exceptions = return_exceptions
         if self.error is not None:
             raise self.error
-        return [(index, self.results.get(index, f"cgi-{index}")) for index, _ in indexed]
+        return [(index, self.results.get(index, f"cgi-{index}")) for index, _ in requests]
 
 
 class StubHttpExecutor:
@@ -69,15 +70,15 @@ class StubHttpExecutor:
 
     async def execute_many(
         self,
-        indexed: list[tuple[int, Any]],
+        requests: Sequence[tuple[int, Any]],
         *,
         return_exceptions: bool = False,
     ) -> list[tuple[int, Any]]:
         """记录批量调用并按预置行为返回."""
-        self.calls.append(("many", indexed))
+        self.calls.append(("many", requests))
         if self.error is not None:
             raise self.error
-        return [(index, self.results.get(index, f"http-{index}")) for index, _ in indexed]
+        return [(index, self.results.get(index, f"http-{index}")) for index, _ in requests]
 
 
 def _cgi_request(**kwargs: Any) -> CgiRequest[Any]:
@@ -102,7 +103,7 @@ def _engine(
     """构造注入桩执行器的引擎."""
     cgi = cgi or StubCgiExecutor()
     http = http or StubHttpExecutor()
-    engine = RequestEngine(cgi_executor=cgi, http_executor=http)  # type: ignore[arg-type]
+    engine = RequestEngine(cgi_executor=cgi, http_executor=http)
     return engine, cgi, http
 
 
@@ -130,7 +131,7 @@ async def test_execute_unknown_request_type_raises():
 
     engine, _, _ = _engine()
     with pytest.raises(TypeError, match="不支持的请求类型"):
-        await engine.execute(Unknown())  # type: ignore[arg-type]
+        await engine.execute(cast("Any", Unknown()))
 
 
 async def test_gather_mixed_protocols_run_in_partitions():
@@ -169,7 +170,7 @@ async def test_gather_unknown_request_type_raises():
 
     engine, _, _ = _engine()
     with pytest.raises(TypeError, match="不支持的请求类型"):
-        await engine.gather([Unknown()])  # type: ignore[list-item]
+        await engine.gather([cast("Any", Unknown())])
 
 
 async def test_gather_passes_batch_size_and_return_exceptions():
@@ -206,13 +207,13 @@ async def test_gather_missing_result_guard_raises_api_data_error():
 
         async def execute_many(
             self,
-            indexed: list[tuple[int, Any]],
+            requests: Sequence[tuple[int, Any]],
             *,
             batch_size: int,
             return_exceptions: bool = False,
         ) -> list[tuple[int, Any]]:
             """仅返回首个索引的结果."""
-            return [indexed[0]]
+            return [requests[0]]
 
     engine, _, _ = _engine(cgi=PartialCgiExecutor())
     with pytest.raises(ApiDataError, match="缺少以下索引结果"):

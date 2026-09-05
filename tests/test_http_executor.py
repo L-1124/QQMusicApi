@@ -144,11 +144,7 @@ async def test_execute_many_start_error_localized_to_own_index():
 async def test_execute_many_resolve_error_affects_all_in_flight():
     """测试集中等待阶段的错误影响全部未完成请求."""
     transport = SlowTransport(starts=[StubResponse({"i": 0}), StubResponse({"i": 1})])
-
-    async def broken_resolve(responses: list[Any]) -> None:
-        raise TransportTimeout("resolve timed out")
-
-    transport.resolve = broken_resolve  # type: ignore[method-assign]
+    transport.resolve_error = TransportTimeout("resolve timed out")
     executor = _make_executor(transport)
     indexed = [(0, _http_request()), (1, _http_request())]
     results = dict(await executor.execute_many(indexed, return_exceptions=True))

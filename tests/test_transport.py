@@ -1,6 +1,6 @@
 """两阶段传输边界单元测试 (桩会话驱动, 不发起真实网络)."""
 
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 import pytest_asyncio
@@ -12,6 +12,9 @@ from qqmusic_api.core.transport import (
     TransportError,
     TransportTimeout,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
 
 pytestmark = pytest.mark.core
 
@@ -29,6 +32,8 @@ class StubAsyncClient:
         self.gather_calls: list[tuple[Any, ...]] = []
         self.close_calls = 0
         self._outcomes = list(outcomes or [])
+        # gather 作为实例属性暴露, 测试可整体替换以注入失败行为.
+        self.gather: Callable[..., Awaitable[None]] = self._record_gather
 
     async def request(self, method: str, url: str, **kwargs: Any) -> Any:
         """记录请求调用并返回或抛出下一个预置项."""
@@ -40,7 +45,7 @@ class StubAsyncClient:
             raise item
         return item
 
-    async def gather(self, *responses: Any) -> None:
+    async def _record_gather(self, *responses: Any) -> None:
         """记录集中等待调用."""
         self.gather_calls.append(responses)
 
@@ -150,7 +155,7 @@ async def test_resolve_timeout_mapped_to_transport_timeout(transport: NiquestsTr
     async def raise_timeout(*_args: Any) -> None:
         raise Timeout("timed out")
 
-    stub_client.gather = raise_timeout  # type: ignore[method-assign]
+    stub_client.gather = raise_timeout
     with pytest.raises(TransportTimeout):
         await transport.resolve([response])
 

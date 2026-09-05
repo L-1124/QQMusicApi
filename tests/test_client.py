@@ -37,7 +37,7 @@ def _http_request(client: Client, url: str = "https://example.com", **kwargs: An
 @pytest_asyncio.fixture
 async def stub_client() -> AsyncIterator[Client]:
     """创建注入桩传输的最小 Client 实例."""
-    test_client = Client(platform=Platform.WEB, transport=StubTransport())  # type: ignore[arg-type]
+    test_client = Client(platform=Platform.WEB, transport=StubTransport())
     yield test_client
 
 
@@ -78,10 +78,10 @@ async def test_network_config_updates_proxy_to_transport(real_client: Client):
     real_client.proxies = {"https": "http://proxy:8080"}
     real_client.cert = "/tmp/cert.pem"
     real_client.verify = False
-    assert real_client._transport.proxies == {"https": "http://proxy:8080"}
-    assert real_client._transport.cert == "/tmp/cert.pem"
-    assert real_client._transport.verify is False
-    assert real_client.proxies == real_client._transport.proxies
+    assert real_client._niquests.proxies == {"https": "http://proxy:8080"}
+    assert real_client._niquests.cert == "/tmp/cert.pem"
+    assert real_client._niquests.verify is False
+    assert real_client.proxies == real_client._niquests.proxies
 
 
 async def test_execute_delegates_to_engine(stub_client: Client):
@@ -154,7 +154,7 @@ async def test_wx_long_poll_timeout_maps_to_scan_event(stub_client: Client):
             """模拟长轮询超时."""
             raise TransportTimeout("timed out")
 
-    stub_client._transport = TimeoutTransport()  # type: ignore[assignment]
+    stub_client._transport = TimeoutTransport()
     qrcode = QR(data=b"", qr_type=QRLoginType.WX, mimetype="", identifier="uuid")
     result = await stub_client.login._check_wx_qr(qrcode)
     assert result.event == QRCodeLoginEvents.SCAN
@@ -170,7 +170,7 @@ async def test_wx_long_poll_transport_error_maps_to_network_error(stub_client: C
             """模拟网络错误."""
             raise TransportError("connection reset")
 
-    stub_client._transport = BrokenTransport()  # type: ignore[assignment]
+    stub_client._transport = BrokenTransport()
     qrcode = QR(data=b"", qr_type=QRLoginType.WX, mimetype="", identifier="uuid")
     with pytest.raises(NetworkError):
         await stub_client.login._check_wx_qr(qrcode)

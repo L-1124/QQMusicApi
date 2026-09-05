@@ -120,11 +120,7 @@ async def test_execute_one_start_error_raises_network_error():
 async def test_execute_one_resolve_error_raises_network_error():
     """测试 resolve 阶段传输异常转换为 NetworkError."""
     transport = StubTransport(starts=[make_cgi_envelope([make_cgi_sub()])])
-
-    async def broken_resolve(responses: list[Any]) -> None:
-        raise TransportTimeout("resolve timed out")
-
-    transport.resolve = broken_resolve  # type: ignore[method-assign]
+    transport.resolve_error = TransportTimeout("resolve timed out")
     executor = _make_executor(transport)
     with pytest.raises(NetworkError):
         await executor.execute_one(_cgi_request())

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from functools import cached_property
-from typing import TYPE_CHECKING, Any, Literal, overload
+from typing import TYPE_CHECKING, Any, Literal, cast, overload
 
 from typing_extensions import Self
 
@@ -16,7 +16,7 @@ from .executors.cgi import CgiExecutor
 from .executors.http import HttpExecutor
 from .preparation import CgiPreparer, HttpPreparer
 from .runtime import ClientDefaults
-from .transport import NiquestsTransport
+from .transport import NiquestsTransport, Transport
 from .versioning import DEFAULT_VERSION_POLICY, Platform
 
 if TYPE_CHECKING:
@@ -57,7 +57,7 @@ class Client:
         cert: TLSClientCertType | None = None,
         hooks: AsyncHookType[PreparedRequest | Response] | None = None,
         verify: TLSVerifyType | None = None,
-        transport: NiquestsTransport | None = None,
+        transport: Transport | None = None,
     ):
         """初始化客户端实例.
 
@@ -72,7 +72,8 @@ class Client:
             cert: TLS 客户端证书配置, 详见 niquests 文档.
             verify: TLS 证书验证配置, 详见 niquests 文档.
             hooks: 请求/响应钩子, 详见 niquests 文档.
-            transport: 外部注入的传输实例, 仅用于测试; 缺省时内部构建.
+            transport: 外部注入的传输实现 (满足 Transport 协议);
+                缺省时构建内置 NiquestsTransport.
         """
         self._defaults = ClientDefaults(
             credential=credential or Credential(),
@@ -80,7 +81,7 @@ class Client:
             version_policy=DEFAULT_VERSION_POLICY,
         )
         self._device_store = DeviceManager(device_path)
-        self._transport = transport or NiquestsTransport(
+        self._transport: Transport = transport or NiquestsTransport(
             rate=rate or 10,
             capacity=capacity or 50,
             connect_retries=connect_retries if connect_retries is not None else 2,
@@ -140,40 +141,50 @@ class Client:
         self._defaults.platform = value
 
     @property
+    def _niquests(self) -> NiquestsTransport:
+        """返回内置传输实例.
+
+        网络配置代理 (proxies/cert/verify/hooks) 仅由内置
+        NiquestsTransport 支持; 注入自定义 Transport 后访问这些
+        配置属性会失败.
+        """
+        return cast("NiquestsTransport", self._transport)
+
+    @property
     def proxies(self) -> ProxyType | None:
         """获取代理配置."""
-        return self._transport.proxies
+        return self._niquests.proxies
 
     @proxies.setter
     def proxies(self, value: ProxyType | None):
-        self._transport.proxies = value
+        self._niquests.proxies = value
 
     @property
     def cert(self) -> TLSClientCertType | None:
         """获取 TLS 客户端证书配置."""
-        return self._transport.cert
+        return self._niquests.cert
 
     @cert.setter
     def cert(self, value: TLSClientCertType | None):
-        self._transport.cert = value
+        self._niquests.cert = value
 
     @property
     def verify(self) -> TLSVerifyType | None:
         """获取 TLS 证书验证配置."""
-        return self._transport.verify
+        return self._niquests.verify
 
     @verify.setter
     def verify(self, value: TLSVerifyType | None):
-        self._transport.verify = value
+        self._niquests.verify = value
 
     @property
     def hooks(self) -> AsyncHookType[PreparedRequest | Response] | None:
         """获取请求/响应钩子."""
-        return self._transport.hooks
+        return self._niquests.hooks
 
     @hooks.setter
     def hooks(self, value: AsyncHookType[PreparedRequest | Response] | None):
-        self._transport.hooks = value
+        self._niquests.hooks = value
 
     @cached_property
     def helper(self) -> HelperApi:

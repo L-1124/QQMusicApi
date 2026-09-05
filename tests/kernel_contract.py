@@ -3,10 +3,9 @@
 供 Client/执行器/传输层等 Core 测试复用的桩与载荷构造器.
 桩只模拟外部边界 (会话/传输/响应), 不 Mock 被测对象自身的内部方法.
 
-严格 code 契约备注: 旧内核的 CGI 外层与子响应 code 使用 Python 相等规则判定,
-浮点 (``2000.0``/``0.0``)、布尔 (``False``) 与字符串码均可隐式命中成功或错误分支;
-新内核 (``core/response.py``) 统一改为 ``type(code) is int`` 严格校验,
-上述非整数码一律抛出 ``ApiDataError``. 该破坏性变化在 Task 3 的新解析器测试中固化.
+严格 code 契约: CGI 外层与子响应 code 使用 ``type(code) is int`` 严格校验,
+浮点 (``2000.0``/``0.0``)、布尔 (``False``) 与字符串码一律抛出 ``ApiDataError``,
+对应的参数化断言见 ``tests/test_response.py``.
 """
 
 from collections.abc import Sequence
@@ -119,6 +118,7 @@ class StubTransport:
         self.start_calls: list[Any] = []
         self.resolve_calls: list[list[Any]] = []
         self.close_calls = 0
+        self.resolve_error: Exception | None = None
         self._closed = False
         self.starts = list(starts or [])
 
@@ -133,8 +133,10 @@ class StubTransport:
         return item
 
     async def resolve(self, responses: Sequence[Any]) -> None:
-        """记录集中等待调用, 测试桩中不做额外处理."""
+        """记录集中等待调用, 注入的 ``resolve_error`` 会被抛出."""
         self.resolve_calls.append(list(responses))
+        if self.resolve_error is not None:
+            raise self.resolve_error
 
     async def close(self) -> None:
         """记录关闭调用, 幂等."""

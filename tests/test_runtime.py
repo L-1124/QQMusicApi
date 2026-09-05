@@ -1,5 +1,6 @@
 """运行时状态与请求快照单元测试."""
 
+import dataclasses
 from dataclasses import dataclass
 
 import pytest
@@ -86,7 +87,7 @@ def test_defaults_mutation_after_resolve_keeps_scope_stable() -> None:
 
 
 def test_request_scope_is_frozen() -> None:
-    """测试 RequestScope 不可变, 字段赋值抛出异常."""
+    """测试 RequestScope 不可变, 字段赋值抛出 FrozenInstanceError."""
     scope = RequestScope(credential=Credential(), platform=Platform.WEB)
-    with pytest.raises(Exception):  # noqa: B017, PT011
+    with pytest.raises(dataclasses.FrozenInstanceError):
         scope.platform = Platform.ANDROID  # type: ignore[reportAttributeIssue]
