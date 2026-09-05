@@ -14,8 +14,9 @@ from anyio import to_thread
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
-from niquests import AsyncSession
 
+from ..core.exceptions import HTTPError
+from ..core.transport import PreparedRequest, Transport
 from .common import calc_md5
 from .device import Device, DeviceManager
 
@@ -50,18 +51,18 @@ class QimeiManager:
         device_store: DeviceManager,
         app_version: str,
         sdk_version: str,
-        session: AsyncSession,
+        transport: Transport,
     ) -> None:
         """初始化 QIMEI 管理器."""
         self._device_store = device_store
         self._app_version = app_version
         self._sdk_version = sdk_version
-        self._session = session
+        self._transport = transport
         self._lock = anyio.Lock()
         self._loaded = False
-        self._cache: QimeiResult | None = None
+        self._cache: dict[str, str] | None = None
 
-    async def get_cached(self) -> QimeiResult:
+    async def get_cached(self) -> dict[str, str]:
         """获取并缓存当前设备的 QIMEI 信息."""
         device = await self._device_store.get_device()
         current_time = int(time())
@@ -79,23 +80,25 @@ class QimeiManager:
                 return self._cache
 
             if not is_expired and device.qimei and device.qimei36:
-                self._cache = QimeiResult(q16=device.qimei, q36=device.qimei36)
+                self._cache = {"q16": device.qimei, "q36": device.qimei36}
                 return self._cache
 
-            self._cache = await self._request_qimei(device)
+            cache = await self._request_qimei(device)
+            self._cache = cache
             with contextlib.suppress(Exception):
                 await self._device_store.apply_qimei(
-                    self._cache.get("q16") or "",
-                    self._cache.get("q36") or "",
+                    cache.get("q16") or "",
+                    cache.get("q36") or "",
                 )
-            return self._cache
+            return cache
 
-    async def _request_qimei(self, device: Device) -> QimeiResult:
+    async def _request_qimei(self, device: Device) -> dict[str, str]:
         """请求新的 QIMEI 信息.
 
         Raises:
             RuntimeError: QIMEI 服务端返回空内容或缺少必要字段时.
-            RequestException: 网络请求失败时.
+            TransportError: 网络请求失败时.
+            HTTPError: 响应状态码异常时.
             json.JSONDecodeError: 响应解析失败时.
         """
         _, headers, request_json = await to_thread.run_sync(
@@ -105,24 +108,31 @@ class QimeiManager:
             self._sdk_version,
         )
 
-        client = self._session
-        res = await client.post(
-            "https://api.tencentmusic.com/tme/trpc/proxy",
-            headers=headers,
-            json=request_json,
+        response = await self._transport.start(
+            PreparedRequest(
+                method="POST",
+                url="https://api.tencentmusic.com/tme/trpc/proxy",
+                kwargs={"headers": headers, "json": request_json},
+            ),
         )
-        await self._session.gather(res)
-        res.raise_for_status()
+        await self._transport.resolve([response])
 
-        if res.content is None:
+        status = response.status_code
+        if status != 200:
+            raise HTTPError(
+                f"HTTP 请求状态码异常: {status}",
+                status_code=status if isinstance(status, int) else -1,
+            )
+
+        if response.content is None:
             raise RuntimeError("QIMEI response content is empty")
 
-        qimei_data: dict[str, str] = json.loads(json.loads(res.content).get("data", "{}")).get("data", {})
+        qimei_data: dict[str, str] = json.loads(json.loads(response.content).get("data", "{}")).get("data", {})
 
         if not qimei_data or "q36" not in qimei_data or "q16" not in qimei_data:
             raise RuntimeError(f"QIMEI response missing required fields: {qimei_data}")
 
-        return QimeiResult(q16=qimei_data["q16"], q36=qimei_data["q36"])
+        return {"q16": qimei_data["q16"], "q36": qimei_data["q36"]}
 
 
 def rsa_encrypt(content: bytes) -> bytes:

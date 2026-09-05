@@ -1,5 +1,6 @@
 """请求版本策略中心."""
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
@@ -64,7 +65,7 @@ class VersionPolicy:
         platform: Platform,
         credential: Credential,
         device: Device,
-        qimei: dict[str, str] | None,
+        qimei: Mapping[str, str] | None,
         guid: str,
     ) -> dict[str, Any]:
         """构建统一 comm 参数.
