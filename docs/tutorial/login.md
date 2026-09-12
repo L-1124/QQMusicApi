@@ -169,3 +169,7 @@ async with Client() as client:
 
 * `qrcode_login.py` — QQ / 微信 / QQ 音乐 APP 扫码登录
 * `phone_login.py` — 手机验证码登录
+
+## 与 Client 生命周期的关系
+
+二维码轮询与手机扫码 MQTT 流都登记为 Client 的在途操作：`Client.close()` 会取消这些操作并清理剩余会话。提前结束扫码流的调用者应显式 `aclose()` 生成器，不要依赖垃圾回收。

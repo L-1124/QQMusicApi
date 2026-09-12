@@ -166,3 +166,37 @@ client = Client(device_path="device.json")
 不传 `device_path` 则仅在内存维护设备状态，重启后丢失。
 
 `Client.credential` 更改时设备信息保持不变。
+
+## 请求快照与身份
+
+每次请求执行 (单次 `execute`/`await` 或一次 `gather`) 在真正发起网络请求 **之前** 会冻结一份执行快照：
+
+* 客户端默认凭证被深复制，本次操作使用快照身份；
+* 请求描述符中的 `param`、`comm`、`headers`、`cookies` 等可变容器被复制；
+* 请求级覆盖 (`credential`/`platform`) 在快照时解析。
+
+因此，操作开始后修改 `Client.credential` 或原请求描述符只影响 **后续** 操作，不会影响正在执行中的请求。同一 `gather` 中所有默认身份项共享同一份快照，不受内部并发顺序影响。
+
+!!! note "文件与流"
+
+    文件、流、迭代器和 auth/callback 对象不会被复制，仅保留引用。调用者需保证执行期间不修改、不并发复用这些资源。
+
+## 并发与批大小
+
+* `batch_size` 只限制 **一个 CGI 信封内的子请求数**（合批的上限），不代表并发数；
+* `max_concurrency`（构造参数，默认 20）限制共享的物理并发容量与内部 worker 数量，CGI、HTTP、QIMEI、Android Session 共用该上限；
+* HTTP 请求从不合并，每个请求独立执行、独立释放。
+
+## 资源释放与关闭
+
+* 常规响应在解析完成后立即释放连接；`disable_parse=True` 时原始响应交付给调用者，**缓冲响应** 可在连接释放后继续读取，**流式响应**（`stream=True`）必须由调用者主动关闭，`Client.close` 之后不保证未读流可用。
+* `close()` 进入关闭流程后：拒绝新操作（抛 `RuntimeError`）、取消并等待在途操作清理，然后关闭网络资源；重复 `close()` 为幂等空操作，关闭失败可重试。
+* 客户端关闭后调用 `execute`/`gather`/新的登录操作会抛出 `RuntimeError`。
+
+## 自定义传输
+
+可通过 `transport` 参数注入满足传输协议的自定义实现（提供 `request`/`release`/`close`）：
+
+* 注入后该传输实例的生命周期归 `Client` 所有，`close()` 时一并关闭；不支持多个 Client 共享同一传输实例；
+* 注入时显式提供任一内置专用配置（`rate`/`capacity`/`connect_retries`/`proxies`/`cert`/`verify`/`hooks`/`max_concurrency`）会抛出 `ValueError`；
+* `client.proxies`/`cert`/`verify`/`hooks` 属性仅对内置传输有效，自定义模式下读写会抛出 `NotImplementedError`。

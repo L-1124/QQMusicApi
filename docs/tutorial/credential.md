@@ -81,3 +81,9 @@ async def main() -> None:
 
 asyncio.run(main())
 ```
+
+## 凭证快照与 Android 会话
+
+每次请求执行前，客户端会对当前凭证做深复制快照：执行期间修改 `Client.credential` 不影响正在执行的操作。
+
+Android 平台的会话值（uid/sid）按 **设备 + 完整凭证** 隔离缓存于客户端内存中：更换凭证会触发各自独立的会话获取；同一身份 24 小时内复用。会话不写入设备文件，跨 Client/进程不共享。

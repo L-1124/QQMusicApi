@@ -180,3 +180,7 @@ async def main() -> None:
 
 asyncio.run(main())
 ```
+
+!!! note "页间默认值"
+
+    `collect()` 等连续分页的每一页都是一次独立操作：翻页之间修改 `Client.credential` 等默认值会影响 **下一页**。需要跨页稳定身份时，请在分页请求的描述符上显式绑定凭证副本。
