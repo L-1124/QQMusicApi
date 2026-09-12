@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from functools import cached_property
 from typing import TYPE_CHECKING, Any, Literal, cast, overload
 
+import anyio
 from typing_extensions import Self
 
 from ..models.request import Credential
@@ -12,14 +14,17 @@ from ..utils.device import DeviceManager
 from ..utils.qimei import QimeiManager
 from .android_session import AndroidSessionManager
 from .engine import RequestEngine
+from .exceptions import NetworkError
 from .executors.cgi import CgiExecutor
 from .executors.http import HttpExecutor
 from .preparation import CgiPreparer, HttpPreparer
-from .runtime import ClientDefaults
+from .runtime import CLOSE_CLEANUP_BUDGET_SECONDS, DEFAULT_MAX_CONCURRENCY, ClientDefaults, OperationRegistry
 from .transport import NiquestsTransport, Transport
 from .versioning import DEFAULT_VERSION_POLICY, Platform
 
 if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+
     from niquests import PreparedRequest
     from niquests.models import Response
     from niquests.typing import AsyncHookType, ProxyType, TLSClientCertType, TLSVerifyType
@@ -42,7 +47,12 @@ if TYPE_CHECKING:
 
 
 class Client:
-    """QQMusic API Client."""
+    """QQMusic API Client.
+
+    组合根与公开门面. 拥有操作生命周期状态机 (OPEN → CLOSING → CLOSED):
+    进入 CLOSING 后拒绝新操作, 取消已登记操作并等待清理; 关闭失败保持
+    可重试的 CLOSING, 顺序重复 close 为空操作.
+    """
 
     def __init__(
         self,
@@ -57,6 +67,7 @@ class Client:
         cert: TLSClientCertType | None = None,
         hooks: AsyncHookType[PreparedRequest | Response] | None = None,
         verify: TLSVerifyType | None = None,
+        max_concurrency: int | None = None,
         transport: Transport | None = None,
     ):
         """初始化客户端实例.
@@ -72,15 +83,47 @@ class Client:
             cert: TLS 客户端证书配置, 详见 niquests 文档.
             verify: TLS 证书验证配置, 详见 niquests 文档.
             hooks: 请求/响应钩子, 详见 niquests 文档.
-            transport: 外部注入的传输实现 (满足 Transport 协议);
-                缺省时构建内置 NiquestsTransport.
+            max_concurrency: 共享并发容量与分区 worker 上限. 必须为正整数,
+                默认为 20.
+            transport: 外部注入的传输实现 (满足 Transport 协议); 注入后
+                该实例生命周期归 Client 所有, close 时一并关闭. 缺省时
+                构建内置 NiquestsTransport.
+
+        Raises:
+            ValueError: 注入自定义 transport 的同时显式提供了任一内置
+                专用配置 (rate/capacity/connect_retries/proxies/cert/
+                verify/hooks/max_concurrency), 或 max_concurrency 非正整数.
         """
+        if max_concurrency is not None and (not isinstance(max_concurrency, int) or max_concurrency <= 0):
+            raise ValueError("max_concurrency 必须为正整数")
+
+        custom_config: list[str] = []
+        if transport is not None:
+            custom_config = [
+                name
+                for name, value in (
+                    ("rate", rate),
+                    ("capacity", capacity),
+                    ("connect_retries", connect_retries),
+                    ("proxies", proxies),
+                    ("cert", cert),
+                    ("verify", verify),
+                    ("hooks", hooks),
+                    ("max_concurrency", max_concurrency),
+                )
+                if value is not None
+            ]
+            if custom_config:
+                raise ValueError(f"注入自定义 transport 时不能同时设置内置专用配置: {', '.join(custom_config)}")
+
         self._defaults = ClientDefaults(
             credential=credential or Credential(),
             platform=platform or Platform.ANDROID,
             version_policy=DEFAULT_VERSION_POLICY,
         )
         self._device_store = DeviceManager(device_path)
+        self._custom_transport = transport is not None
+        self._max_concurrency = max_concurrency or DEFAULT_MAX_CONCURRENCY
         self._transport: Transport = transport or NiquestsTransport(
             rate=rate or 10,
             capacity=capacity or 50,
@@ -89,7 +132,11 @@ class Client:
             cert=cert,
             verify=verify,
             hooks=hooks,
+            max_concurrency=self._max_concurrency,
         )
+        self._close_state: Literal["open", "closing", "closed"] = "open"
+        self._close_lock = anyio.Lock()
+        self._operations = OperationRegistry()
         self._qimei_manager = QimeiManager(
             device_store=self._device_store,
             app_version=self._defaults.version_policy.get_qimei_app_version(),
@@ -103,7 +150,6 @@ class Client:
             transport=self._transport,
         )
         self._cgi_executor = CgiExecutor(
-            defaults=self._defaults,
             preparer=CgiPreparer(
                 android_session=self._android_session,
                 device_store=self._device_store,
@@ -111,16 +157,22 @@ class Client:
                 version_policy=self._defaults.version_policy,
             ),
             transport=self._transport,
+            max_concurrency=self._max_concurrency,
         )
         self._http_executor = HttpExecutor(
-            defaults=self._defaults,
             preparer=HttpPreparer(
                 device_store=self._device_store,
                 version_policy=self._defaults.version_policy,
             ),
             transport=self._transport,
+            max_concurrency=self._max_concurrency,
         )
-        self._engine = RequestEngine(cgi_executor=self._cgi_executor, http_executor=self._http_executor)
+        self._engine = RequestEngine(
+            cgi_executor=self._cgi_executor,
+            http_executor=self._http_executor,
+            transport=self._transport,
+            defaults=self._defaults,
+        )
 
     @property
     def credential(self) -> Credential:
@@ -145,9 +197,13 @@ class Client:
         """返回内置传输实例.
 
         网络配置代理 (proxies/cert/verify/hooks) 仅由内置
-        NiquestsTransport 支持; 注入自定义 Transport 后访问这些
-        配置属性会失败.
+        NiquestsTransport 支持.
+
+        Raises:
+            NotImplementedError: 注入了自定义 Transport.
         """
+        if self._custom_transport:
+            raise NotImplementedError("网络配置代理仅对内置 NiquestsTransport 有效")
         return cast("NiquestsTransport", self._transport)
 
     @property
@@ -290,17 +346,89 @@ class Client:
     async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:  # noqa: D105
         await self.close()
 
+    def _ensure_open(self) -> None:
+        """确保客户端处于 OPEN 状态, 否则拒绝新操作.
+
+        Raises:
+            RuntimeError: 客户端已关闭或正在关闭.
+        """
+        if self._close_state != "open":
+            raise RuntimeError("Client 已关闭或正在关闭, 不能发起新操作")
+
+    async def _register_operation(self):
+        """在关闭锁内检查状态并登记操作."""
+        async with self._close_lock:
+            self._ensure_open()
+            return await self._operations.register()
+
+    @asynccontextmanager
+    async def _operation(self) -> AsyncIterator[None]:
+        """登记一个在途操作 (登录直连请求, MQTT 流等).
+
+        Client.close 会取消已登记操作; 操作体内收到取消后清理自身资源,
+        随后以 RuntimeError 告知调用者操作被关闭流程取消.
+
+        Raises:
+            RuntimeError: 操作被 Client.close 取消, 或客户端已关闭.
+        """
+        handle = await self._register_operation()
+        try:
+            with anyio.CancelScope() as scope:
+                handle.scope = scope
+                yield
+            if handle.cancelled_by_close:
+                raise RuntimeError("操作已被 Client.close 取消")
+        finally:
+            await self._operations.unregister(handle)
+
     async def close(self):
-        """关闭客户端连接."""
-        await self._transport.close()
+        """关闭客户端并释放全部网络资源.
+
+        进入 CLOSING 后取消已登记操作并等待其清理 (屏蔽外层取消,
+        清理预算 5 秒), 随后关闭传输. 全部成功后进入 CLOSED; 关闭
+        失败保持可重试的 CLOSING, 下次 close 再尝试. 顺序重复 close
+        为空操作; 并发 close 等待同一次关闭结果.
+
+        Raises:
+            NetworkError: 无原始异常时关闭传输失败.
+        """
+        async with self._close_lock:
+            if self._close_state == "closed":
+                return
+            self._close_state = "closing"
+
+            handles = self._operations.cancel_all()
+            with anyio.CancelScope(shield=True):
+                with anyio.move_on_after(CLOSE_CLEANUP_BUDGET_SECONDS):
+                    for handle in handles:
+                        await handle.done.wait()
+
+                try:
+                    await self._transport.close()
+                except Exception as exc:
+                    raise NetworkError(f"关闭传输失败: {exc}") from exc
+
+            self._close_state = "closed"
 
     async def execute(self, request: BaseRequest[ResultT]) -> ResultT:
         """执行单个请求描述符并解析响应结果.
 
         Args:
             request: 请求描述符实例.
+
+        Raises:
+            RuntimeError: 客户端已关闭或操作被关闭流程取消.
         """
-        return await self._engine.execute(request)
+        handle = await self._register_operation()
+        try:
+            with anyio.CancelScope() as scope:
+                handle.scope = scope
+                result = await self._engine.execute(request)
+            if handle.cancelled_by_close:
+                raise RuntimeError("操作已被 Client.close 取消")
+            return result
+        finally:
+            await self._operations.unregister(handle)
 
     @overload
     async def gather(
@@ -372,5 +500,15 @@ class Client:
                 成异常组; 多个请求同时各自抛出异常时, 异常组可能包含多个
                 异常).
             ApiDataError: 当内部依赖的结果未能完整回填时抛出 (一般不应发生).
+            RuntimeError: 客户端已关闭或操作被关闭流程取消.
         """
-        return await self._engine.gather(requests, batch_size=batch_size, return_exceptions=return_exceptions)
+        handle = await self._register_operation()
+        try:
+            with anyio.CancelScope() as scope:
+                handle.scope = scope
+                result = await self._engine.gather(requests, batch_size=batch_size, return_exceptions=return_exceptions)
+            if handle.cancelled_by_close:
+                raise RuntimeError("操作已被 Client.close 取消")
+            return result
+        finally:
+            await self._operations.unregister(handle)

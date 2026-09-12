@@ -285,65 +285,72 @@ class LoginApi(ApiModule):
             with anyio.fail_after(timeout_left):
                 return await operation()
 
-        try:
+        # 整个 MQTT 流登记为一次 Client 操作: close 取消时生成器收尾并关闭会话.
+        async with self._client._operation():
             try:
-                await await_before_deadline(lambda: self._connect_mobile_mqtt(session, qrcode.identifier))
-                topic = f"management.qrcode_login/{qrcode.identifier}"
-                await await_before_deadline(
-                    lambda: session.subscribe(
-                        topic,
-                        properties={PropertyId.USER_PROPERTY: [("authorization", "tmelogin"), ("pubsub", "unicast")]},
-                    ),
-                )
-            except TimeoutError:
-                yield QRLoginResult(event=QRCodeLoginEvents.TIMEOUT)
-                return
-            except ConnectionError as exc:
-                raise NetworkError(str(exc)) from exc
+                try:
+                    await await_before_deadline(lambda: self._connect_mobile_mqtt(session, qrcode.identifier))
+                    topic = f"management.qrcode_login/{qrcode.identifier}"
+                    await await_before_deadline(
+                        lambda: session.subscribe(
+                            topic,
+                            properties={
+                                PropertyId.USER_PROPERTY: [
+                                    ("authorization", "tmelogin"),
+                                    ("pubsub", "unicast"),
+                                ]
+                            },
+                        ),
+                    )
+                except TimeoutError:
+                    yield QRLoginResult(event=QRCodeLoginEvents.TIMEOUT)
+                    return
+                except ConnectionError as exc:
+                    raise NetworkError(str(exc)) from exc
 
-            yield QRLoginResult(event=QRCodeLoginEvents.SCAN)
+                yield QRLoginResult(event=QRCodeLoginEvents.SCAN)
 
-            try:
-                async with aclosing(session.messages()) as messages:
-                    while True:
-                        try:
-                            message = await await_before_deadline(lambda: anext(messages))
-                        except StopAsyncIteration:
-                            return
-                        except TimeoutError:
-                            yield QRLoginResult(event=QRCodeLoginEvents.TIMEOUT)
-                            return
+                try:
+                    async with aclosing(session.messages()) as messages:
+                        while True:
+                            try:
+                                message = await await_before_deadline(lambda: anext(messages))
+                            except StopAsyncIteration:
+                                return
+                            except TimeoutError:
+                                yield QRLoginResult(event=QRCodeLoginEvents.TIMEOUT)
+                                return
 
-                        message_type = message.properties.get("type")
-                        message_payload = message.json
-                        try:
-                            event_item = await await_before_deadline(
-                                lambda message_type=message_type, message_payload=message_payload: (
-                                    self._handle_mobile_message(
-                                        qrcode.identifier,
-                                        message_type,
-                                        message_payload,
-                                    )
-                                ),
-                            )
-                        except TimeoutError:
-                            yield QRLoginResult(event=QRCodeLoginEvents.TIMEOUT)
-                            return
-                        if event_item is None:
-                            continue
+                            message_type = message.properties.get("type")
+                            message_payload = message.json
+                            try:
+                                event_item = await await_before_deadline(
+                                    lambda message_type=message_type, message_payload=message_payload: (
+                                        self._handle_mobile_message(
+                                            qrcode.identifier,
+                                            message_type,
+                                            message_payload,
+                                        )
+                                    ),
+                                )
+                            except TimeoutError:
+                                yield QRLoginResult(event=QRCodeLoginEvents.TIMEOUT)
+                                return
+                            if event_item is None:
+                                continue
 
-                        yield event_item
+                            yield event_item
 
-                        if event_item.event in {
-                            QRCodeLoginEvents.DONE,
-                            QRCodeLoginEvents.REFUSE,
-                            QRCodeLoginEvents.TIMEOUT,
-                        }:
-                            return
-            except ConnectionError as exc:
-                raise NetworkError(str(exc)) from exc
-        finally:
-            await session.close()
+                            if event_item.event in {
+                                QRCodeLoginEvents.DONE,
+                                QRCodeLoginEvents.REFUSE,
+                                QRCodeLoginEvents.TIMEOUT,
+                            }:
+                                return
+                except ConnectionError as exc:
+                    raise NetworkError(str(exc)) from exc
+            finally:
+                await session.close()
 
     async def send_authcode(
         self,
@@ -568,43 +575,50 @@ class LoginApi(ApiModule):
         )
 
     async def _check_wx_qr(self, qrcode: QR) -> QRLoginResult:
-        """检查微信二维码状态."""
+        """检查微信二维码状态.
+
+        长轮询通过 Transport.request 直连并登记到 Client 操作生命周期;
+        超时传输异常解释为扫码中事件, 其他传输错误转换为 NetworkError.
+        """
         uuid = qrcode.identifier
-        try:
-            response = await self._client._transport.start(
-                PreparedRequest(
-                    method="GET",
-                    url="https://lp.open.weixin.qq.com/connect/l/qrconnect",
-                    kwargs={
-                        "params": {"uuid": uuid, "_": str(int(time()) * 1000)},
-                        "headers": {"Referer": "https://open.weixin.qq.com/"},
-                        "timeout": 35.0,
-                    },
-                ),
-            )
-            await self._client._transport.resolve([response])
-        except TransportTimeout:
-            return QRLoginResult(event=QRCodeLoginEvents.SCAN)
-        except TransportError as exc:
-            raise NetworkError(str(exc)) from exc
+        async with self._client._operation():
+            try:
+                response = await self._client._transport.request(
+                    PreparedRequest(
+                        method="GET",
+                        url="https://lp.open.weixin.qq.com/connect/l/qrconnect",
+                        kwargs={
+                            "params": {"uuid": uuid, "_": str(int(time()) * 1000)},
+                            "headers": {"Referer": "https://open.weixin.qq.com/"},
+                            "timeout": 35.0,
+                        },
+                    ),
+                )
+            except TransportTimeout:
+                return QRLoginResult(event=QRCodeLoginEvents.SCAN)
+            except TransportError as exc:
+                raise NetworkError(str(exc)) from exc
 
-        match = _WX_STATUS_RE.search(response.text or "")
-        if not match:
-            raise ApiDataError("获取二维码状态失败: 无法解析响应")
+            try:
+                match = _WX_STATUS_RE.search(response.text or "")
+                if not match:
+                    raise ApiDataError("获取二维码状态失败: 无法解析响应")
 
-        wx_errcode = match.group(1)
-        if not wx_errcode.isdigit():
-            raise ApiDataError("获取二维码状态失败: 无效的错误码")
+                wx_errcode = match.group(1)
+                if not wx_errcode.isdigit():
+                    raise ApiDataError("获取二维码状态失败: 无效的错误码")
 
-        event = QRCodeLoginEvents.get_by_value(int(wx_errcode))
-        if event != QRCodeLoginEvents.DONE:
-            return QRLoginResult(event=event)
+                event = QRCodeLoginEvents.get_by_value(int(wx_errcode))
+                if event != QRCodeLoginEvents.DONE:
+                    return QRLoginResult(event=event)
 
-        wx_code = match.group(2)
-        if not wx_code:
-            raise ApiDataError("获取 code 失败: 无效的 code")
+                wx_code = match.group(2)
+                if not wx_code:
+                    raise ApiDataError("获取 code 失败: 无效的 code")
+            finally:
+                await self._client._transport.release(response)
 
-        return QRLoginResult(event=event, credential=await self._authorize_wx_qr(wx_code))
+            return QRLoginResult(event=event, credential=await self._authorize_wx_qr(wx_code))
 
     async def _connect_mobile_mqtt(self, session: Any, qrcode_id: str) -> None:
         """建立手机客户端二维码 MQTT 连接."""

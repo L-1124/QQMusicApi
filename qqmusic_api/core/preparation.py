@@ -1,70 +1,83 @@
-"""协议请求准备器. 将请求描述符与运行时快照准备为传输请求."""
+"""协议请求准备器. 将执行快照条目准备为传输请求.
+
+Preparer 只接收执行快照数据 (CgiBatch/ScopedCall), 不读取原请求
+描述符, 不做登录校验, 不做二次分组; 身份一律取自 scope.
+"""
 
 import time
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, cast
+from typing import Any, cast
 
 import orjson as json
 
 from ..algorithms import zzc_sign
-from ..models.request import Credential
 from ..utils.common import bool_to_int
 from ..utils.device import DeviceManager
 from ..utils.qimei import QimeiManager
 from .android_session import AndroidSessionManager
-from .exceptions import CredentialInvalidError
 from .request import CgiRequest, HttpRequest
-from .runtime import RequestScope
+from .runtime import RequestScope, ScopedCall
 from .transport import PreparedRequest
 from .versioning import Platform, VersionPolicy
-
-if TYPE_CHECKING:
-    from collections.abc import Sequence
 
 MUSICU_URL = "https://u.y.qq.com/cgi-bin/musicu.fcg"
 MUSICS_URL = "https://u.y.qq.com/cgi-bin/musics.fcg"
 
 
 @dataclass(frozen=True)
+class CgiBatch:
+    """同组 CGI 请求批次 (由 CgiExecutor 独占构造).
+
+    Attributes:
+        scope: 批次共享的运行时快照.
+        calls: 批次内的执行条目 (线上环境已保证一致).
+    """
+
+    scope: RequestScope
+    calls: tuple[ScopedCall, ...]
+
+
+@dataclass(frozen=True)
 class CgiBatchKey:
     """CGI 批量合并的分组键.
 
-    仅包含影响线上公共参数的字段: 平台, 完整凭证指纹, 排序序列化的
-    comm, override_comm 与 sign. ``preserve_bool`` 与解析选项不进入键.
+    仅包含影响线上公共参数的字段: 快照平台, 完整凭证指纹, 规范化的
+    comm (None 与空 dict 一致), override_comm 与 sign. ``preserve_bool``
+    ``require_login`` 与解析选项不进入键.
     """
 
-    platform: Platform | None
+    platform: Platform
     credential_fingerprint: str
     comm: str | None
     override_comm: bool
     sign: bool
 
     @classmethod
-    def from_request(cls, request: "CgiRequest[Any]", scope: RequestScope) -> "CgiBatchKey":
-        """从请求描述符与运行时快照计算分组键.
+    def from_call(cls, call: ScopedCall) -> "CgiBatchKey":
+        """从执行条目计算分组键.
 
         Args:
-            request: CGI 请求描述符.
-            scope: 本次请求冻结的运行时快照.
+            call: 执行条目 (身份取自 scope).
 
         Returns:
             可比较的分组键实例.
         """
-        credential = request.credential or scope.credential
-        fingerprint = json.dumps(credential.model_dump(), option=json.OPT_SORT_KEYS).decode()
-        comm = json.dumps(request.comm, option=json.OPT_SORT_KEYS).decode() if request.comm is not None else None
+        fingerprint = json.dumps(call.scope.credential.model_dump(), option=json.OPT_SORT_KEYS).decode()
+        canonical_comm = (
+            json.dumps(call.request.comm, option=json.OPT_SORT_KEYS).decode() if call.request.comm else None
+        )
         return cls(
-            platform=scope.platform,
+            platform=call.scope.platform,
             credential_fingerprint=fingerprint,
-            comm=comm,
-            override_comm=request.override_comm,
-            sign=request.sign,
+            comm=canonical_comm,
+            override_comm=call.request.override_comm,
+            sign=call.request.sign,
         )
 
 
 class CgiPreparer:
-    """CGI 批次准备器. 校验分组一致性并组装传输请求."""
+    """CGI 批次准备器. 组装批次传输请求, 不重复校验登录或分组."""
 
     def __init__(
         self,
@@ -87,46 +100,36 @@ class CgiPreparer:
         self._qimei_manager = qimei_manager
         self._version_policy = version_policy
 
-    async def prepare_batch(
-        self,
-        requests: "Sequence[CgiRequest[Any]]",
-        scope: RequestScope,
-    ) -> PreparedRequest:
-        """将同组 CGI 请求批次准备为单次批量传输请求.
+    async def prepare_batch(self, batch: CgiBatch) -> PreparedRequest:
+        """将同组 CGI 批次准备为单次批量传输请求.
 
         Args:
-            requests: 同一分组键下的请求批次.
-            scope: 本次请求冻结的运行时快照.
+            batch: 已保证线上环境一致的请求批次.
 
         Returns:
             准备完成的传输请求.
 
         Raises:
-            ValueError: 批次为空或批次内请求分组键不一致.
-            CredentialInvalidError: 请求需要登录但凭证无效.
+            ValueError: 批次为空.
         """
-        if not requests:
+        if not batch.calls:
             raise ValueError("CGI 批次不能为空")
 
-        base = requests[0]
-        base_key = CgiBatchKey.from_request(base, scope)
-        for request in requests[1:]:
-            if CgiBatchKey.from_request(request, scope) != base_key:
-                raise ValueError("CGI 批次内请求的线上公共环境不一致, 不能合并")
+        scope = batch.scope
+        base = cast("CgiRequest[Any]", batch.calls[0].request)
 
-        if base.require_login and not self._has_valid_credential(scope.credential):
-            raise CredentialInvalidError("请求需要登录, 未提供有效的登录凭证")
-
+        session = None
         if scope.platform == Platform.ANDROID:
-            await self._android_session.ensure(scope)
+            session = await self._android_session.ensure(scope)
 
         device = await self._device_store.get_device()
         qimei = await self._qimei_manager.get_cached() if scope.platform == Platform.ANDROID else None
-        final_comm = self._build_comm(base, scope, device, qimei)
+        final_comm = self._build_comm(base, scope, device, qimei, session)
         user_agent = self._version_policy.get_user_agent(scope.platform, device)
 
         payload: dict[str, Any] = {"comm": final_comm}
-        for idx, request in enumerate(requests):
+        for idx, call in enumerate(batch.calls):
+            request = cast("CgiRequest[Any]", call.request)
             payload[f"req_{idx}"] = {
                 "module": request.module,
                 "method": request.method,
@@ -151,14 +154,16 @@ class CgiPreparer:
         scope: RequestScope,
         device: Any,
         qimei: Mapping[str, str] | None,
+        session: Any = None,
     ) -> dict[str, Any]:
         """构建批次公共参数.
 
         Args:
             base: 批次内首个请求.
-            scope: 本次请求冻结的运行时快照.
+            scope: 批次共享的运行时快照.
             device: 当前设备对象.
             qimei: QIMEI 缓存, 仅 ANDROID 平台非空.
+            session: Android 会话值, 仅 ANDROID 平台非空.
 
         Returns:
             合并或覆盖后的 comm 字典.
@@ -172,22 +177,11 @@ class CgiPreparer:
             device=device,
             qimei=qimei,
             guid=device.open_udid,
+            session=session,
         )
         if base.comm:
             final.update(base.comm)
         return final
-
-    @staticmethod
-    def _has_valid_credential(credential: Credential) -> bool:
-        """判断凭证是否具备登录要素.
-
-        Args:
-            credential: 待检查的凭证.
-
-        Returns:
-            凭证是否有效.
-        """
-        return bool(credential and credential.musicid and credential.musickey)
 
 
 class HttpPreparer:
@@ -203,20 +197,22 @@ class HttpPreparer:
         self._device_store = device_store
         self._version_policy = version_policy
 
-    async def prepare(self, request: HttpRequest[Any], scope: RequestScope) -> PreparedRequest:
-        """将 HTTP 请求描述符准备为传输请求.
+    async def prepare(self, call: ScopedCall) -> PreparedRequest:
+        """将 HTTP 执行条目准备为传输请求.
 
-        复制输入并注入凭证 Cookie, 用户 Cookie 优先; 缺少 UA 时注入
-        WEB 平台 UA; 全部 HTTP options 原样透传; 不修改请求描述符中的
-        原始字典.
+        复制输入并注入 scope 凭证 Cookie, 用户 Cookie 优先; 按不区分
+        大小写的 header 名检查 UA, 缺失时注入 WEB 平台 UA; 全部 HTTP
+        options 原样透传; 不修改条目中的原始字典.
 
         Args:
-            request: HTTP 请求描述符.
-            scope: 本次请求冻结的运行时快照.
+            call: 执行条目.
 
         Returns:
             准备完成的传输请求.
         """
+        request = cast("HttpRequest[Any]", call.request)
+        scope = call.scope
+
         kwargs: dict[str, Any] = {}
         if request.params is not None:
             kwargs["params"] = request.params
@@ -231,8 +227,6 @@ class HttpPreparer:
 
         cookies: dict[str, str] = {}
         credential = scope.credential
-        if request.credential is not None:
-            credential = request.credential
         if credential.musicid:
             uin = credential.str_musicid or str(credential.musicid)
             cookies["uin"] = uin
@@ -246,7 +240,7 @@ class HttpPreparer:
             kwargs["cookies"] = cookies
 
         headers: dict[str, Any] = kwargs.get("headers") or {}
-        if "User-Agent" not in headers:
+        if not any(name.lower() == "user-agent" for name in headers):
             device = await self._device_store.get_device()
             headers["User-Agent"] = self._version_policy.get_user_agent(Platform.WEB, device)
             kwargs["headers"] = headers

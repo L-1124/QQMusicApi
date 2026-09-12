@@ -19,7 +19,7 @@ from qqmusic_api.core.exceptions import (
 from qqmusic_api.core.executors.cgi import CgiExecutor
 from qqmusic_api.core.preparation import CgiPreparer
 from qqmusic_api.core.request import CgiRequest
-from qqmusic_api.core.runtime import ClientDefaults
+from qqmusic_api.core.runtime import ClientDefaults, ScopedCall, resolve_scope
 from qqmusic_api.core.transport import TransportTimeout
 from qqmusic_api.core.versioning import DEFAULT_VERSION_POLICY, Platform
 from qqmusic_api.models.request import Credential
@@ -27,6 +27,14 @@ from qqmusic_api.utils.device import DeviceManager
 from tests.kernel_contract import StubResponse, StubTransport, make_cgi_envelope, make_cgi_sub
 
 pytestmark = pytest.mark.core
+
+_DEFAULTS = ClientDefaults(
+    credential=Credential(musicid=1, musickey="global"),
+    platform=Platform.WEB,
+    version_policy=DEFAULT_VERSION_POLICY,
+)
+
+_CALL_COUNTER = {"next": 0}
 
 
 class DummyModel(BaseModel):
@@ -70,10 +78,23 @@ def _cgi_request(**kwargs: Any) -> CgiRequest[Any]:
     return CgiRequest(_client=cast("Any", None), **kwargs)
 
 
+def _make_call(index: int, request: CgiRequest[Any]) -> ScopedCall:
+    """按 Engine 冻结规则构造执行条目."""
+    scope = resolve_scope(request, _DEFAULTS)
+    return ScopedCall(index=index, request=request, scope=scope)
+
+
+def _callsc(arg: Any) -> Any:
+    """将旧风格请求或 (索引, 请求) 序列适配为执行条目."""
+    if isinstance(arg, CgiRequest):
+        _CALL_COUNTER["next"] += 1
+        return _make_call(0, arg)
+    return [_make_call(index, request) for index, request in arg]
+
+
 def _make_executor(
     transport: StubTransport,
     *,
-    platform: Platform = Platform.WEB,
     android_error: Exception | None = None,
 ) -> CgiExecutor:
     """构造注入桩传输的 CGI 执行器."""
@@ -84,11 +105,6 @@ def _make_executor(
         version_policy=DEFAULT_VERSION_POLICY,
     )
     return CgiExecutor(
-        defaults=ClientDefaults(
-            credential=Credential(musicid=1, musickey="global"),
-            platform=platform,
-            version_policy=DEFAULT_VERSION_POLICY,
-        ),
         preparer=preparer,
         transport=transport,
     )
@@ -103,10 +119,10 @@ async def test_execute_one_returns_parsed_result():
     """测试单请求执行返回模型化结果."""
     transport = StubTransport(starts=[make_cgi_envelope([make_cgi_sub(data={"value": 5})])])
     executor = _make_executor(transport)
-    result = await executor.execute_one(_cgi_request(response_model=DummyModel))
+    result = await executor.execute_one(_callsc(_cgi_request(response_model=DummyModel)))
     assert result == DummyModel(value=5)
     assert len(transport.start_calls) == 1
-    assert len(transport.resolve_calls) == 1
+    assert len(transport.release_calls) == 1
 
 
 async def test_execute_one_start_error_raises_network_error():
@@ -114,16 +130,7 @@ async def test_execute_one_start_error_raises_network_error():
     transport = StubTransport(starts=[TransportTimeout("timed out")])
     executor = _make_executor(transport)
     with pytest.raises(NetworkError):
-        await executor.execute_one(_cgi_request())
-
-
-async def test_execute_one_resolve_error_raises_network_error():
-    """测试 resolve 阶段传输异常转换为 NetworkError."""
-    transport = StubTransport(starts=[make_cgi_envelope([make_cgi_sub()])])
-    transport.resolve_error = TransportTimeout("resolve timed out")
-    executor = _make_executor(transport)
-    with pytest.raises(NetworkError):
-        await executor.execute_one(_cgi_request())
+        await executor.execute_one(_callsc(_cgi_request()))
 
 
 async def test_execute_one_require_login_without_credential():
@@ -131,7 +138,7 @@ async def test_execute_one_require_login_without_credential():
     transport = StubTransport()
     executor = _make_executor(transport)
     with pytest.raises(CredentialInvalidError):
-        await executor.execute_one(_cgi_request(require_login=True, credential=Credential()))
+        await executor.execute_one(_callsc(_cgi_request(require_login=True, credential=Credential())))
     assert transport.start_calls == []
 
 
@@ -140,7 +147,7 @@ async def test_execute_one_envelope_http_error():
     transport = StubTransport(starts=[StubResponse({}, status_code=500)])
     executor = _make_executor(transport)
     with pytest.raises(HTTPError, match="500"):
-        await executor.execute_one(_cgi_request())
+        await executor.execute_one(_callsc(_cgi_request()))
 
 
 async def test_execute_one_envelope_global_error():
@@ -148,7 +155,7 @@ async def test_execute_one_envelope_global_error():
     transport = StubTransport(starts=[StubResponse({"code": -400, "req_0": {}})])
     executor = _make_executor(transport)
     with pytest.raises(GlobalApiError):
-        await executor.execute_one(_cgi_request())
+        await executor.execute_one(_callsc(_cgi_request()))
 
 
 async def test_execute_one_business_error_passthrough():
@@ -156,7 +163,7 @@ async def test_execute_one_business_error_passthrough():
     transport = StubTransport(starts=[make_cgi_envelope([make_cgi_sub(code=2001)])])
     executor = _make_executor(transport)
     with pytest.raises(RatelimitedError):
-        await executor.execute_one(_cgi_request())
+        await executor.execute_one(_callsc(_cgi_request()))
 
 
 async def test_execute_one_known_credential_expired():
@@ -164,15 +171,15 @@ async def test_execute_one_known_credential_expired():
     transport = StubTransport(starts=[make_cgi_envelope([make_cgi_sub(code=1000)])])
     executor = _make_executor(transport)
     with pytest.raises(CredentialExpiredError):
-        await executor.execute_one(_cgi_request())
+        await executor.execute_one(_callsc(_cgi_request()))
 
 
 async def test_execute_one_data_error_passthrough():
-    """测试信封数据异常抛出 ApiDataError."""
+    """测试信封缺少子响应时抛出 ApiDataError."""
     transport = StubTransport(starts=[StubResponse({"req_1": {}})])
     executor = _make_executor(transport)
-    with pytest.raises(ApiDataError, match="缺少预期的子响应"):
-        await executor.execute_one(_cgi_request())
+    with pytest.raises(ApiDataError, match="缺少或畸形子响应"):
+        await executor.execute_one(_callsc(_cgi_request()))
 
 
 # ---------------------------------------------------------------------------
@@ -181,13 +188,13 @@ async def test_execute_one_data_error_passthrough():
 
 
 async def test_execute_many_groups_same_credential_into_one_call():
-    """测试同组请求合并为一次网络调用并集中等待."""
+    """测试同组请求合并为一次网络调用并逐项释放."""
     transport = StubTransport(starts=[make_cgi_envelope([make_cgi_sub(), make_cgi_sub()])])
     executor = _make_executor(transport)
     indexed = [(0, _cgi_request()), (1, _cgi_request())]
-    results = await executor.execute_many(indexed, batch_size=20, return_exceptions=False)
+    results = await executor.execute_many(_callsc(indexed), batch_size=20, return_exceptions=False)
     assert len(transport.start_calls) == 1
-    assert len(transport.resolve_calls) == 1
+    assert len(transport.release_calls) == 1
     assert sorted(index for index, _ in results) == [0, 1]
 
 
@@ -196,11 +203,10 @@ async def test_execute_many_batch_size_splits_into_chunks():
     transport = StubTransport(starts=[make_cgi_envelope([make_cgi_sub()]), make_cgi_envelope([make_cgi_sub()])])
     executor = _make_executor(transport)
     indexed = [(0, _cgi_request()), (1, _cgi_request())]
-    results = await executor.execute_many(indexed, batch_size=1, return_exceptions=False)
+    results = await executor.execute_many(_callsc(indexed), batch_size=1, return_exceptions=False)
     assert len(transport.start_calls) == 2
     # 多批次仍通过单次 resolve 集中等待.
-    assert len(transport.resolve_calls) == 1
-    assert len(transport.resolve_calls[0]) == 2
+    assert len(transport.release_calls) == 2
     assert [index for index, _ in results] == [0, 1]
 
 
@@ -212,7 +218,7 @@ async def test_execute_many_separates_different_credentials():
         (0, _cgi_request(credential=Credential(musicid=1, musickey="a"))),
         (1, _cgi_request(credential=Credential(musicid=2, musickey="b"))),
     ]
-    results = await executor.execute_many(indexed, batch_size=20, return_exceptions=False)
+    results = await executor.execute_many(_callsc(indexed), batch_size=20, return_exceptions=False)
     assert len(transport.start_calls) == 2
     assert sorted(index for index, _ in results) == [0, 1]
 
@@ -224,18 +230,21 @@ async def test_execute_many_restores_original_indices():
     )
     executor = _make_executor(transport)
     indexed = [(3, _cgi_request(response_model=DummyModel)), (7, _cgi_request(response_model=DummyModel))]
-    results = dict(await executor.execute_many(indexed, batch_size=20, return_exceptions=False))
+    results = dict(await executor.execute_many(_callsc(indexed), batch_size=20, return_exceptions=False))
     assert results[3] == DummyModel(value=1)
     assert results[7] == DummyModel(value=2)
 
 
-async def test_execute_many_batch_level_error_affects_whole_batch():
-    """测试批次级信封错误影响该批次全部位置."""
-    transport = StubTransport(starts=[StubResponse({"code": 0, "req_0": make_cgi_sub()})])
+async def test_execute_many_missing_sub_response_only_affects_own_index():
+    """测试缺少 req_i 仅影响对应子项, 兄弟合法项仍成功."""
+    transport = StubTransport(starts=[StubResponse({"code": 0, "req_0": make_cgi_sub(data={"value": 1})})])
     executor = _make_executor(transport)
-    indexed = [(0, _cgi_request()), (1, _cgi_request())]
-    results = dict(await executor.execute_many(indexed, batch_size=20, return_exceptions=True))
-    assert isinstance(results[0], ApiDataError)
+    indexed = [
+        (0, _cgi_request(response_model=DummyModel)),
+        (1, _cgi_request(response_model=DummyModel)),
+    ]
+    results = dict(await executor.execute_many(_callsc(indexed), batch_size=20, return_exceptions=True))
+    assert results[0] == DummyModel(value=1)
     assert isinstance(results[1], ApiDataError)
 
 
@@ -256,7 +265,7 @@ async def test_execute_many_local_parse_error_only_affects_own_index():
         (0, _cgi_request(response_model=DummyModel)),
         (1, _cgi_request(response_model=DummyModel)),
     ]
-    results = dict(await executor.execute_many(indexed, batch_size=20, return_exceptions=True))
+    results = dict(await executor.execute_many(_callsc(indexed), batch_size=20, return_exceptions=True))
     assert results[0] == DummyModel(value=1)
     assert not isinstance(results[1], DummyModel)
 
@@ -265,9 +274,9 @@ async def test_execute_many_return_exceptions_false_raises_first_error():
     """测试 return_exceptions 为 False 时直接抛出首个异常."""
     transport = StubTransport(starts=[TransportTimeout("timed out")])
     executor = _make_executor(transport)
-    indexed = [(0, _cgi_request())]
+    indexed = [(0, _cgi_request(platform=Platform.ANDROID))]
     with pytest.raises(NetworkError):
-        await executor.execute_many(indexed, batch_size=20, return_exceptions=False)
+        await executor.execute_many(_callsc(indexed), batch_size=20, return_exceptions=False)
 
 
 async def test_execute_many_return_exceptions_backfills_batch_error():
@@ -275,7 +284,7 @@ async def test_execute_many_return_exceptions_backfills_batch_error():
     transport = StubTransport(starts=[TransportTimeout("timed out")])
     executor = _make_executor(transport)
     indexed = [(0, _cgi_request()), (1, _cgi_request())]
-    results = dict(await executor.execute_many(indexed, batch_size=20, return_exceptions=True))
+    results = dict(await executor.execute_many(_callsc(indexed), batch_size=20, return_exceptions=True))
     assert isinstance(results[0], NetworkError)
     assert isinstance(results[1], NetworkError)
 
@@ -288,7 +297,7 @@ async def test_execute_many_login_failure_dispositioned_per_item():
         (0, _cgi_request(require_login=True, credential=Credential())),
         (1, _cgi_request(response_model=DummyModel)),
     ]
-    results = dict(await executor.execute_many(indexed, batch_size=20, return_exceptions=True))
+    results = dict(await executor.execute_many(_callsc(indexed), batch_size=20, return_exceptions=True))
     assert isinstance(results[0], CredentialInvalidError)
     assert results[1] == DummyModel(value=9)
 
@@ -299,17 +308,17 @@ async def test_execute_many_cancellation_propagates():
     class SlowTransport(StubTransport):
         """start 带检查点的传输桩."""
 
-        async def start(self, request: Any) -> Any:
+        async def request(self, request: Any) -> Any:
             """让出控制权后再返回预置响应."""
             await anyio.lowlevel.checkpoint()
-            return await super().start(request)
+            return await super().request(request)
 
     transport = SlowTransport(starts=[make_cgi_envelope([make_cgi_sub()])])
     executor = _make_executor(transport)
     indexed = [(0, _cgi_request())]
     with anyio.CancelScope() as scope:
         scope.cancel()
-        await executor.execute_many(indexed, batch_size=20, return_exceptions=True)
+        await executor.execute_many(_callsc(indexed), batch_size=20, return_exceptions=True)
     assert scope.cancelled_caught
 
 
@@ -317,22 +326,20 @@ async def test_execute_one_prepare_transport_error_raises_network_error():
     """测试准备阶段的传输异常转换为公开 NetworkError."""
     executor = _make_executor(
         StubTransport(),
-        platform=Platform.ANDROID,
         android_error=TransportTimeout("qimei timed out"),
     )
     with pytest.raises(NetworkError):
-        await executor.execute_one(_cgi_request())
+        await executor.execute_one(_callsc(_cgi_request(platform=Platform.ANDROID)))
 
 
 async def test_execute_many_prepare_transport_error_backfills_network_error():
     """测试批量准备阶段的传输异常转换为 NetworkError 回填批次位置."""
     executor = _make_executor(
         StubTransport(),
-        platform=Platform.ANDROID,
         android_error=TransportTimeout("timed out"),
     )
-    indexed = [(0, _cgi_request()), (1, _cgi_request())]
-    results = dict(await executor.execute_many(indexed, batch_size=20, return_exceptions=True))
+    indexed = [(0, _cgi_request(platform=Platform.ANDROID)), (1, _cgi_request(platform=Platform.ANDROID))]
+    results = dict(await executor.execute_many(_callsc(indexed), batch_size=20, return_exceptions=True))
     assert isinstance(results[0], NetworkError)
     assert isinstance(results[1], NetworkError)
 
@@ -341,11 +348,10 @@ async def test_execute_many_prepare_ordinary_error_backfills_batch():
     """测试准备阶段普通异常在容错模式下回填批次全部位置."""
     executor = _make_executor(
         StubTransport(),
-        platform=Platform.ANDROID,
         android_error=RuntimeError("准备失败"),
     )
-    indexed = [(0, _cgi_request()), (1, _cgi_request())]
-    results = dict(await executor.execute_many(indexed, batch_size=20, return_exceptions=True))
+    indexed = [(0, _cgi_request(platform=Platform.ANDROID)), (1, _cgi_request(platform=Platform.ANDROID))]
+    results = dict(await executor.execute_many(_callsc(indexed), batch_size=20, return_exceptions=True))
     assert isinstance(results[0], RuntimeError)
     assert isinstance(results[1], RuntimeError)
 
@@ -354,11 +360,12 @@ async def test_execute_many_prepare_ordinary_error_raises_without_return_excepti
     """测试准备阶段普通异常在非容错模式下直接抛出."""
     executor = _make_executor(
         StubTransport(),
-        platform=Platform.ANDROID,
         android_error=RuntimeError("准备失败"),
     )
     with pytest.raises(RuntimeError, match="准备失败"):
-        await executor.execute_many([(0, _cgi_request())], batch_size=20, return_exceptions=False)
+        await executor.execute_many(
+            _callsc([(0, _cgi_request(platform=Platform.ANDROID))]), batch_size=20, return_exceptions=False
+        )
 
 
 async def test_execute_many_grouping_error_backfills_own_index():
@@ -369,7 +376,7 @@ async def test_execute_many_grouping_error_backfills_own_index():
         (0, _cgi_request(comm={"bad": object()})),
         (1, _cgi_request(response_model=DummyModel)),
     ]
-    results = dict(await executor.execute_many(indexed, batch_size=20, return_exceptions=True))
+    results = dict(await executor.execute_many(_callsc(indexed), batch_size=20, return_exceptions=True))
     assert isinstance(results[0], TypeError)
     assert results[1] == DummyModel(value=1)
 
@@ -379,4 +386,4 @@ async def test_execute_many_grouping_error_raises_without_return_exceptions():
     executor = _make_executor(StubTransport())
     indexed = [(0, _cgi_request(comm={"bad": object()}))]
     with pytest.raises(TypeError):
-        await executor.execute_many(indexed, batch_size=20, return_exceptions=False)
+        await executor.execute_many(_callsc(indexed), batch_size=20, return_exceptions=False)

@@ -57,6 +57,8 @@ def test_unwrap_envelope_returns_sub_responses():
     """测试信封解包按序返回全部子响应."""
     response = make_cgi_envelope([make_cgi_sub(data={"i": 0}), make_cgi_sub(data={"i": 1})])
     items = unwrap_cgi_envelope(response, expected_count=2)
+    assert items[0] is not None
+    assert items[1] is not None
     assert items[0]["data"] == {"i": 0}
     assert items[1]["data"] == {"i": 1}
 
@@ -107,18 +109,20 @@ def test_unwrap_envelope_global_api_error():
     assert exc_info.value.code == -400
 
 
-def test_unwrap_envelope_missing_req_key():
-    """测试缺少预期子响应键抛出 ApiDataError."""
-    response = StubResponse({"code": 0, "req_9": {}})
-    with pytest.raises(ApiDataError, match="缺少预期的子响应"):
-        unwrap_cgi_envelope(response, expected_count=1)
+def test_unwrap_envelope_missing_req_key_is_per_item():
+    """测试缺少预期子响应键在对应位置返回 None 而非整批失败."""
+    response = StubResponse({"code": 0, "req_1": make_cgi_sub()})
+    items = unwrap_cgi_envelope(response, expected_count=2)
+    assert items[0] is None
+    assert items[1] == make_cgi_sub()
 
 
-def test_unwrap_envelope_sub_response_not_object():
-    """测试子响应非对象时抛出 ApiDataError."""
-    response = StubResponse({"code": 0, "req_0": [1, 2]})
-    with pytest.raises(ApiDataError, match="子响应"):
-        unwrap_cgi_envelope(response, expected_count=1)
+def test_unwrap_envelope_sub_response_not_object_is_per_item():
+    """测试子响应非对象时对应位置返回 None 且兄弟项不受影响."""
+    response = StubResponse({"code": 0, "req_0": make_cgi_sub(), "req_1": [1, 2]})
+    items = unwrap_cgi_envelope(response, expected_count=2)
+    assert items[0] == make_cgi_sub()
+    assert items[1] is None
 
 
 # ---------------------------------------------------------------------------

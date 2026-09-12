@@ -8,6 +8,10 @@ import pytest
 from qqmusic_api.core.engine import RequestEngine
 from qqmusic_api.core.exceptions import ApiDataError, NetworkError
 from qqmusic_api.core.request import CgiRequest, HttpRequest
+from qqmusic_api.core.runtime import ClientDefaults, ScopedCall
+from qqmusic_api.core.versioning import DEFAULT_VERSION_POLICY, Platform
+from qqmusic_api.models.request import Credential
+from tests.kernel_contract import StubTransport
 
 pytestmark = pytest.mark.core
 
@@ -28,25 +32,26 @@ class StubCgiExecutor:
         self.received_batch_size: int | None = None
         self.received_return_exceptions: bool | None = None
 
-    async def execute_one(self, request: Any) -> Any:
+    async def execute_one(self, call: ScopedCall, *, operation: Any = None) -> Any:
         """记录单请求调用并返回固定值."""
-        self.calls.append(("one", request))
+        self.calls.append(("one", call))
         return "cgi-one"
 
     async def execute_many(
         self,
-        requests: Sequence[tuple[int, Any]],
+        calls: Sequence[ScopedCall],
         *,
         batch_size: int,
+        operation: Any = None,
         return_exceptions: bool = False,
     ) -> list[tuple[int, Any]]:
         """记录批量调用并按预置行为返回."""
-        self.calls.append(("many", requests))
+        self.calls.append(("many", calls))
         self.received_batch_size = batch_size
         self.received_return_exceptions = return_exceptions
         if self.error is not None:
             raise self.error
-        return [(index, self.results.get(index, f"cgi-{index}")) for index, _ in requests]
+        return [(call.index, self.results.get(call.index, f"cgi-{call.index}")) for call in calls]
 
 
 class StubHttpExecutor:
@@ -63,22 +68,23 @@ class StubHttpExecutor:
         self.results = results or {}
         self.error = error
 
-    async def execute_one(self, request: Any) -> Any:
+    async def execute_one(self, call: ScopedCall, *, operation: Any = None) -> Any:
         """记录单请求调用并返回固定值."""
-        self.calls.append(("one", request))
+        self.calls.append(("one", call))
         return "http-one"
 
     async def execute_many(
         self,
-        requests: Sequence[tuple[int, Any]],
+        calls: Sequence[ScopedCall],
         *,
+        operation: Any = None,
         return_exceptions: bool = False,
     ) -> list[tuple[int, Any]]:
         """记录批量调用并按预置行为返回."""
-        self.calls.append(("many", requests))
+        self.calls.append(("many", calls))
         if self.error is not None:
             raise self.error
-        return [(index, self.results.get(index, f"http-{index}")) for index, _ in requests]
+        return [(call.index, self.results.get(call.index, f"http-{call.index}")) for call in calls]
 
 
 def _cgi_request(**kwargs: Any) -> CgiRequest[Any]:
@@ -103,7 +109,16 @@ def _engine(
     """构造注入桩执行器的引擎."""
     cgi = cgi or StubCgiExecutor()
     http = http or StubHttpExecutor()
-    engine = RequestEngine(cgi_executor=cgi, http_executor=http)
+    engine = RequestEngine(
+        cgi_executor=cgi,
+        http_executor=http,
+        transport=cast("Any", StubTransport()),
+        defaults=ClientDefaults(
+            credential=Credential(),
+            platform=Platform.WEB,
+            version_policy=DEFAULT_VERSION_POLICY,
+        ),
+    )
     return engine, cgi, http
 
 
@@ -112,7 +127,8 @@ async def test_execute_dispatches_cgi_to_cgi_executor():
     engine, cgi, _ = _engine()
     request = _cgi_request()
     assert await engine.execute(request) == "cgi-one"
-    assert cgi.calls == [("one", request)]
+    assert cgi.calls[0][0] == "one"
+    assert cgi.calls[0][1].request == request
 
 
 async def test_execute_dispatches_http_to_http_executor():
@@ -120,7 +136,8 @@ async def test_execute_dispatches_http_to_http_executor():
     engine, _, http = _engine()
     request = _http_request()
     assert await engine.execute(request) == "http-one"
-    assert http.calls == [("one", request)]
+    assert http.calls[0][0] == "one"
+    assert http.calls[0][1].request == request
 
 
 async def test_execute_unknown_request_type_raises():
@@ -145,8 +162,8 @@ async def test_gather_mixed_protocols_run_in_partitions():
     ]
     results = await engine.gather(requests)
     assert results == ["cgi-0", "http-1", "cgi-2", "http-3"]
-    assert [index for index, _ in cgi.calls[-1][1]] == [0, 2]
-    assert [index for index, _ in http.calls[-1][1]] == [1, 3]
+    assert [call.index for call in cgi.calls[-1][1]] == [0, 2]
+    assert [call.index for call in http.calls[-1][1]] == [1, 3]
 
 
 async def test_gather_empty_returns_empty_list():
@@ -207,13 +224,14 @@ async def test_gather_missing_result_guard_raises_api_data_error():
 
         async def execute_many(
             self,
-            requests: Sequence[tuple[int, Any]],
+            calls: Sequence[ScopedCall],
             *,
             batch_size: int,
+            operation: Any = None,
             return_exceptions: bool = False,
         ) -> list[tuple[int, Any]]:
             """仅返回首个索引的结果."""
-            return [requests[0]]
+            return [(calls[0].index, None)]
 
     engine, _, _ = _engine(cgi=PartialCgiExecutor())
     with pytest.raises(ApiDataError, match="缺少以下索引结果"):

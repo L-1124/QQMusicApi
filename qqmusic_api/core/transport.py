@@ -1,14 +1,23 @@
-"""统一传输边界. 唯一允许访问 niquests 运行时实现的模块."""
+"""统一传输边界. 唯一允许访问 niquests 运行时实现的模块.
 
-from collections.abc import Mapping, Sequence
+请求模型: 一个物理请求对应一次 ``request`` 调用. 缓冲请求返回时状态与
+响应体均已就绪; 流式请求 (kwargs 携带 stream=True) 返回到响应头就绪,
+响应体的延迟读取与关闭由调用者负责. 收到响应的调用者必须 ``release``
+或明确移交所有权.
+"""
+
+from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Any, Protocol, cast, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
+import anyio
 from niquests import AsyncSession, AsyncTokenBucketLimiter, RetryConfiguration
 from niquests import PreparedRequest as NiquestsPreparedRequest
 from niquests.exceptions import RequestException, Timeout
 from niquests.models import Response
 from niquests.typing import AsyncHookType, ProxyType, TLSClientCertType, TLSVerifyType
+
+from .runtime import DEFAULT_MAX_CONCURRENCY
 
 __all__ = [
     "HttpRawResponse",
@@ -39,7 +48,7 @@ class PreparedRequest:
     Attributes:
         method: HTTP 方法.
         url: 请求目标 URL.
-        kwargs: 透传给传输实现的请求关键字参数.
+        kwargs: 该请求专有的关键字参数 (可含 stream 标志).
     """
 
     method: str
@@ -76,18 +85,21 @@ class RawResponse(Protocol):
 
 
 class Transport(Protocol):
-    """两阶段异步传输协议.
+    """单物理请求传输协议.
 
-    单请求执行 ``start → resolve([response])``; 批量请求执行多次
-    ``start`` 后通过一次 ``resolve`` 集中等待.
+    每次调用 ``request`` 恰好对应一个物理 HTTP 请求; 异常按请求归属.
+    返回的响应由调用者 ``release``; ``close`` 幂等.
     """
 
-    async def start(self, request: PreparedRequest) -> RawResponse:
-        """发起请求并返回尚未等待响应体的原始响应."""
+    async def request(self, request: PreparedRequest) -> RawResponse:
+        """执行单个物理请求并返回响应.
+
+        缓冲请求返回时状态与响应体就绪; 流式请求返回到响应头就绪.
+        """
         ...
 
-    async def resolve(self, responses: Sequence[RawResponse]) -> None:
-        """集中等待已发起请求的响应体就绪."""
+    async def release(self, response: RawResponse) -> None:
+        """释放响应占用的连接或流资源. 幂等, 允许释放已消费的响应."""
         ...
 
     async def close(self) -> None:
@@ -109,11 +121,29 @@ def _map_transport_exception(exc: RequestException) -> TransportError:
     return TransportError(str(exc))
 
 
-class NiquestsTransport:
-    """基于 niquests AsyncSession 的两阶段传输实现.
+async def _release_raw(response: RawResponse) -> None:
+    """释放底层响应资源, 兼容同步与异步 close 实现.
 
-    拥有底层会话与代理, 证书, hooks, verify 等发送配置;
-    配置支持动态更新并在后续 ``start`` 中生效.
+    Args:
+        response: 待释放的原始响应.
+    """
+    closer = getattr(response, "close", None)
+    if closer is None:
+        return
+    result = closer()
+    if hasattr(result, "__await__"):
+        await result
+
+
+class NiquestsTransport:
+    """基于 niquests AsyncSession 的单物理请求传输实现.
+
+    拥有底层会话与代理, 证书, hooks, verify 等发送配置; 配置在每次
+    ``request`` 进入时读取. 共享容量信号量覆盖从获取连接到响应就绪的
+    全程 (缓冲) 或到响应头就绪 (流式); 交付后的流不计入在途请求数.
+
+    适配器隔离能力已验证 (Task A): 单请求取消只影响自身, 客户端取消时
+    关闭底层连接, 同会话其余请求与后续复用不受影响.
     """
 
     def __init__(
@@ -126,6 +156,7 @@ class NiquestsTransport:
         cert: TLSClientCertType | None = None,
         verify: TLSVerifyType | None = None,
         hooks: AsyncHookType[NiquestsPreparedRequest | Response] | None = None,
+        max_concurrency: int = DEFAULT_MAX_CONCURRENCY,
         session: AsyncSession | None = None,
     ) -> None:
         """初始化传输实例.
@@ -138,6 +169,7 @@ class NiquestsTransport:
             cert: TLS 客户端证书配置, 详见 niquests 文档.
             verify: TLS 证书验证配置, 详见 niquests 文档.
             hooks: 请求/响应钩子, 详见 niquests 文档.
+            max_concurrency: 共享并发容量上限, 覆盖获取连接到响应就绪.
             session: 外部注入的会话, 仅用于测试; 缺省时内部构建.
         """
         self._client = session or AsyncSession(
@@ -159,56 +191,51 @@ class NiquestsTransport:
         self.cert = cert
         self.verify = verify
         self.hooks = hooks
+        self._capacity = anyio.Semaphore(max_concurrency)
         self._closed = False
 
-    async def start(self, request: PreparedRequest) -> RawResponse:
-        """发起请求并返回尚未等待响应体的原始响应.
+    async def request(self, request: PreparedRequest) -> RawResponse:
+        """执行单个物理请求并返回响应.
+
+        缓冲请求返回时状态与响应体已就绪 (niquests 在发送阶段即等待完整
+        响应); 流式请求返回到响应头就绪.
 
         Args:
             request: 准备完成的传输请求.
 
         Returns:
-            尚未就绪的原始响应.
+            原始响应.
 
         Raises:
             TransportTimeout: 请求超时.
             TransportError: 其他网络异常.
         """
-        try:
-            response = await self._client.request(
-                request.method,
-                request.url,
-                **dict(request.kwargs),
-                proxies=self.proxies,
-                hooks=self.hooks,
-                cert=self.cert,
-                verify=self.verify,
-            )
-        except Timeout as exc:
-            raise TransportTimeout(str(exc)) from exc
-        except RequestException as exc:
-            raise TransportError(str(exc)) from exc
+        async with self._capacity:
+            try:
+                response = await self._client.request(
+                    request.method,
+                    request.url,
+                    **dict(request.kwargs),
+                    proxies=self.proxies,
+                    hooks=self.hooks,
+                    cert=self.cert,
+                    verify=self.verify,
+                )
+                if getattr(response, "lazy", False):
+                    await self._client.gather(response)
+            except Timeout as exc:
+                raise TransportTimeout(str(exc)) from exc
+            except RequestException as exc:
+                raise TransportError(str(exc)) from exc
         return response
 
-    async def resolve(self, responses: Sequence[RawResponse]) -> None:
-        """集中等待已发起请求的响应体就绪.
+    async def release(self, response: RawResponse) -> None:
+        """释放响应占用的连接或流资源. 幂等, 允许重复释放.
 
         Args:
-            responses: 已发起请求返回的原始响应序列.
-
-        Raises:
-            TransportTimeout: 等待超时.
-            TransportError: 等待期间网络异常.
+            response: 待释放的原始响应.
         """
-        if not responses:
-            return
-        try:
-            # 传入 resolve 的响应均由本会话 start 产生, 必为 niquests Response.
-            await self._client.gather(*cast("list[Response]", responses))
-        except Timeout as exc:
-            raise TransportTimeout(str(exc)) from exc
-        except RequestException as exc:
-            raise TransportError(str(exc)) from exc
+        await _release_raw(response)
 
     async def close(self) -> None:
         """关闭底层会话. 重复调用为空操作."""

@@ -13,6 +13,8 @@ from uuid import uuid4
 import anyio
 import orjson as json
 
+_SESSION_FIELDS = frozenset({"session_uid", "session_sid", "session_vkey", "session_save_time"})
+
 
 def random_imei() -> str:
     """生成满足标准 Luhn 校验的随机 IMEI 号码.
@@ -111,6 +113,8 @@ class DeviceManager:
     async def _load_device(path: Path | anyio.Path | str) -> Device:
         """从指定路径加载设备信息.
 
+        旧文件中的会话字段兼容读取但忽略 (不恢复会话).
+
         Args:
             path: 设备信息文件路径.
 
@@ -123,11 +127,14 @@ class DeviceManager:
 
         device_data = json.loads(await anyio_path.read_text())
         device_data["version"] = OSVersion(**device_data["version"])
+        device_data = {key: value for key, value in device_data.items() if key not in _SESSION_FIELDS}
         return Device(**device_data)
 
     @staticmethod
     async def _save_device(device: Device, path: Path | anyio.Path | str | None = None) -> None:
         """保存设备信息到指定路径.
+
+        会话字段不写入文件 (会话仅存于 Client 内存).
 
         Args:
             device: 待保存的设备对象.
@@ -140,10 +147,8 @@ class DeviceManager:
             return
 
         anyio_path = anyio.Path(path)
-        device_dict = {
-            **device.__dict__,
-            "version": device.version.__dict__,
-        }
+        device_dict = {key: value for key, value in device.__dict__.items() if key not in _SESSION_FIELDS}
+        device_dict["version"] = device.version.__dict__
         await anyio_path.write_bytes(json.dumps(device_dict))
 
     @staticmethod

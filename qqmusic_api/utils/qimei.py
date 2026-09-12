@@ -108,31 +108,33 @@ class QimeiManager:
             self._sdk_version,
         )
 
-        response = await self._transport.start(
+        response = await self._transport.request(
             PreparedRequest(
                 method="POST",
                 url="https://api.tencentmusic.com/tme/trpc/proxy",
                 kwargs={"headers": headers, "json": request_json},
             ),
         )
-        await self._transport.resolve([response])
 
-        status = response.status_code
-        if status != 200:
-            raise HTTPError(
-                f"HTTP 请求状态码异常: {status}",
-                status_code=status if isinstance(status, int) else -1,
-            )
+        try:
+            status = response.status_code
+            if status != 200:
+                raise HTTPError(
+                    f"HTTP 请求状态码异常: {status}",
+                    status_code=status if isinstance(status, int) else -1,
+                )
 
-        if response.content is None:
-            raise RuntimeError("QIMEI response content is empty")
+            if response.content is None:
+                raise RuntimeError("QIMEI response content is empty")
 
-        qimei_data: dict[str, str] = json.loads(json.loads(response.content).get("data", "{}")).get("data", {})
+            qimei_data: dict[str, str] = json.loads(json.loads(response.content).get("data", "{}")).get("data", {})
 
-        if not qimei_data or "q36" not in qimei_data or "q16" not in qimei_data:
-            raise RuntimeError(f"QIMEI response missing required fields: {qimei_data}")
+            if not qimei_data or "q36" not in qimei_data or "q16" not in qimei_data:
+                raise RuntimeError(f"QIMEI response missing required fields: {qimei_data}")
 
-        return {"q16": qimei_data["q16"], "q36": qimei_data["q36"]}
+            return {"q16": qimei_data["q16"], "q36": qimei_data["q36"]}
+        finally:
+            await self._transport.release(response)
 
 
 def rsa_encrypt(content: bytes) -> bytes:

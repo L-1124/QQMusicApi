@@ -8,7 +8,6 @@
 对应的参数化断言见 ``tests/test_response.py``.
 """
 
-from collections.abc import Sequence
 from typing import Any
 
 import niquests
@@ -106,24 +105,23 @@ class StubSession:
 
 
 class StubTransport:
-    """记录 start/resolve/close 调用并按队列返回预置结果的传输桩."""
+    """记录 request/release/close 调用并按队列返回预置结果的传输桩."""
 
     def __init__(self, starts: list[Any] | None = None) -> None:
-        """以预置的 start 结果/异常队列构造传输桩.
+        """以预置的 request 结果/异常队列构造传输桩.
 
         Args:
-            starts: start() 按序返回的响应列表, 元素为异常时抛出;
+            starts: request() 按序返回的响应列表, 元素为异常时抛出;
                 队列耗尽时抛出 AssertionError. 可在运行前继续追加.
         """
         self.start_calls: list[Any] = []
-        self.resolve_calls: list[list[Any]] = []
+        self.release_calls: list[Any] = []
         self.close_calls = 0
-        self.resolve_error: Exception | None = None
         self._closed = False
         self.starts = list(starts or [])
 
-    async def start(self, request: Any) -> Any:
-        """记录 start 调用并返回或抛出下一个预置项."""
+    async def request(self, request: Any) -> Any:
+        """记录 request 调用并返回或抛出下一个预置项."""
         self.start_calls.append(request)
         if not self.starts:
             raise AssertionError(f"传输桩队列耗尽, 意外网络调用: {request.method} {request.url}")
@@ -132,11 +130,9 @@ class StubTransport:
             raise item
         return item
 
-    async def resolve(self, responses: Sequence[Any]) -> None:
-        """记录集中等待调用, 注入的 ``resolve_error`` 会被抛出."""
-        self.resolve_calls.append(list(responses))
-        if self.resolve_error is not None:
-            raise self.resolve_error
+    async def release(self, response: Any) -> None:
+        """记录释放调用."""
+        self.release_calls.append(response)
 
     async def close(self) -> None:
         """记录关闭调用, 幂等."""

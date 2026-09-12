@@ -1,6 +1,6 @@
 """两阶段传输边界单元测试 (桩会话驱动, 不发起真实网络)."""
 
-from typing import TYPE_CHECKING, Any, cast
+from typing import Any, cast
 
 import pytest
 import pytest_asyncio
@@ -12,9 +12,6 @@ from qqmusic_api.core.transport import (
     TransportError,
     TransportTimeout,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
 
 pytestmark = pytest.mark.core
 
@@ -29,11 +26,8 @@ class StubAsyncClient:
             outcomes: request() 按序返回的结果, 元素为异常时抛出.
         """
         self.request_calls: list[tuple[str, str, dict[str, Any]]] = []
-        self.gather_calls: list[tuple[Any, ...]] = []
         self.close_calls = 0
         self._outcomes = list(outcomes or [])
-        # gather 作为实例属性暴露, 测试可整体替换以注入失败行为.
-        self.gather: Callable[..., Awaitable[None]] = self._record_gather
 
     async def request(self, method: str, url: str, **kwargs: Any) -> Any:
         """记录请求调用并返回或抛出下一个预置项."""
@@ -44,10 +38,6 @@ class StubAsyncClient:
         if isinstance(item, Exception):
             raise item
         return item
-
-    async def _record_gather(self, *responses: Any) -> None:
-        """记录集中等待调用."""
-        self.gather_calls.append(responses)
 
     async def close(self) -> None:
         """记录关闭调用."""
@@ -62,6 +52,7 @@ class StubRawResponse:
         self.status_code = 200
         self.content = b"{}"
         self.text = "{}"
+        self.close_calls = 0
 
     def json(self) -> Any:
         """返回空对象载荷."""
@@ -70,6 +61,10 @@ class StubRawResponse:
     def raise_for_status(self) -> object:
         """无状态异常, 返回自身."""
         return self
+
+    def close(self) -> None:
+        """记录释放调用."""
+        self.close_calls += 1
 
 
 def _prepared(**kwargs: Any) -> PreparedRequest:
@@ -89,11 +84,11 @@ async def transport(stub_client: StubAsyncClient) -> NiquestsTransport:
     return NiquestsTransport(session=cast("Any", stub_client))
 
 
-async def test_start_passes_method_url_and_all_kwargs(transport: NiquestsTransport, stub_client: StubAsyncClient):
-    """测试 start 将方法, URL 与全部 HTTP kwargs 透传给会话."""
+async def test_request_passes_method_url_and_all_kwargs(transport: NiquestsTransport, stub_client: StubAsyncClient):
+    """测试 request 将方法, URL 与全部 HTTP kwargs 透传给会话."""
     stub_client._outcomes = [StubRawResponse()]
     request = _prepared(json={"a": 1}, params={"b": "2"}, headers={"User-Agent": "x"}, timeout=5.0)
-    response = await transport.start(request)
+    response = await transport.request(request)
     assert isinstance(response, StubRawResponse)
     method, url, kwargs = stub_client.request_calls[0]
     assert method == "POST"
@@ -104,71 +99,40 @@ async def test_start_passes_method_url_and_all_kwargs(transport: NiquestsTranspo
     assert kwargs["timeout"] == 5.0
 
 
-async def test_start_single_request_needs_explicit_resolve(transport: NiquestsTransport, stub_client: StubAsyncClient):
-    """测试 start 本身不等待响应体, 需显式调用 resolve."""
-    stub_client._outcomes = [StubRawResponse()]
-    await transport.start(_prepared())
-    assert stub_client.gather_calls == []
-    await transport.resolve([StubRawResponse()])
-    assert len(stub_client.gather_calls) == 1
+async def test_release_closes_underlying_response(transport: NiquestsTransport):
+    """测试 release 调用底层响应的 close 且可重复."""
+    response = StubRawResponse()
+    await transport.release(response)
+    await transport.release(response)
+    assert response.close_calls == 2
 
 
-async def test_consecutive_starts_resolved_once(transport: NiquestsTransport, stub_client: StubAsyncClient):
-    """测试连续多次 start 后通过单次 resolve 集中等待."""
-    stub_client._outcomes = [StubRawResponse(), StubRawResponse(), StubRawResponse()]
-    first = await transport.start(_prepared())
-    second = await transport.start(_prepared())
-    await transport.resolve([first, second])
-    assert len(stub_client.request_calls) == 2
-    assert len(stub_client.gather_calls) == 1
-    assert len(stub_client.gather_calls[0]) == 2
-
-
-async def test_resolve_empty_is_noop(transport: NiquestsTransport, stub_client: StubAsyncClient):
-    """测试空 resolve 不触发会话等待."""
-    await transport.resolve([])
-    assert stub_client.gather_calls == []
-
-
-async def test_start_timeout_mapped_to_transport_timeout(transport: NiquestsTransport, stub_client: StubAsyncClient):
-    """测试 start 阶段超时异常归类为 TransportTimeout."""
+async def test_request_timeout_mapped_to_transport_timeout(transport: NiquestsTransport, stub_client: StubAsyncClient):
+    """测试请求阶段超时异常归类为 TransportTimeout."""
     stub_client._outcomes = [Timeout("timed out")]
     with pytest.raises(TransportTimeout):
-        await transport.start(_prepared())
+        await transport.request(_prepared())
 
 
-async def test_start_network_error_mapped_to_transport_error(
+async def test_request_network_error_mapped_to_transport_error(
     transport: NiquestsTransport, stub_client: StubAsyncClient
 ):
-    """测试 start 阶段普通网络异常归类为 TransportError."""
+    """测试请求阶段普通网络异常归类为 TransportError."""
     stub_client._outcomes = [RequestException("boom")]
     with pytest.raises(TransportError) as exc_info:
-        await transport.start(_prepared())
+        await transport.request(_prepared())
     assert not isinstance(exc_info.value, TransportTimeout)
 
 
-async def test_resolve_timeout_mapped_to_transport_timeout(transport: NiquestsTransport, stub_client: StubAsyncClient):
-    """测试 resolve 阶段超时异常归类为 TransportTimeout."""
-    stub_client._outcomes = [StubRawResponse()]
-    response = await transport.start(_prepared())
-
-    async def raise_timeout(*_args: Any) -> None:
-        raise Timeout("timed out")
-
-    stub_client.gather = raise_timeout
-    with pytest.raises(TransportTimeout):
-        await transport.resolve([response])
-
-
 async def test_dynamic_proxy_and_tls_updates(transport: NiquestsTransport, stub_client: StubAsyncClient):
-    """测试代理/证书/verify/hooks 更新后在后续 start 中生效."""
+    """测试代理/证书/verify/hooks 更新后在后续 request 中生效."""
     stub_client._outcomes = [StubRawResponse(), StubRawResponse()]
     transport.proxies = {"https": "http://proxy:8080"}
     transport.cert = ("/tmp/cert.pem", "/tmp/key.pem")
     transport.verify = False
     hooks: dict[str, list[Any]] = {"response": []}
     transport.hooks = hooks
-    await transport.start(_prepared())
+    await transport.request(_prepared())
     _, _, kwargs = stub_client.request_calls[0]
     assert kwargs["proxies"] == {"https": "http://proxy:8080"}
     assert kwargs["cert"] == ("/tmp/cert.pem", "/tmp/key.pem")
@@ -176,7 +140,7 @@ async def test_dynamic_proxy_and_tls_updates(transport: NiquestsTransport, stub_
     assert kwargs["hooks"] is hooks
 
     transport.proxies = None
-    await transport.start(_prepared())
+    await transport.request(_prepared())
     _, _, kwargs = stub_client.request_calls[1]
     assert kwargs["proxies"] is None
 

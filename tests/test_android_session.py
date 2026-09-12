@@ -1,13 +1,17 @@
 """Android Session 管理器单元测试 (传输桩驱动, 不发起真实网络)."""
 
-import time
 from typing import Any, cast
 
 import anyio
 import pytest
 import pytest_asyncio
 
-from qqmusic_api.core.android_session import AndroidSessionManager
+from qqmusic_api.core.android_session import (
+    SESSION_CACHE_MAX_IDENTITIES,
+    AndroidSession,
+    AndroidSessionManager,
+    credential_fingerprint,
+)
 from qqmusic_api.core.exceptions import ApiDataError, HTTPError
 from qqmusic_api.core.runtime import ClientDefaults, RequestScope, resolve_scope
 from qqmusic_api.core.versioning import DEFAULT_VERSION_POLICY, Platform
@@ -31,21 +35,9 @@ class StubQimeiManager:
         return {"q16": "test_q16", "q36": "test_q36"}
 
 
-class ManagerCarrier:
-    """管理器及其依赖桩的测试载体."""
-
-    def __init__(
-        self,
-        manager: AndroidSessionManager,
-        transport: StubTransport,
-        device_store: DeviceManager,
-        qimei: StubQimeiManager,
-    ) -> None:
-        """保存管理器与依赖桩."""
-        self.manager = manager
-        self.transport = transport
-        self.device_store = device_store
-        self.qimei = qimei
+def _session_response(uid: str = "1", sid: str = "s", vkey: Any = "v") -> StubResponse:
+    """构造成功的 GetSession 响应桩."""
+    return StubResponse({"code": 0, "req_0": make_cgi_sub(data={"session": {"uid": uid, "sid": sid, "vkey": vkey}})})
 
 
 def _android_scope(credential: Credential | None = None) -> RequestScope:
@@ -65,40 +57,14 @@ class _NoopRequest:
     platform: Platform | None = None
 
 
-def _session_response(uid: str = "1", sid: str = "s", vkey: Any = "v") -> StubResponse:
-    """构造成功的 GetSession 响应桩."""
-    return StubResponse({"code": 0, "req_0": make_cgi_sub(data={"session": {"uid": uid, "sid": sid, "vkey": vkey}})})
-
-
-def _valid_session_device(device_store: DeviceManager) -> None:
-    """将设备写入有效的会话状态."""
-    device = device_store.device
-    assert device is not None
-    device.session_uid = "1"
-    device.session_sid = "s"
-    device.session_save_time = int(time.time())
-
-
-def _make_carrier(
-    transport: StubTransport,
-    device_store: DeviceManager,
-    save_calls: list[int] | None = None,
-) -> ManagerCarrier:
-    """构造注入桩依赖的 AndroidSessionManager 载体."""
-    qimei = StubQimeiManager()
-    manager = AndroidSessionManager(
+def _make_manager(transport: StubTransport, device_store: DeviceManager) -> AndroidSessionManager:
+    """构造注入桩依赖的 AndroidSessionManager."""
+    return AndroidSessionManager(
         device_store=device_store,
-        qimei_manager=cast("Any", qimei),
+        qimei_manager=cast("Any", StubQimeiManager()),
         version_policy=DEFAULT_VERSION_POLICY,
         transport=transport,
     )
-    if save_calls is not None:
-
-        async def counting_save() -> None:
-            save_calls.append(1)
-
-        cast("Any", device_store).save_device = counting_save
-    return ManagerCarrier(manager=manager, transport=transport, device_store=device_store, qimei=qimei)
 
 
 @pytest_asyncio.fixture
@@ -109,104 +75,120 @@ async def device_store() -> DeviceManager:
     return store
 
 
-async def test_non_android_scope_is_noop(device_store: DeviceManager):
-    """测试非 Android 平台调用 ensure 不发起任何请求."""
-    carrier = _make_carrier(StubTransport(), device_store)
+async def test_non_android_scope_rejected_without_network(device_store: DeviceManager):
+    """测试非 Android 平台 ensure 被拒绝且不发起任何请求."""
+    transport = StubTransport()
+    manager = _make_manager(transport, device_store)
     defaults = ClientDefaults(credential=Credential(), platform=Platform.WEB, version_policy=DEFAULT_VERSION_POLICY)
-    await carrier.manager.ensure(resolve_scope(_NoopRequest(), defaults))
-    assert carrier.transport.start_calls == []
+    with pytest.raises(ApiDataError):
+        await manager.ensure(resolve_scope(_NoopRequest(), defaults))
+    assert transport.start_calls == []
 
 
-async def test_valid_session_short_circuits(device_store: DeviceManager):
-    """测试设备会话有效时短路返回且不触网."""
-    _valid_session_device(device_store)
-    carrier = _make_carrier(StubTransport(), device_store)
-    await carrier.manager.ensure(_android_scope())
-    assert carrier.transport.start_calls == []
-
-
-async def test_invalid_session_posts_and_updates_device(device_store: DeviceManager):
-    """测试会话失效时发起请求并将结果写回设备."""
-    save_calls: list[int] = []
-    transport = StubTransport(starts=[_session_response()])
-    carrier = _make_carrier(transport, device_store, save_calls)
-    await carrier.manager.ensure(_android_scope())
+async def test_refresh_posts_and_publishes_session(device_store: DeviceManager):
+    """测试刷新请求成功后发布不可变会话且不写设备会话槽."""
+    transport = StubTransport(starts=[_session_response(uid="1", sid="s", vkey="v")])
+    manager = _make_manager(transport, device_store)
+    session = await manager.ensure(_android_scope())
+    assert isinstance(session, AndroidSession)
+    assert session.uid == "1"
+    assert session.sid == "s"
+    assert session.vkey == "v"
     device = device_store.device
     assert device is not None
-    assert device.session_uid == "1"
-    assert device.session_sid == "s"
-    assert device.session_vkey == "v"
-    assert device.session_save_time is not None
-    assert save_calls == [1]
+    # 不再写设备共享会话槽.
+    assert device.session_uid is None
+    assert device.session_sid is None
     assert len(transport.start_calls) == 1
     assert transport.start_calls[0].url == "https://u.y.qq.com/cgi-bin/musicu.fcg"
+    assert len(transport.release_calls) == 1
 
 
-async def test_refresh_uses_scope_credential(device_store: DeviceManager):
-    """测试刷新请求的 comm 使用 scope 中的凭证."""
+async def test_valid_cache_hit_short_circuits(device_store: DeviceManager):
+    """测试有效缓存命中不等待锁也不发起新请求."""
     transport = StubTransport(starts=[_session_response()])
-    carrier = _make_carrier(transport, device_store)
-    await carrier.manager.ensure(_android_scope(Credential(musicid=77, musickey="kk")))
-    payload = carrier.transport.start_calls[0].kwargs["json"]
-    assert payload["comm"]["qq"] == "77"
-    assert payload["comm"]["authst"] == "kk"
+    manager = _make_manager(transport, device_store)
+    first = await manager.ensure(_android_scope())
+    second = await manager.ensure(_android_scope())
+    assert first is second
+    assert len(transport.start_calls) == 1
 
 
-async def test_refresh_uses_qimei_manager(device_store: DeviceManager):
-    """测试刷新请求的 comm 携带 QIMEI 管理器结果."""
-    transport = StubTransport(starts=[_session_response()])
-    carrier = _make_carrier(transport, device_store)
-    await carrier.manager.ensure(_android_scope())
-    payload = carrier.transport.start_calls[0].kwargs["json"]
-    assert payload["comm"]["QIMEI"] == "test_q16"
-    assert payload["comm"]["QIMEI36"] == "test_q36"
-    assert carrier.qimei.calls == 1
+async def test_credential_fingerprint_isolates_sessions(device_store: DeviceManager):
+    """测试不同凭证身份各自刷新, 会话不跨身份共享."""
+    transport = StubTransport(starts=[_session_response(uid="a"), _session_response(uid="b")])
+    manager = _make_manager(transport, device_store)
+    first = await manager.ensure(_android_scope(Credential(musicid=1, musickey="k1")))
+    second = await manager.ensure(_android_scope(Credential(musicid=2, musickey="k2")))
+    assert first.uid == "a"
+    assert second.uid == "b"
+    assert len(transport.start_calls) == 2
 
 
 async def test_concurrent_ensure_sends_single_request(device_store: DeviceManager):
     """测试并发 ensure 下双重检查锁保证仅发送一次请求."""
     transport = StubTransport(starts=[_session_response()])
-    carrier = _make_carrier(transport, device_store)
+    manager = _make_manager(transport, device_store)
 
     async def run() -> None:
-        await carrier.manager.ensure(_android_scope())
+        await manager.ensure(_android_scope())
 
     async with anyio.create_task_group() as task_group:
         for _ in range(6):
             task_group.start_soon(run)
 
     assert len(transport.start_calls) == 1
-    device = device_store.device
-    assert device is not None
-    assert device.session_uid == "1"
 
 
-async def test_http_status_error_raises(device_store: DeviceManager):
-    """测试非 200 状态码响应抛出 HTTPError."""
-    transport = StubTransport(starts=[StubResponse({}, status_code=500)])
-    carrier = _make_carrier(transport, device_store)
+async def test_failure_not_published(device_store: DeviceManager):
+    """测试刷新失败不发布缓存, 后续调用可重试."""
+    transport = StubTransport(starts=[StubResponse({}, status_code=500), _session_response()])
+    manager = _make_manager(transport, device_store)
     with pytest.raises(HTTPError):
-        await carrier.manager.ensure(_android_scope())
+        await manager.ensure(_android_scope())
+    assert not manager._cache
+    session = await manager.ensure(_android_scope())
+    assert session.uid == "1"
+    assert len(transport.start_calls) == 2
 
 
-async def test_malformed_response_raises_api_data_error(device_store: DeviceManager):
-    """测试响应缺少会话字段时抛出 ApiDataError."""
-    transport = StubTransport(starts=[StubResponse({"code": 0, "req_0": {"code": 0, "data": {}}})])
-    carrier = _make_carrier(transport, device_store)
-    with pytest.raises(ApiDataError, match="Session"):
-        await carrier.manager.ensure(_android_scope())
+async def test_malformed_response_not_published(device_store: DeviceManager):
+    """测试响应缺少有效 uid 时抛出 ApiDataError 且不发布."""
+    transport = StubTransport(starts=[StubResponse({"code": 0, "req_0": make_cgi_sub(data={"session": {}})})])
+    manager = _make_manager(transport, device_store)
+    with pytest.raises(ApiDataError):
+        await manager.ensure(_android_scope())
+    assert not manager._cache
+
+
+async def test_lru_eviction(device_store: DeviceManager):
+    """测试缓存超过上限时按最近使用淘汰最旧身份."""
+    starts = [_session_response(uid=str(i)) for i in range(SESSION_CACHE_MAX_IDENTITIES + 1)]
+    transport = StubTransport(starts=starts)
+    manager = _make_manager(transport, device_store)
+    for i in range(SESSION_CACHE_MAX_IDENTITIES + 1):
+        await manager.ensure(_android_scope(Credential(musicid=i, musickey=f"k{i}")))
+    assert len(manager._cache) == SESSION_CACHE_MAX_IDENTITIES
+    evicted_key = ("", credential_fingerprint(Credential(musicid=0, musickey="k0")))
+    assert evicted_key not in manager._cache
 
 
 async def test_expired_session_refreshes_again(device_store: DeviceManager):
-    """测试会话过期时间超限时重新发起刷新."""
-    transport = StubTransport(starts=[_session_response(uid="2", sid="s2")])
-    carrier = _make_carrier(transport, device_store)
-    device = device_store.device
-    assert device is not None
-    device.session_uid = "old"
-    device.session_sid = "old_s"
-    device.session_save_time = int(time.time()) - 86401
-    await carrier.manager.ensure(_android_scope())
-    assert device.session_uid == "2"
-    assert device.session_sid == "s2"
-    assert len(transport.start_calls) == 1
+    """测试会话过期后重新发起刷新."""
+    transport = StubTransport(starts=[_session_response(uid="1"), _session_response(uid="2", sid="s2")])
+    manager = _make_manager(transport, device_store)
+    first = await manager.ensure(_android_scope())
+    # 强制过期已发布的会话.
+    key = next(iter(manager._cache))
+    manager._cache[key] = AndroidSession(uid=first.uid, sid=first.sid, vkey=first.vkey, expires_at=0.0)
+    second = await manager.ensure(_android_scope())
+    assert second.uid == "2"
+    assert len(transport.start_calls) == 2
+
+
+def test_credential_fingerprint_distinguishes_credentials():
+    """测试凭证摘要区分不同凭证且同凭证一致."""
+    cred_a = Credential(musicid=1, musickey="a")
+    cred_b = Credential(musicid=1, musickey="b")
+    assert credential_fingerprint(cred_a) == credential_fingerprint(cred_a.model_copy(deep=True))
+    assert credential_fingerprint(cred_a) != credential_fingerprint(cred_b)

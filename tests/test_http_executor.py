@@ -11,7 +11,7 @@ from qqmusic_api.core.exceptions import HTTPError, NetworkError
 from qqmusic_api.core.executors.http import HttpExecutor
 from qqmusic_api.core.preparation import HttpPreparer
 from qqmusic_api.core.request import HttpRequest
-from qqmusic_api.core.runtime import ClientDefaults
+from qqmusic_api.core.runtime import ClientDefaults, ScopedCall, resolve_scope
 from qqmusic_api.core.transport import TransportTimeout
 from qqmusic_api.core.versioning import DEFAULT_VERSION_POLICY, Platform
 from qqmusic_api.models.request import Credential
@@ -36,13 +36,13 @@ class SlowTransport(StubTransport):
         self.concurrent = 0
         self.max_concurrent = 0
 
-    async def start(self, request: Any) -> Any:
+    async def request(self, request: Any) -> Any:
         """让出控制权并统计并发峰值后返回预置响应."""
         self.concurrent += 1
         self.max_concurrent = max(self.max_concurrent, self.concurrent)
         await anyio.lowlevel.checkpoint()
         self.concurrent -= 1
-        return await super().start(request)
+        return await super().request(request)
 
 
 class BrokenDeviceStore:
@@ -60,16 +60,31 @@ def _http_request(**kwargs: Any) -> HttpRequest[Any]:
     return HttpRequest(_client=cast("Any", None), **kwargs)
 
 
+_DEFAULTS = ClientDefaults(
+    credential=Credential(),
+    platform=Platform.WEB,
+    version_policy=DEFAULT_VERSION_POLICY,
+)
+
+
+def _make_call(index: int, request: HttpRequest[Any]) -> ScopedCall:
+    """按 Engine 冻结规则构造执行条目."""
+    scope = resolve_scope(request, _DEFAULTS)
+    return ScopedCall(index=index, request=request, scope=scope)
+
+
+def _callsc(arg: Any) -> Any:
+    """将旧风格请求或 (索引, 请求) 序列适配为执行条目."""
+    if isinstance(arg, HttpRequest):
+        return _make_call(0, arg)
+    return [_make_call(index, request) for index, request in arg]
+
+
 def _make_executor(transport: StubTransport, *, broken_device_store: bool = False) -> HttpExecutor:
     """构造注入桩传输的 HTTP 执行器."""
     device_store: Any = BrokenDeviceStore() if broken_device_store else DeviceManager(None)
     preparer = HttpPreparer(device_store=device_store, version_policy=DEFAULT_VERSION_POLICY)
     return HttpExecutor(
-        defaults=ClientDefaults(
-            credential=Credential(),
-            platform=Platform.WEB,
-            version_policy=DEFAULT_VERSION_POLICY,
-        ),
         preparer=preparer,
         transport=transport,
     )
@@ -79,10 +94,10 @@ async def test_execute_one_returns_json_dict():
     """测试单请求执行返回解析后的 JSON 字典."""
     transport = StubTransport(starts=[StubResponse({"ok": True})])
     executor = _make_executor(transport)
-    result = await executor.execute_one(_http_request())
+    result = await executor.execute_one(_callsc(_http_request()))
     assert result == {"ok": True}
     assert len(transport.start_calls) == 1
-    assert len(transport.resolve_calls) == 1
+    assert len(transport.release_calls) == 1
 
 
 async def test_execute_one_disable_parse_returns_raw_response():
@@ -90,7 +105,7 @@ async def test_execute_one_disable_parse_returns_raw_response():
     response = StubResponse({"ok": True})
     transport = StubTransport(starts=[response])
     executor = _make_executor(transport)
-    result = await executor.execute_one(_http_request(disable_parse=True))
+    result = await executor.execute_one(_callsc(_http_request(disable_parse=True)))
     assert result is response
 
 
@@ -98,7 +113,7 @@ async def test_execute_one_returns_model():
     """测试单请求执行返回模型实例."""
     transport = StubTransport(starts=[StubResponse({"value": 6})])
     executor = _make_executor(transport)
-    result = await executor.execute_one(_http_request(response_model=DummyModel))
+    result = await executor.execute_one(_callsc(_http_request(response_model=DummyModel)))
     assert result == DummyModel(value=6)
 
 
@@ -107,7 +122,7 @@ async def test_execute_one_network_error():
     transport = StubTransport(starts=[TransportTimeout("timed out")])
     executor = _make_executor(transport)
     with pytest.raises(NetworkError):
-        await executor.execute_one(_http_request())
+        await executor.execute_one(_callsc(_http_request()))
 
 
 async def test_execute_one_http_status_error():
@@ -115,19 +130,18 @@ async def test_execute_one_http_status_error():
     transport = StubTransport(starts=[StubResponse({}, status_code=503, http_error=True)])
     executor = _make_executor(transport)
     with pytest.raises(HTTPError) as exc_info:
-        await executor.execute_one(_http_request())
+        await executor.execute_one(_callsc(_http_request()))
     assert exc_info.value.status_code == 503
 
 
 async def test_execute_many_starts_concurrently_and_resolves_once():
-    """测试批量请求并发发起并通过单次 resolve 集中等待."""
+    """测试批量请求逐项独立执行并逐项释放."""
     transport = SlowTransport(starts=[StubResponse({"i": 0}), StubResponse({"i": 1}), StubResponse({"i": 2})])
     executor = _make_executor(transport)
     indexed = [(0, _http_request()), (1, _http_request()), (2, _http_request())]
-    results = dict(await executor.execute_many(indexed, return_exceptions=False))
+    results = dict(await executor.execute_many(_callsc(indexed), return_exceptions=False))
     assert len(transport.start_calls) == 3
-    assert len(transport.resolve_calls) == 1
-    assert len(transport.resolve_calls[0]) == 3
+    assert len(transport.release_calls) == 3
     assert [results[i]["i"] for i in (0, 1, 2)] == [0, 1, 2]
 
 
@@ -136,20 +150,9 @@ async def test_execute_many_start_error_localized_to_own_index():
     transport = SlowTransport(starts=[TransportTimeout("timed out"), StubResponse({"i": 1})])
     executor = _make_executor(transport)
     indexed = [(0, _http_request()), (1, _http_request())]
-    results = dict(await executor.execute_many(indexed, return_exceptions=True))
+    results = dict(await executor.execute_many(_callsc(indexed), return_exceptions=True))
     assert isinstance(results[0], NetworkError)
     assert results[1] == {"i": 1}
-
-
-async def test_execute_many_resolve_error_affects_all_in_flight():
-    """测试集中等待阶段的错误影响全部未完成请求."""
-    transport = SlowTransport(starts=[StubResponse({"i": 0}), StubResponse({"i": 1})])
-    transport.resolve_error = TransportTimeout("resolve timed out")
-    executor = _make_executor(transport)
-    indexed = [(0, _http_request()), (1, _http_request())]
-    results = dict(await executor.execute_many(indexed, return_exceptions=True))
-    assert isinstance(results[0], NetworkError)
-    assert isinstance(results[1], NetworkError)
 
 
 async def test_execute_many_parse_error_localized():
@@ -160,7 +163,7 @@ async def test_execute_many_parse_error_localized():
         (0, _http_request(response_model=DummyModel)),
         (1, _http_request(response_model=DummyModel)),
     ]
-    results = dict(await executor.execute_many(indexed, return_exceptions=True))
+    results = dict(await executor.execute_many(_callsc(indexed), return_exceptions=True))
     assert results[0] == DummyModel(value=1)
     assert not isinstance(results[1], DummyModel)
 
@@ -170,7 +173,7 @@ async def test_execute_many_return_exceptions_false_raises_network_error():
     transport = SlowTransport(starts=[TransportTimeout("timed out")])
     executor = _make_executor(transport)
     with pytest.raises(NetworkError):
-        await executor.execute_many([(0, _http_request())], return_exceptions=False)
+        await executor.execute_many(_callsc([(0, _http_request())]), return_exceptions=False)
 
 
 async def test_execute_many_cancellation_propagates():
@@ -179,7 +182,7 @@ async def test_execute_many_cancellation_propagates():
     executor = _make_executor(transport)
     with anyio.CancelScope() as scope:
         scope.cancel()
-        await executor.execute_many([(0, _http_request())], return_exceptions=True)
+        await executor.execute_many(_callsc([(0, _http_request())]), return_exceptions=True)
     assert scope.cancelled_caught
 
 
@@ -191,7 +194,7 @@ async def test_execute_many_prepare_ordinary_error_backfills_own_index():
         (0, _http_request()),
         (1, _http_request(headers={"User-Agent": "custom-ua"})),
     ]
-    results = dict(await executor.execute_many(indexed, return_exceptions=True))
+    results = dict(await executor.execute_many(_callsc(indexed), return_exceptions=True))
     assert isinstance(results[0], RuntimeError)
     assert results[1] == {"i": 1}
 
@@ -200,4 +203,4 @@ async def test_execute_many_prepare_ordinary_error_raises_without_return_excepti
     """测试准备阶段普通异常在非容错模式下直接抛出."""
     executor = _make_executor(StubTransport(), broken_device_store=True)
     with pytest.raises(RuntimeError, match="设备加载失败"):
-        await executor.execute_many([(0, _http_request())], return_exceptions=False)
+        await executor.execute_many(_callsc([(0, _http_request())]), return_exceptions=False)

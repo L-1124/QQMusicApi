@@ -7,9 +7,9 @@ import pytest
 import pytest_asyncio
 
 from qqmusic_api.algorithms import zzc_sign
-from qqmusic_api.core.preparation import CgiBatchKey, CgiPreparer, HttpPreparer
+from qqmusic_api.core.preparation import CgiBatch, CgiBatchKey, CgiPreparer, HttpPreparer
 from qqmusic_api.core.request import CgiRequest, HttpRequest
-from qqmusic_api.core.runtime import ClientDefaults, RequestScope, resolve_scope
+from qqmusic_api.core.runtime import ClientDefaults, RequestScope, ScopedCall, resolve_scope
 from qqmusic_api.core.transport import PreparedRequest
 from qqmusic_api.core.versioning import DEFAULT_VERSION_POLICY, Platform
 from qqmusic_api.models.request import Credential
@@ -81,6 +81,18 @@ def _scope(platform: Platform = Platform.WEB, credential: Credential | None = No
     return resolve_scope(_NoopRequest(), _defaults(platform, credential))
 
 
+def _batch(requests: list[Any], scope: RequestScope) -> CgiBatch:
+    """以运行时快照构造 CgiBatch 批次."""
+    return CgiBatch(
+        scope=scope, calls=tuple(ScopedCall(index=i, request=req, scope=scope) for i, req in enumerate(requests))
+    )
+
+
+def _call(request: Any, scope: RequestScope) -> ScopedCall:
+    """以运行时快照构造单条 ScopedCall."""
+    return ScopedCall(index=0, request=request, scope=scope)
+
+
 def _cgi_request(**kwargs: Any) -> CgiRequest[Any]:
     """构造测试用 CGI 请求描述符."""
     kwargs.setdefault("module", "test.module")
@@ -125,7 +137,7 @@ def http_preparer() -> HttpPreparer:
 
 async def test_prepare_batch_bool_conversion(carrier: PreparerCarrier):
     """测试默认将参数中的布尔值转换为整数."""
-    prepared = await carrier.preparer.prepare_batch([_cgi_request(param={"flag": True, "n": 1})], _scope())
+    prepared = await carrier.preparer.prepare_batch(_batch([_cgi_request(param={"flag": True, "n": 1})], _scope()))
     sub = prepared.kwargs["json"]["req_0"]
     assert sub["param"]["flag"] == 1
     assert sub["param"]["n"] == 1
@@ -133,13 +145,15 @@ async def test_prepare_batch_bool_conversion(carrier: PreparerCarrier):
 
 async def test_prepare_batch_preserve_bool(carrier: PreparerCarrier):
     """测试 preserve_bool 保留参数中的布尔值."""
-    prepared = await carrier.preparer.prepare_batch([_cgi_request(param={"flag": True}, preserve_bool=True)], _scope())
+    prepared = await carrier.preparer.prepare_batch(
+        _batch([_cgi_request(param={"flag": True}, preserve_bool=True)], _scope())
+    )
     assert prepared.kwargs["json"]["req_0"]["param"]["flag"] is True
 
 
 async def test_prepare_batch_comm_merge_user_wins(carrier: PreparerCarrier):
     """测试用户 comm 合并时覆盖同名键并保留默认键."""
-    prepared = await carrier.preparer.prepare_batch([_cgi_request(comm={"cv": 999, "extra": "y"})], _scope())
+    prepared = await carrier.preparer.prepare_batch(_batch([_cgi_request(comm={"cv": 999, "extra": "y"})], _scope()))
     comm = prepared.kwargs["json"]["comm"]
     assert comm["cv"] == 999
     assert comm["extra"] == "y"
@@ -148,20 +162,22 @@ async def test_prepare_batch_comm_merge_user_wins(carrier: PreparerCarrier):
 
 async def test_prepare_batch_override_comm(carrier: PreparerCarrier):
     """测试 override_comm 时 comm 完全替换为自定义参数."""
-    prepared = await carrier.preparer.prepare_batch([_cgi_request(comm={"custom": "x"}, override_comm=True)], _scope())
+    prepared = await carrier.preparer.prepare_batch(
+        _batch([_cgi_request(comm={"custom": "x"}, override_comm=True)], _scope())
+    )
     assert prepared.kwargs["json"]["comm"] == {"custom": "x"}
 
 
 async def test_prepare_batch_web_skips_qimei_and_session(carrier: PreparerCarrier):
     """测试 WEB 平台不获取 QIMEI 也不刷新 Android 会话."""
-    await carrier.preparer.prepare_batch([_cgi_request()], _scope(Platform.WEB))
+    await carrier.preparer.prepare_batch(_batch([_cgi_request()], _scope(Platform.WEB)))
     assert carrier.qimei.calls == 0
     assert carrier.android_session.calls == []
 
 
 async def test_prepare_batch_android_ensures_session_and_qimei(carrier: PreparerCarrier):
     """测试 ANDROID 平台刷新会话并获取 QIMEI 注入 comm."""
-    prepared = await carrier.preparer.prepare_batch([_cgi_request()], _scope(Platform.ANDROID))
+    prepared = await carrier.preparer.prepare_batch(_batch([_cgi_request()], _scope(Platform.ANDROID)))
     assert len(carrier.android_session.calls) == 1
     assert carrier.qimei.calls == 1
     comm = prepared.kwargs["json"]["comm"]
@@ -172,7 +188,7 @@ async def test_prepare_batch_android_ensures_session_and_qimei(carrier: Preparer
 
 async def test_prepare_batch_web_user_agent(carrier: PreparerCarrier):
     """测试 WEB 平台使用 Chrome UA."""
-    prepared = await carrier.preparer.prepare_batch([_cgi_request()], _scope(Platform.WEB))
+    prepared = await carrier.preparer.prepare_batch(_batch([_cgi_request()], _scope(Platform.WEB)))
     assert prepared.kwargs["headers"]["User-Agent"] == (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
         "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
@@ -181,7 +197,7 @@ async def test_prepare_batch_web_user_agent(carrier: PreparerCarrier):
 
 async def test_prepare_batch_sign_url(carrier: PreparerCarrier):
     """测试签名模式切换 URL 并生成时间戳与 zzc 签名."""
-    prepared = await carrier.preparer.prepare_batch([_cgi_request(sign=True)], _scope())
+    prepared = await carrier.preparer.prepare_batch(_batch([_cgi_request(sign=True)], _scope()))
     payload = prepared.kwargs["json"]
     params = prepared.kwargs["params"]
     assert prepared.url == "https://u.y.qq.com/cgi-bin/musics.fcg"
@@ -191,7 +207,7 @@ async def test_prepare_batch_sign_url(carrier: PreparerCarrier):
 
 async def test_prepare_batch_unsigned_url(carrier: PreparerCarrier):
     """测试默认使用 musicu.fcg 且无签名参数."""
-    prepared = await carrier.preparer.prepare_batch([_cgi_request()], _scope())
+    prepared = await carrier.preparer.prepare_batch(_batch([_cgi_request()], _scope()))
     assert prepared.url == "https://u.y.qq.com/cgi-bin/musicu.fcg"
     assert prepared.kwargs["params"] == {}
 
@@ -200,7 +216,7 @@ async def test_prepare_batch_multiple_requests_indexed(carrier: PreparerCarrier)
     """测试多个请求按序写入 req_0 与 req_1."""
     first = _cgi_request(module="m1")
     second = _cgi_request(module="m2", param={"x": 1})
-    prepared = await carrier.preparer.prepare_batch([first, second], _scope())
+    prepared = await carrier.preparer.prepare_batch(_batch([first, second], _scope()))
     payload = prepared.kwargs["json"]
     assert payload["req_0"]["module"] == "m1"
     assert payload["req_1"]["module"] == "m2"
@@ -208,22 +224,22 @@ async def test_prepare_batch_multiple_requests_indexed(carrier: PreparerCarrier)
 
 
 async def test_prepare_batch_require_login_without_credential(carrier: PreparerCarrier):
-    """测试 require_login 且凭证无效时抛出 CredentialInvalidError."""
-    from qqmusic_api.core.exceptions import CredentialInvalidError
-
+    """测试 require_login 且凭证无效时由执行器逐项校验 (准备器不再重复校验)."""
     scope = _scope(credential=Credential())
-    with pytest.raises(CredentialInvalidError):
-        await carrier.preparer.prepare_batch([_cgi_request(require_login=True)], scope)
+    # 准备器只接收已通过登录校验的批次; 登录校验职责在 CgiExecutor.
+    prepared = await carrier.preparer.prepare_batch(_batch([_cgi_request(require_login=True)], scope))
+    assert prepared.method == "POST"
 
 
-async def test_prepare_batch_rejects_mixed_keys(carrier: PreparerCarrier):
-    """测试批次内请求分组键不一致时抛出 ValueError."""
+async def test_prepare_batch_accepts_heterogeneous_calls_without_revalidation(carrier: PreparerCarrier):
+    """测试准备器不做二次分组校验 (分组职责在 CgiExecutor)."""
     mixed = [
         _cgi_request(sign=False),
         _cgi_request(sign=True),
     ]
-    with pytest.raises(ValueError, match="不一致"):
-        await carrier.preparer.prepare_batch(mixed, _scope())
+    prepared = await carrier.preparer.prepare_batch(_batch(mixed, _scope()))
+    assert prepared.kwargs["json"]["req_0"]["module"] == "test.module"
+    assert prepared.kwargs["json"]["req_1"]["module"] == "test.module"
 
 
 # ---------------------------------------------------------------------------
@@ -233,21 +249,25 @@ async def test_prepare_batch_rejects_mixed_keys(carrier: PreparerCarrier):
 
 def test_batch_key_credential_fingerprint_distinguishes_extra_fields():
     """测试凭证指纹覆盖全部字段而非仅 musicid/musickey."""
-    scope = _scope()
-    base = Credential(musicid=1, musickey="key", refresh_token="a")
-    other = Credential(musicid=1, musickey="key", refresh_token="b")
-    assert CgiBatchKey.from_request(_cgi_request(credential=base), scope) != CgiBatchKey.from_request(
-        _cgi_request(credential=other), scope
-    )
+    base = _call(_cgi_request(), _scope(credential=Credential(musicid=1, musickey="key", refresh_token="a")))
+    other = _call(_cgi_request(), _scope(credential=Credential(musicid=1, musickey="key", refresh_token="b")))
+    assert CgiBatchKey.from_call(base) != CgiBatchKey.from_call(other)
 
 
 def test_batch_key_equal_for_same_credential():
     """测试相同凭证生成相同分组键."""
-    scope = _scope()
     cred = Credential(musicid=2, musickey="k")
-    assert CgiBatchKey.from_request(_cgi_request(credential=cred), scope) == CgiBatchKey.from_request(
-        _cgi_request(credential=cred.model_copy(deep=True)), scope
-    )
+    first = _call(_cgi_request(), _scope(credential=cred))
+    second = _call(_cgi_request(), _scope(credential=cred.model_copy(deep=True)))
+    assert CgiBatchKey.from_call(first) == CgiBatchKey.from_call(second)
+
+
+def test_batch_key_none_and_empty_comm_merge():
+    """测试 None 与空 dict comm 规范化一致 (可合批)."""
+    scope = _scope()
+    none_comm = _call(_cgi_request(), scope)
+    empty_comm = _call(_cgi_request(comm={}), scope)
+    assert CgiBatchKey.from_call(none_comm) == CgiBatchKey.from_call(empty_comm)
 
 
 def test_batch_key_nested_comm_stable_serialization():
@@ -255,7 +275,7 @@ def test_batch_key_nested_comm_stable_serialization():
     scope = _scope()
     first = _cgi_request(comm={"outer": {"z": 1, "y": 2}})
     second = _cgi_request(comm={"outer": {"y": 2, "z": 1}})
-    assert CgiBatchKey.from_request(first, scope) == CgiBatchKey.from_request(second, scope)
+    assert CgiBatchKey.from_call(_call(first, scope)) == CgiBatchKey.from_call(_call(second, scope))
 
 
 def test_batch_key_ignores_preserve_bool_and_parse_options():
@@ -263,17 +283,17 @@ def test_batch_key_ignores_preserve_bool_and_parse_options():
     scope = _scope()
     base = _cgi_request()
     variant = _cgi_request(preserve_bool=True, allow_error_codes=(1,), parse_on_allow=True, disable_parse=True)
-    assert CgiBatchKey.from_request(base, scope) == CgiBatchKey.from_request(variant, scope)
+    assert CgiBatchKey.from_call(_call(base, scope)) == CgiBatchKey.from_call(_call(variant, scope))
 
 
 def test_batch_key_separates_sign_and_comm():
     """测试 sign, comm 与 override_comm 差异产生不同分组键."""
     scope = _scope()
     base = _cgi_request()
-    assert CgiBatchKey.from_request(base, scope) != CgiBatchKey.from_request(_cgi_request(sign=True), scope)
-    assert CgiBatchKey.from_request(base, scope) != CgiBatchKey.from_request(_cgi_request(comm={"a": 1}), scope)
-    assert CgiBatchKey.from_request(base, scope) != CgiBatchKey.from_request(
-        _cgi_request(comm={"a": 1}, override_comm=True), scope
+    assert CgiBatchKey.from_call(_call(base, scope)) != CgiBatchKey.from_call(_call(_cgi_request(sign=True), scope))
+    assert CgiBatchKey.from_call(_call(base, scope)) != CgiBatchKey.from_call(_call(_cgi_request(comm={"a": 1}), scope))
+    assert CgiBatchKey.from_call(_call(base, scope)) != CgiBatchKey.from_call(
+        _call(_cgi_request(comm={"a": 1}, override_comm=True), scope)
     )
 
 
@@ -283,9 +303,10 @@ def test_batch_key_separates_sign_and_comm():
 
 
 async def test_http_prepare_injects_cookies(http_preparer: HttpPreparer):
-    """测试凭证注入 Cookies 且 str_musicid 优先."""
-    request = _http_request(credential=Credential(musicid=123, str_musicid="456", musickey="key"))
-    prepared = await http_preparer.prepare(request, _scope())
+    """测试 scope 凭证注入 Cookies 且 str_musicid 优先."""
+    request = _http_request()
+    scope = _scope(credential=Credential(musicid=123, str_musicid="456", musickey="key"))
+    prepared = await http_preparer.prepare(_call(request, scope))
     cookies = prepared.kwargs["cookies"]
     assert cookies["uin"] == "456"
     assert cookies["qqmusic_uin"] == "456"
@@ -295,11 +316,9 @@ async def test_http_prepare_injects_cookies(http_preparer: HttpPreparer):
 
 async def test_http_prepare_user_cookies_override(http_preparer: HttpPreparer):
     """测试用户 cookies 覆盖凭证注入的同名键."""
-    request = _http_request(
-        credential=Credential(musicid=123, musickey="key"),
-        cookies={"uin": "custom", "extra": "x"},
-    )
-    prepared = await http_preparer.prepare(request, _scope())
+    request = _http_request(cookies={"uin": "custom", "extra": "x"})
+    scope = _scope(credential=Credential(musicid=123, musickey="key"))
+    prepared = await http_preparer.prepare(_call(request, scope))
     cookies = prepared.kwargs["cookies"]
     assert cookies["uin"] == "custom"
     assert cookies["extra"] == "x"
@@ -308,20 +327,20 @@ async def test_http_prepare_user_cookies_override(http_preparer: HttpPreparer):
 
 async def test_http_prepare_no_credential_no_cookies(http_preparer: HttpPreparer):
     """测试无凭证时不注入 cookies."""
-    prepared = await http_preparer.prepare(_http_request(), _scope(credential=Credential()))
+    prepared = await http_preparer.prepare(_call(_http_request(), _scope(credential=Credential())))
     assert "cookies" not in prepared.kwargs
 
 
 async def test_http_prepare_default_web_ua(http_preparer: HttpPreparer):
     """测试缺少 UA 时注入 WEB 平台 UA."""
-    prepared = await http_preparer.prepare(_http_request(), _scope())
+    prepared = await http_preparer.prepare(_call(_http_request(), _scope()))
     assert prepared.kwargs["headers"]["User-Agent"].startswith("Mozilla/5.0")
 
 
 async def test_http_prepare_respects_existing_ua(http_preparer: HttpPreparer):
     """测试已有 User-Agent 不被覆盖."""
     request = _http_request(headers={"User-Agent": "custom-ua"})
-    prepared = await http_preparer.prepare(request, _scope())
+    prepared = await http_preparer.prepare(_call(request, _scope()))
     assert prepared.kwargs["headers"]["User-Agent"] == "custom-ua"
 
 
@@ -332,7 +351,7 @@ async def test_http_prepare_passes_all_options(http_preparer: HttpPreparer):
         json={"body": True},
         kwargs={"timeout": 3.0, "allow_redirects": False, "stream": True, "auth": ("u", "p")},
     )
-    prepared = await http_preparer.prepare(request, _scope())
+    prepared = await http_preparer.prepare(_call(request, _scope()))
     kwargs = prepared.kwargs
     assert kwargs["params"] == {"q": 1}
     assert kwargs["json"] == {"body": True}
@@ -348,8 +367,9 @@ async def test_http_prepare_does_not_mutate_input(http_preparer: HttpPreparer):
     """测试准备过程不修改请求描述符中的原始字典."""
     headers = {"Accept": "application/json"}
     cookies = {"uin": "orig"}
-    request = _http_request(headers=headers, cookies=cookies, credential=Credential(musicid=9, musickey="k"))
-    await http_preparer.prepare(request, _scope())
+    request = _http_request(headers=headers, cookies=cookies)
+    scope = _scope(credential=Credential(musicid=9, musickey="k"))
+    await http_preparer.prepare(_call(request, scope))
     assert headers == {"Accept": "application/json"}
     assert cookies == {"uin": "orig"}
 

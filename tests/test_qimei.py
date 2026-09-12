@@ -161,4 +161,4 @@ async def test_request_uses_prepared_post(device_store: DeviceManager):
     assert request.url == "https://api.tencentmusic.com/tme/trpc/proxy"
     assert "sign" in request.kwargs["headers"]
     assert "qimeiParams" in request.kwargs["json"]
-    assert len(transport.resolve_calls) == 1
+    assert len(transport.release_calls) == 1

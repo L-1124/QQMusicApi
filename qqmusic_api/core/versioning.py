@@ -1,13 +1,20 @@
 """请求版本策略中心."""
 
+from __future__ import annotations
+
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from ..models.request import CommonParams, Credential
 from ..utils.common import hash33
-from ..utils.device import Device
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+
+    from ..utils.device import Device
+    from .android_session import AndroidSession
 
 
 class Platform(str, Enum):
@@ -33,17 +40,15 @@ class VersionProfile:
 
 @dataclass(slots=True)
 class VersionPolicy:
-    """请求版本策略."""
+    """请求版本策略.
+
+    版本策略在 Client 生命周期内固定; 公参按次生成, 不持有
+    全局可变缓存.
+    """
 
     android: VersionProfile
     desktop: VersionProfile
     web: VersionProfile
-    _comm_cache: dict[tuple, dict[str, Any]] = field(
-        init=False,
-        default_factory=dict,
-        repr=False,
-        compare=False,
-    )
 
     def get_profile(self, platform: Platform) -> VersionProfile:
         """获取平台对应的版本档案.
@@ -67,6 +72,7 @@ class VersionPolicy:
         device: Device,
         qimei: Mapping[str, str] | None,
         guid: str,
+        session: AndroidSession | None = None,
     ) -> dict[str, Any]:
         """构建统一 comm 参数.
 
@@ -76,33 +82,16 @@ class VersionPolicy:
             device: 设备信息.
             qimei: QIMEI 缓存.
             guid: 客户端 GUID.
+            session: Android 会话值 (AndroidSession); 仅 ANDROID 平台使用,
+                显式注入而非读取设备共享会话槽.
 
         Returns:
             构建后的 comm 参数字典.
         """
-        cache_key = (
-            platform,
-            credential,
-            (
-                device.android_id,
-                device.version.release,
-                device.model,
-                device.version.sdk,
-                device.fingerprint,
-                device.session_uid,
-                device.session_sid,
-            )
-            if platform == Platform.ANDROID
-            else (),
-            tuple(sorted(qimei.items())) if qimei else None,
-            guid,
-        )
-        cached = self._comm_cache.get(cache_key)
-        if cached is not None:
-            return cached.copy()
-
         profile = self.get_profile(platform)
         if platform == Platform.ANDROID:
+            session_uid = getattr(session, "uid", None)
+            session_sid = getattr(session, "sid", None)
             params = CommonParams(
                 ct=profile.ct,
                 cv=profile.cv,
@@ -116,9 +105,9 @@ class VersionPolicy:
                 QIMEI36=qimei["q36"] if qimei is not None else "",
                 OpenUDID=guid,
                 udid=guid,
-                uid=device.session_uid,
+                uid=session_uid,
                 OpenUDID2=guid,
-                sid=device.session_sid,
+                sid=session_sid,
                 aid=device.android_id,
                 os_ver=device.version.release,
                 phonetype=device.model,
@@ -153,10 +142,7 @@ class VersionPolicy:
                 need_new_code=1,
             )
 
-        comm = params.model_dump(by_alias=True, exclude_none=True)
-
-        self._comm_cache[cache_key] = comm
-        return comm.copy()
+        return params.model_dump(by_alias=True, exclude_none=True)
 
     def get_user_agent(self, platform: Platform, device: Device) -> str:
         """根据平台获取 UA.

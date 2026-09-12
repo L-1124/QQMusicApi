@@ -46,33 +46,37 @@ def build_result(
 
     Args:
         raw: 原始响应数据.
-        response_model: 期望的响应模型类型, 支持 Pydantic BaseModel.
+        response_model: 期望的响应模型类型, 支持 Pydantic BaseModel;
+            非 BaseModel 类型原样返回.
 
     Returns:
         构建好的响应模型实例, 或原样返回 (如果无需转换).
     """
     if response_model is None:
         return raw
-    return response_model.model_validate(raw)
+    if issubclass(response_model, BaseModel):
+        return response_model.model_validate(raw)
+    return raw
 
 
-def unwrap_cgi_envelope(response: "RawResponse", expected_count: int) -> list[dict[str, Any]]:
+def unwrap_cgi_envelope(response: "RawResponse", expected_count: int) -> "list[dict[str, Any] | None]":
     """拆解并校验 CGI 批量响应的外层信封.
 
-    校验顺序: HTTP 状态, 非空内容, 合法 JSON 对象, 严格整数外层 code,
-    全局错误, 完整 ``req_i`` 子响应与子响应对象形态.
+    只做外层检查: HTTP 状态, 非空内容, 合法 JSON 对象与严格整数
+    外层 code. ``req_i`` 的存在性, 形态与子 code 属于逐项边界 —
+    缺失或非对象的 ``req_i`` 在对应位置返回 None (额外 ``req_i`` 忽略),
+    兄弟子项不受污染.
 
     Args:
         response: 传输层返回的原始响应.
         expected_count: 预期的子响应数量.
 
     Returns:
-        按序排列的子响应字典列表.
+        按序排列的子响应字典列表; 缺失/畸形子项位置为 None.
 
     Raises:
         HTTPError: HTTP 状态码非 200.
-        ApiDataError: 响应无内容, JSON 非法/非对象, 外层或子 code 非整数,
-            或缺少预期的子响应.
+        ApiDataError: 响应无内容, JSON 非法/非对象, 或外层 code 非整数.
         GlobalApiError: 外层 code 非零.
     """
     status = response.status_code
@@ -96,14 +100,10 @@ def unwrap_cgi_envelope(response: "RawResponse", expected_count: int) -> list[di
     if code != 0:
         raise GlobalApiError("Module 请求失败", code=code, data=response.text)
 
-    try:
-        items = [payload[f"req_{i}"] for i in range(expected_count)]
-    except KeyError as exc:
-        raise ApiDataError(f"CGI 响应格式异常, 缺少预期的子响应: {exc}") from exc
-
-    for item in items:
-        if not isinstance(item, dict):
-            raise ApiDataError("CGI 响应格式异常, 子响应非对象")
+    items: list[dict[str, Any] | None] = []
+    for i in range(expected_count):
+        item = payload.get(f"req_{i}")
+        items.append(item if isinstance(item, dict) else None)
     return items
 
 

@@ -1,20 +1,30 @@
-"""CGI 单次与批量执行器."""
+"""CGI 单次与批量执行器.
+
+每个 CGI 批次都是独立执行单元: 准备 → 单物理请求 → 信封解包 →
+逐项解析 → finally 释放响应. 批次之间通过有限 worker 并发推进,
+worker 数量不超过共享并发容量; 无跨物理请求的集中等待.
+
+执行器独占登录校验, 规范分组键与批次切块; 准备器只接收
+``CgiBatch``, 身份一律取自执行快照 (scope), 不回读原请求或
+Client 默认值.
+"""
 
 from collections import defaultdict
 from typing import TYPE_CHECKING, Any
 
-from ..exceptions import CredentialInvalidError, NetworkError
-from ..preparation import CgiBatchKey, CgiPreparer
-from ..request import CgiRequest, CgiRequestResultT
+import anyio
+
+from ..exceptions import ApiDataError, CredentialInvalidError, NetworkError
+from ..preparation import CgiBatch, CgiBatchKey, CgiPreparer
+from ..request import CgiRequest
 from ..response import parse_cgi_item, unwrap_cgi_envelope
-from ..runtime import ClientDefaults, RequestScope, resolve_scope
+from ..runtime import DEFAULT_MAX_CONCURRENCY, OperationScope, ScopedCall
 from ..transport import Transport, TransportError
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from ...models.request import Credential
-    from ..transport import RawResponse
 
 
 def _has_valid_credential(credential: "Credential") -> bool:
@@ -41,35 +51,70 @@ def _to_network_error(exc: TransportError) -> NetworkError:
     return NetworkError(str(exc))
 
 
+def _unwrap_single_exception(exc: BaseException) -> BaseException:
+    """任务组将单个错误包装为异常组; 仅一项时还原直接抛出语义.
+
+    Args:
+        exc: 任务组抛出的异常.
+
+    Returns:
+        组内唯一异常, 或原异常 (无法安全还原时).
+    """
+    exceptions = getattr(exc, "exceptions", None)
+    if isinstance(exceptions, tuple) and len(exceptions) == 1:
+        return exceptions[0]
+    return exc
+
+
+def _cast_request(call: ScopedCall) -> CgiRequest[Any]:
+    """取回执行条目中的 CGI 请求副本.
+
+    Args:
+        call: 执行条目.
+
+    Returns:
+        CGI 请求描述符副本.
+    """
+    request = call.request
+    assert isinstance(request, CgiRequest)
+    return request
+
+
 class CgiExecutor:
-    """CGI 请求执行器. 串联准备器, 传输与响应解析."""
+    """CGI 请求执行器. 独占登录校验, 规范分组键与批次切块."""
 
     def __init__(
         self,
         *,
-        defaults: ClientDefaults,
         preparer: CgiPreparer,
         transport: Transport,
+        max_concurrency: int = DEFAULT_MAX_CONCURRENCY,
     ) -> None:
         """初始化 CGI 执行器.
 
         Args:
-            defaults: 客户端级默认运行时状态.
             preparer: CGI 批次准备器.
-            transport: 两阶段传输边界.
+            transport: 单物理请求传输边界.
+            max_concurrency: 批次并发 worker 数上限.
         """
-        self._defaults = defaults
         self._preparer = preparer
         self._transport = transport
+        self._max_concurrency = max_concurrency
 
-    async def execute_one(self, request: CgiRequest[CgiRequestResultT]) -> CgiRequestResultT:
-        """执行单个 CGI 请求并返回解析结果.
+    async def execute_one(
+        self,
+        call: ScopedCall,
+        *,
+        operation: OperationScope | None = None,
+    ) -> Any:
+        """执行单个 CGI 请求条目并返回解析结果.
 
         异常直接抛出, 不包装为异常组; 准备阶段 (QIMEI/Android Session)
         与传输阶段的网络异常统一转换为 ``NetworkError``.
 
         Args:
-            request: CGI 请求描述符.
+            call: 执行条目 (身份取自 scope).
+            operation: 本次操作的资源登记表; 缺省时使用独立临时登记.
 
         Returns:
             解析后的结果对象.
@@ -78,26 +123,32 @@ class CgiExecutor:
             CredentialInvalidError: 请求需要登录但凭证无效.
             NetworkError: 网络传输异常 (含准备阶段的 QIMEI/Android Session 请求).
         """
-        scope = resolve_scope(request, self._defaults)
-        if request.require_login and not _has_valid_credential(scope.credential):
+        request = _cast_request(call)
+        if request.require_login and not _has_valid_credential(call.scope.credential):
             raise CredentialInvalidError("请求需要登录, 未提供有效的登录凭证")
 
+        batch = CgiBatch(scope=call.scope, calls=(call,))
         try:
-            prepared = await self._preparer.prepare_batch([request], scope)
-            response = await self._transport.start(prepared)
-            await self._transport.resolve([response])
+            prepared = await self._preparer.prepare_batch(batch)
+            response = await self._transport.request(prepared)
         except TransportError as exc:
             raise _to_network_error(exc) from exc
 
-        items = unwrap_cgi_envelope(response, expected_count=1)
-        return self._parse_item(items[0], request)
+        try:
+            items = unwrap_cgi_envelope(response, expected_count=1)
+            item = items[0]
+            if item is None:
+                raise ApiDataError("CGI 响应格式异常, 缺少或畸形子响应 req_0")
+            return self._parse_item(item, request)
+        finally:
+            await self._transport.release(response)
 
     def _parse_item(self, raw: dict[str, Any], request: CgiRequest[Any]) -> Any:
         """按请求描述符的解析选项解析单个子响应.
 
         Args:
             raw: CGI 子响应字典.
-            request: 请求描述符.
+            request: 请求描述符副本.
 
         Returns:
             解析后的结果对象.
@@ -112,22 +163,24 @@ class CgiExecutor:
 
     async def execute_many(
         self,
-        requests: "Sequence[tuple[int, CgiRequest[Any]]]",
+        calls: "Sequence[ScopedCall]",
         *,
         batch_size: int,
+        operation: OperationScope | None = None,
         return_exceptions: bool = False,
     ) -> "list[tuple[int, Any]]":
-        """执行索引化的 CGI 请求集合.
+        """执行索引化的 CGI 请求条目集合.
 
-        按 ``CgiBatchKey`` 分组并按 ``batch_size`` 切块, 各批次先后发起,
-        最后通过单次 ``resolve`` 集中等待; 批次级网络或信封错误影响该批次
-        全部位置, 单个子项的解析错误只影响对应位置. 分组键计算与准备阶段
-        的普通异常同样按上述作用范围回填, 取消类 ``BaseException`` 始终
-        直接传播.
+        逐项执行 ``require_login`` 校验后按快照身份分组并按 ``batch_size``
+        切块; 各批次为独立执行单元, 由不超过 ``max_concurrency`` 的 worker
+        并发推进; 批次级网络或信封错误影响该批次全部位置, 单个子项的解析
+        错误只影响对应位置. 分组阶段的普通异常同样按上述作用范围回填,
+        取消类 ``BaseException`` 始终直接传播.
 
         Args:
-            requests: (原始索引, 请求描述符) 序列.
+            calls: 执行条目序列.
             batch_size: 单个批次包含的最大请求数.
+            operation: 本次操作的资源登记表; 缺省时使用独立临时登记.
             return_exceptions: 是否捕获普通异常并写入对应位置.
 
         Returns:
@@ -139,84 +192,114 @@ class CgiExecutor:
             NetworkError: ``return_exceptions`` 为 False 且发生网络异常.
         """
         results: dict[int, Any] = {}
-        request_by_index = dict(requests)
-        scopes: dict[int, RequestScope] = {}
-        groups: defaultdict[CgiBatchKey, list[tuple[int, CgiRequest[Any]]]] = defaultdict(list)
-        for index, request in requests:
+        groups: defaultdict[CgiBatchKey, list[ScopedCall]] = defaultdict(list)
+        for call in calls:
+            request = _cast_request(call)
             try:
-                scope = resolve_scope(request, self._defaults)
-                key = CgiBatchKey.from_request(request, scope)
+                key = CgiBatchKey.from_call(call)
             except Exception as exc:
                 if return_exceptions:
-                    results[index] = exc
+                    results[call.index] = exc
                     continue
                 raise
-            scopes[index] = scope
-            if request.require_login and not _has_valid_credential(scope.credential):
+            if request.require_login and not _has_valid_credential(call.scope.credential):
                 exc = CredentialInvalidError("请求需要登录, 未提供有效的登录凭证")
                 if return_exceptions:
-                    results[index] = exc
+                    results[call.index] = exc
                     continue
                 raise exc
-            groups[key].append((index, request))
+            groups[key].append(call)
 
         if not groups:
             return sorted(results.items())
 
-        batches: list[list[int]] = []
+        batches: list[CgiBatch] = []
         for group in groups.values():
             for start in range(0, len(group), batch_size):
                 chunk = group[start : start + batch_size]
-                batches.append([index for index, _ in chunk])
+                batches.append(CgiBatch(scope=chunk[0].scope, calls=tuple(chunk)))
 
-        in_flight: list[tuple[list[int], RawResponse]] = []
-        for indices in batches:
-            chunk = [request_by_index[index] for index in indices]
-            try:
-                prepared = await self._preparer.prepare_batch(chunk, scopes[indices[0]])
-                response = await self._transport.start(prepared)
-            except TransportError as exc:
-                if return_exceptions:
-                    error = _to_network_error(exc)
-                    for index in indices:
-                        results[index] = error
-                    continue
-                raise _to_network_error(exc) from exc
-            except Exception as exc:
-                if return_exceptions:
-                    for index in indices:
-                        results[index] = exc
-                    continue
-                raise
-            in_flight.append((indices, response))
+        pending_batches = iter(batches)
+        batches_lock = anyio.Lock()
+
+        async def _worker() -> None:
+            while True:
+                async with batches_lock:
+                    batch = next(pending_batches, None)
+                if batch is None:
+                    return
+                await self._run_batch(
+                    batch,
+                    results=results,
+                    return_exceptions=return_exceptions,
+                )
 
         try:
-            await self._transport.resolve([response for _, response in in_flight])
-        except TransportError as exc:
-            if not return_exceptions:
-                raise _to_network_error(exc) from exc
-            error = _to_network_error(exc)
-            for indices, _ in in_flight:
-                for index in indices:
-                    results[index] = error
-            return sorted(results.items())
-
-        for indices, response in in_flight:
-            try:
-                items = unwrap_cgi_envelope(response, expected_count=len(indices))
-            except Exception as exc:
-                if return_exceptions:
-                    for index in indices:
-                        results[index] = exc
-                    continue
-                raise
-            for position, index in enumerate(indices):
-                try:
-                    results[index] = self._parse_item(items[position], request_by_index[index])
-                except Exception as exc:  # noqa: PERF203
-                    if return_exceptions:
-                        results[index] = exc
-                    else:
-                        raise
+            async with anyio.create_task_group() as task_group:
+                for _ in range(min(self._max_concurrency, len(batches))):
+                    task_group.start_soon(_worker)
+        except BaseException as exc:
+            single = _unwrap_single_exception(exc)
+            if single is not exc:
+                raise single from exc
+            raise
 
         return sorted(results.items())
+
+    async def _run_batch(
+        self,
+        batch: CgiBatch,
+        *,
+        results: dict[int, Any],
+        return_exceptions: bool,
+    ) -> None:
+        """执行单个批次: 准备, 请求, 解包并逐项解析, finally 释放响应.
+
+        Args:
+            batch: 请求批次.
+            results: 结果回填字典.
+            return_exceptions: 是否捕获普通异常并写入对应位置.
+        """
+        try:
+            prepared = await self._preparer.prepare_batch(batch)
+            response = await self._transport.request(prepared)
+        except TransportError as exc:
+            if return_exceptions:
+                error = _to_network_error(exc)
+                for call in batch.calls:
+                    results[call.index] = error
+                return
+            raise _to_network_error(exc) from exc
+        except Exception as exc:
+            if return_exceptions:
+                for call in batch.calls:
+                    results[call.index] = exc
+                return
+            raise
+
+        try:
+            try:
+                items = unwrap_cgi_envelope(response, expected_count=len(batch.calls))
+            except Exception as exc:
+                if return_exceptions:
+                    for call in batch.calls:
+                        results[call.index] = exc
+                    return
+                raise
+            # 子项错误只影响对应位置, 兄弟项继续解析.
+            first_error: Exception | None = None
+            for position, call in enumerate(batch.calls):
+                item = items[position]
+                try:
+                    if item is None:
+                        raise ApiDataError(f"CGI 响应格式异常, 缺少或畸形子响应 req_{position}")
+                    results[call.index] = self._parse_item(item, _cast_request(call))
+                except Exception as exc:
+                    if return_exceptions:
+                        results[call.index] = exc
+                    elif first_error is None:
+                        first_error = exc
+            if first_error is not None:
+                raise first_error
+        finally:
+            await self._transport.release(response)

@@ -91,7 +91,7 @@ async def test_execute_delegates_to_engine(stub_client: Client):
     result = await stub_client.execute(_cgi_request(stub_client, response_model=DummyModel))
     assert result == DummyModel(value=8)
     assert len(transport.start_calls) == 1
-    assert len(transport.resolve_calls) == 1
+    assert len(transport.release_calls) == 1
 
 
 async def test_execute_http_request_delegates_to_engine(stub_client: Client):
@@ -150,7 +150,7 @@ async def test_wx_long_poll_timeout_maps_to_scan_event(stub_client: Client):
     class TimeoutTransport(StubTransport):
         """start 抛出超时的传输桩."""
 
-        async def start(self, request: Any) -> Any:
+        async def request(self, request: Any) -> Any:
             """模拟长轮询超时."""
             raise TransportTimeout("timed out")
 
@@ -166,7 +166,7 @@ async def test_wx_long_poll_transport_error_maps_to_network_error(stub_client: C
     class BrokenTransport(StubTransport):
         """start 抛出普通传输异常的桩."""
 
-        async def start(self, request: Any) -> Any:
+        async def request(self, request: Any) -> Any:
             """模拟网络错误."""
             raise TransportError("connection reset")
 
