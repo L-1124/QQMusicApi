@@ -173,7 +173,7 @@ class NiquestsTransport:
             session: 外部注入的会话, 仅用于测试; 缺省时内部构建.
         """
         self._client = session or AsyncSession(
-            multiplexed=True,
+            multiplexed=False,
             hooks=AsyncTokenBucketLimiter(rate=rate, capacity=capacity),
             happy_eyeballs=True,
             retries=RetryConfiguration(
@@ -221,8 +221,6 @@ class NiquestsTransport:
                     cert=self.cert,
                     verify=self.verify,
                 )
-                if getattr(response, "lazy", False):
-                    await self._client.gather(response)
             except Timeout as exc:
                 raise TransportTimeout(str(exc)) from exc
             except RequestException as exc:
