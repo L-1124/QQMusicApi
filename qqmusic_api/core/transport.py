@@ -6,9 +6,10 @@
 或明确移交所有权.
 """
 
-from collections.abc import Mapping
+import contextlib
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Any, Protocol, runtime_checkable
+from typing import Any, Protocol, cast, runtime_checkable
 
 import anyio
 from niquests import AsyncSession, AsyncTokenBucketLimiter, RetryConfiguration
@@ -21,6 +22,7 @@ from .runtime import DEFAULT_MAX_CONCURRENCY
 
 __all__ = [
     "HttpRawResponse",
+    "MultiplexTransport",
     "NiquestsTransport",
     "PreparedRequest",
     "RawResponse",
@@ -107,6 +109,15 @@ class Transport(Protocol):
         ...
 
 
+@runtime_checkable
+class MultiplexTransport(Protocol):
+    """支持先提交多个请求、再集中解析响应的传输扩展."""
+
+    async def request_many(self, requests: Sequence[PreparedRequest]) -> list[RawResponse]:
+        """批量提交请求并在全部响应就绪后按输入顺序返回."""
+        ...
+
+
 def _map_transport_exception(exc: RequestException) -> TransportError:
     """将 niquests 异常转换为内部传输异常.
 
@@ -173,7 +184,7 @@ class NiquestsTransport:
             session: 外部注入的会话, 仅用于测试; 缺省时内部构建.
         """
         self._client = session or AsyncSession(
-            multiplexed=False,
+            multiplexed=True,
             hooks=AsyncTokenBucketLimiter(rate=rate, capacity=capacity),
             happy_eyeballs=True,
             retries=RetryConfiguration(
@@ -191,6 +202,7 @@ class NiquestsTransport:
         self.cert = cert
         self.verify = verify
         self.hooks = hooks
+        self._max_concurrency = max_concurrency
         self._capacity = anyio.Semaphore(max_concurrency)
         self._closed = False
 
@@ -210,22 +222,72 @@ class NiquestsTransport:
             TransportTimeout: 请求超时.
             TransportError: 其他网络异常.
         """
-        async with self._capacity:
+        responses = await self.request_many([request])
+        return responses[0]
+
+    async def request_many(self, requests: Sequence[PreparedRequest]) -> list[RawResponse]:
+        """分块提交 lazy 请求并集中解析响应.
+
+        每个分块先完成全部 ``AsyncSession.request`` 调用, 再执行一次
+        ``AsyncSession.gather(*responses)``, 保留 niquests 的多路复用工作流.
+
+        Args:
+            requests: 待提交的传输请求序列.
+
+        Returns:
+            与输入顺序一致的已就绪响应列表.
+
+        Raises:
+            TransportTimeout: 请求或集中解析超时.
+            TransportError: 其他网络异常.
+        """
+        results: list[RawResponse] = []
+        items = list(requests)
+        for start in range(0, len(items), self._max_concurrency):
+            chunk = items[start : start + self._max_concurrency]
+            responses: list[RawResponse] = []
             try:
-                response = await self._client.request(
-                    request.method,
-                    request.url,
-                    **dict(request.kwargs),
-                    proxies=self.proxies,
-                    hooks=self.hooks,
-                    cert=self.cert,
-                    verify=self.verify,
-                )
+                for request in chunk:
+                    await self._capacity.acquire()
+                    try:
+                        response = await self._client.request(
+                            request.method,
+                            request.url,
+                            **dict(request.kwargs),
+                            proxies=self.proxies,
+                            hooks=self.hooks,
+                            cert=self.cert,
+                            verify=self.verify,
+                        )
+                    except BaseException:
+                        self._capacity.release()
+                        raise
+                    responses.append(response)
+
+                lazy_responses = [response for response in responses if getattr(response, "lazy", False)]
+                if lazy_responses:
+                    await self._client.gather(*cast("list[Response]", lazy_responses))
             except Timeout as exc:
+                await self._discard_unresolved(responses)
                 raise TransportTimeout(str(exc)) from exc
             except RequestException as exc:
+                await self._discard_unresolved(responses)
                 raise TransportError(str(exc)) from exc
-        return response
+            except BaseException:
+                await self._discard_unresolved(responses)
+                raise
+            finally:
+                for _ in responses:
+                    self._capacity.release()
+            results.extend(responses)
+        return results
+
+    async def _discard_unresolved(self, responses: Sequence[RawResponse]) -> None:
+        """尽力关闭未能集中解析完成的响应."""
+        with anyio.CancelScope(shield=True):
+            for response in responses:
+                with contextlib.suppress(Exception):
+                    await _release_raw(response)
 
     async def release(self, response: RawResponse) -> None:
         """释放响应占用的连接或流资源. 幂等, 允许重复释放.

@@ -16,7 +16,7 @@ from ..exceptions import NetworkError
 from ..preparation import HttpPreparer
 from ..response import parse_http_response
 from ..runtime import DEFAULT_MAX_CONCURRENCY, OperationScope, ScopedCall
-from ..transport import Transport, TransportError
+from ..transport import MultiplexTransport, Transport, TransportError
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -150,6 +150,14 @@ class HttpExecutor:
             NetworkError: ``return_exceptions`` 为 False 且发生网络异常.
         """
         operation = operation or OperationScope(self._transport)
+        multiplex_transport = self._transport if isinstance(self._transport, MultiplexTransport) else None
+        if multiplex_transport is not None:
+            return await self._execute_many_multiplexed(
+                calls,
+                transport=multiplex_transport,
+                operation=operation,
+                return_exceptions=return_exceptions,
+            )
         results: dict[int, Any] = {}
         items = list(calls)
         pending_items = iter(items)
@@ -179,6 +187,62 @@ class HttpExecutor:
                 raise single from exc
             raise
 
+        return sorted(results.items())
+
+    async def _execute_many_multiplexed(
+        self,
+        calls: "Sequence[ScopedCall]",
+        *,
+        transport: MultiplexTransport,
+        operation: OperationScope,
+        return_exceptions: bool,
+    ) -> "list[tuple[int, Any]]":
+        """先准备并提交全部 HTTP 请求, 再集中解析 lazy 响应."""
+        results: dict[int, Any] = {}
+        prepared_calls: list[tuple[ScopedCall, Any]] = []
+        for call in calls:
+            try:
+                prepared_calls.append((call, await self._preparer.prepare(call)))
+            except Exception as exc:  # noqa: PERF203
+                if return_exceptions:
+                    results[call.index] = exc
+                else:
+                    raise
+
+        if not prepared_calls:
+            return sorted(results.items())
+
+        try:
+            responses = await transport.request_many([prepared for _, prepared in prepared_calls])
+        except TransportError as exc:
+            error = _to_network_error(exc)
+            if not return_exceptions:
+                raise error from exc
+            for call, _ in prepared_calls:
+                results[call.index] = error
+            return sorted(results.items())
+
+        first_error: Exception | None = None
+        for (call, _), response in zip(prepared_calls, responses, strict=True):
+            delivered = False
+            try:
+                if call.request.disable_parse:
+                    operation.track(response)
+                    delivered = True
+                    results[call.index] = response
+                else:
+                    results[call.index] = self._decode(response, call)
+            except Exception as exc:
+                if return_exceptions:
+                    results[call.index] = exc
+                elif first_error is None:
+                    first_error = exc
+            finally:
+                if not delivered:
+                    await self._transport.release(response)
+
+        if first_error is not None:
+            raise first_error
         return sorted(results.items())
 
     async def _run_one(
