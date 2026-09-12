@@ -19,7 +19,7 @@ from ..preparation import CgiBatch, CgiBatchKey, CgiPreparer
 from ..request import CgiRequest
 from ..response import parse_cgi_item, unwrap_cgi_envelope
 from ..runtime import DEFAULT_MAX_CONCURRENCY, OperationScope, ScopedCall
-from ..transport import Transport, TransportError
+from ..transport import MultiplexTransport, Transport, TransportError
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -219,6 +219,16 @@ class CgiExecutor:
                 chunk = group[start : start + batch_size]
                 batches.append(CgiBatch(scope=chunk[0].scope, calls=tuple(chunk)))
 
+        multiplex_transport = self._transport if isinstance(self._transport, MultiplexTransport) else None
+        if multiplex_transport is not None:
+            await self._run_batches_multiplexed(
+                batches,
+                transport=multiplex_transport,
+                results=results,
+                return_exceptions=return_exceptions,
+            )
+            return sorted(results.items())
+
         pending_batches = iter(batches)
         batches_lock = anyio.Lock()
 
@@ -245,6 +255,75 @@ class CgiExecutor:
             raise
 
         return sorted(results.items())
+
+    async def _run_batches_multiplexed(
+        self,
+        batches: "Sequence[CgiBatch]",
+        *,
+        transport: MultiplexTransport,
+        results: dict[int, Any],
+        return_exceptions: bool,
+    ) -> None:
+        """先提交全部 CGI 物理批次, 再解析集中收取的响应."""
+        prepared_batches: list[tuple[CgiBatch, Any]] = []
+        for batch in batches:
+            try:
+                prepared_batches.append((batch, await self._preparer.prepare_batch(batch)))
+            except TransportError as exc:  # noqa: PERF203
+                error = _to_network_error(exc)
+                if not return_exceptions:
+                    raise error from exc
+                for call in batch.calls:
+                    results[call.index] = error
+            except Exception as exc:
+                if not return_exceptions:
+                    raise
+                for call in batch.calls:
+                    results[call.index] = exc
+
+        if not prepared_batches:
+            return
+
+        try:
+            responses = await transport.request_many([prepared for _, prepared in prepared_batches])
+        except TransportError as exc:
+            error = _to_network_error(exc)
+            if not return_exceptions:
+                raise error from exc
+            for batch, _ in prepared_batches:
+                for call in batch.calls:
+                    results[call.index] = error
+            return
+
+        first_error: Exception | None = None
+        for (batch, _), response in zip(prepared_batches, responses, strict=True):
+            try:
+                try:
+                    items = unwrap_cgi_envelope(response, expected_count=len(batch.calls))
+                except Exception as exc:
+                    if return_exceptions:
+                        for call in batch.calls:
+                            results[call.index] = exc
+                    elif first_error is None:
+                        first_error = exc
+                    continue
+
+                for position, call in enumerate(batch.calls):
+                    item = items[position]
+                    try:
+                        if item is None:
+                            raise ApiDataError(f"CGI 响应格式异常, 缺少或畸形子响应 req_{position}")
+                        results[call.index] = self._parse_item(item, _cast_request(call))
+                    except Exception as exc:
+                        if return_exceptions:
+                            results[call.index] = exc
+                        elif first_error is None:
+                            first_error = exc
+            finally:
+                await self._transport.release(response)
+
+        if first_error is not None:
+            raise first_error
 
     async def _run_batch(
         self,
