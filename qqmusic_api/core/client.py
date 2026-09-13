@@ -1,19 +1,24 @@
-"""API 客户端组合根与公开门面. 组装请求内核并委托执行."""
+"""QQMusic API 客户端."""
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from functools import cached_property
-from typing import TYPE_CHECKING, Any, Literal, cast, overload
+from typing import TYPE_CHECKING, Any, Literal, overload
 
 import anyio
-from niquests import PreparedRequest
-from niquests.models import Response
-from niquests.typing import AsyncHookType, ProxyType, TLSClientCertType, TLSVerifyType
 from typing_extensions import Self
 
 from ..models.request import Credential
 from ..utils.android_session import AndroidSessionManager
+from ..utils.device import DeviceManager
+from ..utils.qimei import QimeiManager
+from .engine import ClientDefaults, RequestEngine
+from .exceptions import NetworkError
+from .executor import CgiExecutor, HttpExecutor
+from .request import BaseRequest, ResultT
+from .transport import DEFAULT_MAX_CONCURRENCY, NiquestsTransport, Transport
+from .versioning import DEFAULT_VERSION_POLICY, Platform
 
 if TYPE_CHECKING:
     from ..modules.album import AlbumApi
@@ -30,14 +35,7 @@ if TYPE_CHECKING:
     from ..modules.songlist import SonglistApi
     from ..modules.top import TopApi
     from ..modules.user import UserApi
-from ..utils.device import DeviceManager
-from ..utils.qimei import QimeiManager
-from .engine import ClientDefaults, RequestEngine
-from .exceptions import NetworkError
-from .executor import CgiExecutor, HttpExecutor
-from .request import BaseRequest, ResultT
-from .transport import DEFAULT_MAX_CONCURRENCY, NiquestsTransport, Transport
-from .versioning import DEFAULT_VERSION_POLICY, Platform
+
 
 CLOSE_CLEANUP_BUDGET_SECONDS = 5.0
 
@@ -52,12 +50,7 @@ class _Operation:
 
 
 class Client:
-    """QQMusic API Client.
-
-    组合根与公开门面. 拥有操作生命周期状态机 (OPEN → CLOSING → CLOSED):
-    进入 CLOSING 后拒绝新操作, 取消已登记操作并等待清理; 关闭失败保持
-    可重试的 CLOSING, 顺序重复 close 为空操作.
-    """
+    """QQMusic API Client."""
 
     def __init__(
         self,
@@ -65,13 +58,6 @@ class Client:
         *,
         platform: Platform | None = None,
         device_path: str | None = None,
-        rate: float | None = None,
-        capacity: float | None = None,
-        connect_retries: int | None = None,
-        proxies: ProxyType | None = None,
-        cert: TLSClientCertType | None = None,
-        hooks: AsyncHookType[PreparedRequest | Response] | None = None,
-        verify: TLSVerifyType | None = None,
         max_concurrency: int | None = None,
         transport: Transport | None = None,
     ):
@@ -81,13 +67,6 @@ class Client:
             credential: 全局默认凭证.
             platform: 全局默认请求平台.
             device_path: 设备信息文件路径.
-            rate: 请求速率限制 (请求/秒). 默认为 10.
-            capacity: 令牌桶容量, 允许的突发请求数. 默认为 50.
-            connect_retries: 连接建立失败时的最大重试次数. 默认为 2.
-            proxies: 代理配置, 详见 niquests 文档.
-            cert: TLS 客户端证书配置, 详见 niquests 文档.
-            verify: TLS 证书验证配置, 详见 niquests 文档.
-            hooks: 请求/响应钩子, 详见 niquests 文档.
             max_concurrency: 共享并发容量与分区 worker 上限. 必须为正整数,
                 默认为 20.
             transport: 外部注入的传输实现 (满足 Transport 协议); 注入后
@@ -95,82 +74,48 @@ class Client:
                 构建内置 NiquestsTransport.
 
         Raises:
-            ValueError: 注入自定义 transport 的同时显式提供了任一内置
-                专用配置 (rate/capacity/connect_retries/proxies/cert/
-                verify/hooks/max_concurrency), 或 max_concurrency 非正整数.
+            ValueError: max_concurrency 非正整数.
         """
         if max_concurrency is not None and (not isinstance(max_concurrency, int) or max_concurrency <= 0):
             raise ValueError("max_concurrency 必须为正整数")
-
-        custom_config: list[str] = []
-        if transport is not None:
-            custom_config = [
-                name
-                for name, value in (
-                    ("rate", rate),
-                    ("capacity", capacity),
-                    ("connect_retries", connect_retries),
-                    ("proxies", proxies),
-                    ("cert", cert),
-                    ("verify", verify),
-                    ("hooks", hooks),
-                    ("max_concurrency", max_concurrency),
-                )
-                if value is not None
-            ]
-            if custom_config:
-                raise ValueError(f"注入自定义 transport 时不能同时设置内置专用配置: {', '.join(custom_config)}")
 
         self._defaults = ClientDefaults(
             credential=credential or Credential(),
             platform=platform or Platform.ANDROID,
             version_policy=DEFAULT_VERSION_POLICY,
         )
-        self._device_store = DeviceManager(device_path)
-        self._custom_transport = transport is not None
-        self._max_concurrency = max_concurrency or DEFAULT_MAX_CONCURRENCY
-        self._transport: Transport = transport or NiquestsTransport(
-            rate=rate or 10,
-            capacity=capacity or 50,
-            connect_retries=connect_retries if connect_retries is not None else 2,
-            proxies=proxies,
-            cert=cert,
-            verify=verify,
-            hooks=hooks,
-            max_concurrency=self._max_concurrency,
-        )
+        device_store = DeviceManager(device_path)
+        max_concurrency_val = max_concurrency or DEFAULT_MAX_CONCURRENCY
+        self._transport: Transport = transport or NiquestsTransport(max_concurrency=max_concurrency_val)
         self._close_state: Literal["open", "closing", "closed"] = "open"
         self._close_lock = anyio.Lock()
         self._operations: set[_Operation] = set()
-        self._qimei_manager = QimeiManager(
-            device_store=self._device_store,
+        qimei_manager = QimeiManager(
+            device_store=device_store,
             app_version=self._defaults.version_policy.get_qimei_app_version(),
             sdk_version=self._defaults.version_policy.get_qimei_sdk_version(),
             transport=self._transport,
         )
-        self._android_session = AndroidSessionManager(
-            device_store=self._device_store,
-            qimei_manager=self._qimei_manager,
-            version_policy=self._defaults.version_policy,
-            transport=self._transport,
-        )
-        self._cgi_executor = CgiExecutor(
-            android_session=self._android_session,
-            device_store=self._device_store,
-            qimei_manager=self._qimei_manager,
-            version_policy=self._defaults.version_policy,
-            transport=self._transport,
-            max_concurrency=self._max_concurrency,
-        )
-        self._http_executor = HttpExecutor(
-            device_store=self._device_store,
-            version_policy=self._defaults.version_policy,
-            transport=self._transport,
-            max_concurrency=self._max_concurrency,
-        )
         self._engine = RequestEngine(
-            cgi_executor=self._cgi_executor,
-            http_executor=self._http_executor,
+            cgi_executor=CgiExecutor(
+                android_session=AndroidSessionManager(
+                    device_store=device_store,
+                    qimei_manager=qimei_manager,
+                    version_policy=self._defaults.version_policy,
+                    transport=self._transport,
+                ),
+                device_store=device_store,
+                qimei_manager=qimei_manager,
+                version_policy=self._defaults.version_policy,
+                transport=self._transport,
+                max_concurrency=max_concurrency_val,
+            ),
+            http_executor=HttpExecutor(
+                device_store=device_store,
+                version_policy=self._defaults.version_policy,
+                transport=self._transport,
+                max_concurrency=max_concurrency_val,
+            ),
             transport=self._transport,
             defaults=self._defaults,
         )
@@ -192,56 +137,6 @@ class Client:
     @platform.setter
     def platform(self, value: Platform):
         self._defaults.platform = value
-
-    @property
-    def _niquests(self) -> NiquestsTransport:
-        """返回内置传输实例.
-
-        网络配置代理 (proxies/cert/verify/hooks) 仅由内置
-        NiquestsTransport 支持.
-
-        Raises:
-            NotImplementedError: 注入了自定义 Transport.
-        """
-        if self._custom_transport:
-            raise NotImplementedError("网络配置代理仅对内置 NiquestsTransport 有效")
-        return cast("NiquestsTransport", self._transport)
-
-    @property
-    def proxies(self) -> ProxyType | None:
-        """获取代理配置."""
-        return self._niquests.proxies
-
-    @proxies.setter
-    def proxies(self, value: ProxyType | None):
-        self._niquests.proxies = value
-
-    @property
-    def cert(self) -> TLSClientCertType | None:
-        """获取 TLS 客户端证书配置."""
-        return self._niquests.cert
-
-    @cert.setter
-    def cert(self, value: TLSClientCertType | None):
-        self._niquests.cert = value
-
-    @property
-    def verify(self) -> TLSVerifyType | None:
-        """获取 TLS 证书验证配置."""
-        return self._niquests.verify
-
-    @verify.setter
-    def verify(self, value: TLSVerifyType | None):
-        self._niquests.verify = value
-
-    @property
-    def hooks(self) -> AsyncHookType[PreparedRequest | Response] | None:
-        """获取请求/响应钩子."""
-        return self._niquests.hooks
-
-    @hooks.setter
-    def hooks(self, value: AsyncHookType[PreparedRequest | Response] | None):
-        self._niquests.hooks = value
 
     @cached_property
     def helper(self) -> "HelperApi":
@@ -365,7 +260,7 @@ class Client:
             return operation
 
     @asynccontextmanager
-    async def _operation(self) -> AsyncIterator[None]:
+    async def _operation(self) -> AsyncGenerator[None]:
         """登记一个在途操作 (登录直连请求, MQTT 流等).
 
         Client.close 会取消已登记操作; 操作体内收到取消后清理自身资源,

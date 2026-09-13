@@ -57,7 +57,7 @@ async def test_client_initialization_composes_kernel(stub_client: Client):
     assert stub_client.credential.musicid == 0
 
 
-async def test_credential_update_proxies_to_defaults(stub_client: Client):
+async def test_credential_update_updates_client_defaults(stub_client: Client):
     """测试凭证更新代理到客户端默认值."""
     cred = Credential(musicid=7, musickey="k")
     stub_client.credential = cred
@@ -66,22 +66,11 @@ async def test_credential_update_proxies_to_defaults(stub_client: Client):
     assert stub_client.credential.musicid == 0
 
 
-async def test_platform_update_proxies_to_defaults(stub_client: Client):
+async def test_platform_update_updates_client_defaults(stub_client: Client):
     """测试平台更新代理到客户端默认值."""
     stub_client.platform = Platform.ANDROID
     assert stub_client.platform == Platform.ANDROID
     assert stub_client._defaults.platform == Platform.ANDROID
-
-
-async def test_network_config_updates_proxy_to_transport(real_client: Client):
-    """测试网络配置动态更新代理到传输实例."""
-    real_client.proxies = {"https": "http://proxy:8080"}
-    real_client.cert = "/tmp/cert.pem"
-    real_client.verify = False
-    assert real_client._niquests.proxies == {"https": "http://proxy:8080"}
-    assert real_client._niquests.cert == "/tmp/cert.pem"
-    assert real_client._niquests.verify is False
-    assert real_client.proxies == real_client._niquests.proxies
 
 
 async def test_execute_delegates_to_engine(stub_client: Client):
