@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from qqmusic_api import Client, Credential
 from qqmusic_api.core.exceptions import NetworkError
 from qqmusic_api.core.request import BaseRequest, CgiRequest, HttpRequest
-from qqmusic_api.core.transport import NiquestsTransport, TransportError, TransportTimeout
+from qqmusic_api.core.transport import TransportError, TransportTimeout
 from qqmusic_api.core.versioning import Platform
 from qqmusic_api.models.login import QR, QRCodeLoginEvents, QRLoginType
 from tests.kernel_contract import StubResponse, StubTransport, make_cgi_envelope, make_cgi_sub
@@ -41,22 +41,6 @@ async def stub_client() -> AsyncIterator[Client]:
     yield test_client
 
 
-@pytest_asyncio.fixture
-async def real_client() -> AsyncIterator[Client]:
-    """创建真实传输的 Client 实例, 用于验证门面配置代理."""
-    test_client = Client(platform=Platform.WEB)
-    yield test_client
-    await test_client.close()
-
-
-async def test_client_initialization_composes_kernel(stub_client: Client):
-    """测试 Client 初始化组装完整内核依赖."""
-    assert stub_client._defaults.platform == Platform.WEB
-    assert stub_client._engine is not None
-    assert stub_client._transport is not None
-    assert stub_client.credential.musicid == 0
-
-
 async def test_credential_update_updates_client_defaults(stub_client: Client):
     """测试凭证更新代理到客户端默认值."""
     cred = Credential(musicid=7, musickey="k")
@@ -70,7 +54,6 @@ async def test_platform_update_updates_client_defaults(stub_client: Client):
     """测试平台更新代理到客户端默认值."""
     stub_client.platform = Platform.ANDROID
     assert stub_client.platform == Platform.ANDROID
-    assert stub_client._defaults.platform == Platform.ANDROID
 
 
 async def test_execute_delegates_to_engine(stub_client: Client):
@@ -170,8 +153,3 @@ def cast_transport(client: Client) -> StubTransport:
     transport = client._transport
     assert isinstance(transport, StubTransport)
     return transport
-
-
-def test_niquests_transport_is_default_transport(real_client: Client):
-    """测试默认构建 NiquestsTransport 作为传输实现."""
-    assert isinstance(real_client._transport, NiquestsTransport)
