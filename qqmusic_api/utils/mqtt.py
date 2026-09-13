@@ -1,4 +1,4 @@
-"""MQTT 5.0 over WebSocket 流式会话边界. 独立于有限请求执行内核."""
+"""MQTT 5.0 over WebSocket 通用客户端实现模块."""
 
 import logging
 import ssl
@@ -7,7 +7,7 @@ import types
 from collections.abc import AsyncGenerator, Callable
 from dataclasses import dataclass, field
 from enum import IntEnum
-from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any
 
 import anyio
 import anyio.from_thread
@@ -73,52 +73,6 @@ class MqttMessage:
             return None
 
 
-@dataclass(frozen=True, slots=True)
-class MqttConfig:
-    """MQTT 会话连接配置.
-
-    Attributes:
-        client_id: MQTT Client ID.
-        host: WebSocket 主机名.
-        port: WebSocket 端口.
-        path: 握手路径.
-        keep_alive: MQTT keep alive 秒数.
-        max_redirects: 最大重定向次数.
-    """
-
-    client_id: str
-    host: str
-    port: int
-    path: str = "/mqtt"
-    keep_alive: int = 45
-    max_redirects: int = 3
-
-
-@runtime_checkable
-class MqttSession(Protocol):
-    """MQTT 流式会话协议."""
-
-    async def connect(
-        self,
-        properties: dict[Any, Any] | None = None,
-        headers: dict[str, str] | None = None,
-    ) -> None:
-        """建立连接并发送 CONNECT 报文."""
-        ...
-
-    async def subscribe(self, topic: str, properties: dict[Any, Any] | None = None) -> None:
-        """订阅主题并等待订阅确认."""
-        ...
-
-    def messages(self) -> AsyncGenerator[MqttMessage, None]:
-        """返回服务端推送消息的异步生成器."""
-        ...
-
-    async def close(self) -> None:
-        """关闭会话并释放资源."""
-        ...
-
-
 @dataclass(slots=True)
 class _PendingSuback:
     """订阅确认等待记录."""
@@ -139,21 +93,34 @@ class _ConnectOutcome:
     last_error: Exception | None = None
 
 
-class PahoMqttSession:
-    """基于 Paho 的 MQTT 5.0 over WebSocket 流式会话实现."""
+class Client:
+    """通用、轻量级的 MQTT 5.0 over WebSocket 客户端."""
 
-    def __init__(self, config: MqttConfig) -> None:
-        """初始化会话.
+    def __init__(
+        self,
+        client_id: str,
+        host: str,
+        port: int,
+        path: str = "/mqtt",
+        keep_alive: int = 45,
+        max_redirects: int = 3,
+    ) -> None:
+        """初始化客户端.
 
         Args:
-            config: MQTT 会话连接配置.
+            client_id: MQTT Client ID.
+            host: WebSocket 主机名.
+            port: WebSocket 端口.
+            path: 握手路径.
+            keep_alive: MQTT keep alive 秒数.
+            max_redirects: 最大重定向次数.
         """
-        self.client_id = config.client_id
-        self.host = config.host
-        self.port = config.port
-        self.path = config.path
-        self.keep_alive = config.keep_alive
-        self._max_redirects = config.max_redirects
+        self.client_id = client_id
+        self.host = host
+        self.port = port
+        self.path = path
+        self.keep_alive = keep_alive
+        self._max_redirects = max_redirects
 
         self._close_lock = anyio.Lock()
 
@@ -180,7 +147,7 @@ class PahoMqttSession:
         exc_tb: types.TracebackType | None,
     ) -> None:
         """退出异步上下文并关闭连接."""
-        await self.close()
+        await self.disconnect()
 
     def _create_paho_client(self) -> mqtt.Client:
         """创建底层 Paho 客户端实例."""
@@ -502,11 +469,7 @@ class PahoMqttSession:
             ConnectionError: 握手或协议校验失败.
             MqttRedirectError: 超过最大重定向次数.
         """
-        if self._event_loop_token is None:
-            # 会话可不经过 __aenter__ 直接使用, 首次连接时绑定当前事件循环,
-            # 供 Paho 回调线程切回.
-            self._event_loop_token = anyio.lowlevel.current_token()
-        await self.close_ws_only()
+        await self.disconnect_ws_only()
 
         redirect_count = 0
         connect_timeout = _MQTT_CONNECT_TIMEOUT
@@ -612,7 +575,7 @@ class PahoMqttSession:
 
         await anyio.to_thread.run_sync(_stop)
 
-    async def close_ws_only(self) -> None:
+    async def disconnect_ws_only(self) -> None:
         """终止当前 MQTT 连接."""
         async with self._close_lock:
             client = self._mqtt_client
@@ -632,9 +595,9 @@ class PahoMqttSession:
             self._publish_send_stream = None
             self._closing = False
 
-    async def close(self) -> None:
+    async def disconnect(self) -> None:
         """断开连接并释放所有资源."""
-        await self.close_ws_only()
+        await self.disconnect_ws_only()
         logger.debug("Disconnected.")
 
     async def messages(self) -> AsyncGenerator[MqttMessage, None]:

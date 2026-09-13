@@ -129,7 +129,7 @@ async def quick_search(self, keyword: str) -> dict[str, Any]:
 | `method`        | `str`                  |                                                   HTTP 方法，如 `"GET"`、`"POST"` |
 | `url`           | `str`                  |                                                                          请求地址 |
 | `credential`    | `Credential` 或 `None` |                                            覆盖本次请求的凭证，默认使用客户端凭证 |
-| `disable_parse` | `bool`                 |                      为 True 时不解析 JSON，直接返回原始 `niquests.Response` 对象 |
+| `disable_parse` | `bool`                 |                                    校验 HTTP 状态并返回原始响应，响应由调用者关闭 |
 | `**kwargs`      |                        | 透传给底层 `niquests` 的参数（`params`、`json`、`data`、`headers`、`cookies` 等） |
 
 !!! note

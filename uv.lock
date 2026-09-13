@@ -1589,7 +1589,7 @@ requires-dist = [
     { name = "orjson", specifier = ">=3.10.15" },
     { name = "paho-mqtt", specifier = ">=2.1.0" },
     { name = "pydantic", specifier = ">=2.13.3" },
-    { name = "typing-extensions", specifier = ">=4.12.2" },
+    { name = "typing-extensions", specifier = ">=4.16.0" },
 ]
 provides-extras = ["upload"]
 

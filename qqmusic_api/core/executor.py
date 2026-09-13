@@ -448,15 +448,15 @@ class HttpExecutor:
         """交付响应."""
         delivered = False
         try:
-            if call.request.disable_parse:
-                operation.track(response)
-                delivered = True
-                return response
-            return parse_http_response(
+            result = parse_http_response(
                 response,
                 disable_parse=call.request.disable_parse,
                 response_model=call.request.response_model,
             )
+            if call.request.disable_parse:
+                operation.track(response)
+                delivered = True
+            return result
         finally:
             if not delivered:
                 await _release_responses(self._transport, [response])

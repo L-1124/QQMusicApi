@@ -261,7 +261,7 @@ class Client:
 
     @asynccontextmanager
     async def _operation(self) -> AsyncGenerator[None]:
-        """登记一个在途操作 (登录直连请求, MQTT 流等).
+        """登记一个在途请求操作.
 
         Client.close 会取消已登记操作; 操作体内收到取消后清理自身资源,
         随后以 RuntimeError 告知调用者操作被关闭流程取消.

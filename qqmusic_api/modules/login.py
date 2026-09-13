@@ -6,7 +6,7 @@ import re
 from collections.abc import Callable
 from contextlib import aclosing
 from time import time
-from typing import TYPE_CHECKING, Any
+from typing import Any
 from uuid import uuid4
 
 import anyio
@@ -35,11 +35,9 @@ from ..models.login import (
 )
 from ..models.request import Credential
 from ..utils import hash33
-from ..utils.mqtt import MqttConfig, MqttSession, PahoMqttSession, PropertyId
+from ..utils.mqtt import Client as MqttClient
+from ..utils.mqtt import PropertyId
 from ._base import ApiModule
-
-if TYPE_CHECKING:
-    from ..core.client import Client
 
 _QQ_STATUS_RE = re.compile(r"ptuiCB\((.*?)\)")
 _QQ_ARGS_RE = re.compile(r"'((?:\\.|[^'])*)'")
@@ -53,18 +51,6 @@ _ERROR_CODE = 1000, 104401, 104400, 20261, 20271, 20272, 20274, 20277, 20278, 20
 # TODO: 登录和刷新时设置 `deviceName`
 class LoginApi(ApiModule):
     """登录相关的 API."""
-
-    def __init__(
-        self, client: "Client", *, mqtt_session_builder: Callable[[MqttConfig], MqttSession] | None = None
-    ) -> None:
-        """初始化登录模块.
-
-        Args:
-            client: 客户端实例.
-            mqtt_session_builder: MQTT 会话构造可调用对象, 缺省时使用 Paho 实现.
-        """
-        super().__init__(client)
-        self._mqtt_session_builder = mqtt_session_builder or PahoMqttSession
 
     def _validate_result(self, resp: dict[str, Any]) -> dict[str, Any]:
         code = resp.get("code", 0)
@@ -261,15 +247,6 @@ class LoginApi(ApiModule):
             NetworkError: MQTT 建连、订阅或消息监听过程中发生网络错误.
         """
         client_id = f"{int(time() * 1000)}{random.randint(1000, 9999)}"
-        session = self._mqtt_session_builder(
-            MqttConfig(
-                client_id=client_id,
-                host="mu.y.qq.com",
-                port=443,
-                path="/ws/handshake",
-                keep_alive=45,
-            ),
-        )
 
         def get_timeout_left() -> float | None:
             """返回当前 deadline 剩余秒数."""
@@ -287,44 +264,39 @@ class LoginApi(ApiModule):
             with anyio.fail_after(timeout_left):
                 return await operation()
 
-        try:
+        async with MqttClient(
+            client_id=client_id,
+            host="mu.y.qq.com",
+            port=443,
+            path="/ws/handshake",
+            keep_alive=45,
+        ) as client:
             try:
-                async with self._client._operation():
-                    await await_before_deadline(lambda: self._connect_mobile_mqtt(session, qrcode.identifier))
-                    topic = f"management.qrcode_login/{qrcode.identifier}"
-                    await await_before_deadline(
-                        lambda: session.subscribe(
-                            topic,
-                            properties={
-                                PropertyId.USER_PROPERTY: [
-                                    ("authorization", "tmelogin"),
-                                    ("pubsub", "unicast"),
-                                ]
-                            },
-                        ),
-                    )
+                await await_before_deadline(lambda: self._connect_mobile_mqtt(client, qrcode.identifier))
+                topic = f"management.qrcode_login/{qrcode.identifier}"
+                await await_before_deadline(
+                    lambda: client.subscribe(
+                        topic,
+                        properties={PropertyId.USER_PROPERTY: [("authorization", "tmelogin"), ("pubsub", "unicast")]},
+                    ),
+                )
             except TimeoutError:
                 yield QRLoginResult(event=QRCodeLoginEvents.TIMEOUT)
                 return
             except ConnectionError as exc:
                 raise NetworkError(str(exc)) from exc
-            except RuntimeError:
-                return
 
             yield QRLoginResult(event=QRCodeLoginEvents.SCAN)
 
             try:
-                async with aclosing(session.messages()) as messages:
+                async with aclosing(client.messages()) as messages:
                     while True:
                         try:
-                            async with self._client._operation():
-                                message = await await_before_deadline(lambda: anext(messages))
+                            message = await await_before_deadline(lambda: anext(messages))
                         except StopAsyncIteration:
                             return
                         except TimeoutError:
                             yield QRLoginResult(event=QRCodeLoginEvents.TIMEOUT)
-                            return
-                        except RuntimeError:
                             return
 
                         message_type = message.properties.get("type")
@@ -355,8 +327,6 @@ class LoginApi(ApiModule):
                             return
             except ConnectionError as exc:
                 raise NetworkError(str(exc)) from exc
-        finally:
-            await session.close()
 
     async def send_authcode(
         self,
@@ -626,9 +596,9 @@ class LoginApi(ApiModule):
 
             return QRLoginResult(event=event, credential=await self._authorize_wx_qr(wx_code))
 
-    async def _connect_mobile_mqtt(self, session: Any, qrcode_id: str) -> None:
+    async def _connect_mobile_mqtt(self, client: MqttClient, qrcode_id: str) -> None:
         """建立手机客户端二维码 MQTT 连接."""
-        await session.connect(
+        await client.connect(
             properties={
                 PropertyId.AUTH_METHOD: "pass",
                 PropertyId.USER_PROPERTY: [

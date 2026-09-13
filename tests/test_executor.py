@@ -685,13 +685,15 @@ async def test_http_execute_one_network_error():
         await executor.execute_one(_callsc(_http_request()))
 
 
-async def test_http_execute_one_http_status_error():
+@pytest.mark.parametrize("disable_parse", [False, True])
+async def test_http_execute_one_http_status_error(*, disable_parse: bool):
     """测试响应状态异常转换为项目 HTTPError."""
     transport = StubTransport(starts=[StubResponse({}, status_code=503, http_error=True)])
     executor = _make_http_executor(transport)
     with pytest.raises(HTTPError) as exc_info:
-        await executor.execute_one(_callsc(_http_request()))
+        await executor.execute_one(_callsc(_http_request(disable_parse=disable_parse)))
     assert exc_info.value.status_code == 503
+    assert len(transport.release_calls) == 1
 
 
 async def test_http_execute_many_runs_items_independently_and_releases_each():

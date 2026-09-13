@@ -183,19 +183,33 @@ client = Client(device_path="device.json")
 ## 并发与批大小
 
 * `batch_size` 只限制 **一个 CGI 信封内的子请求数**（合批的上限），不代表并发数；
-* `max_concurrency`（构造参数，默认 20）限制共享的物理并发容量；CGI、HTTP、QIMEI、Android Session 共用该上限；
+* 使用默认传输时，`max_concurrency`（构造参数，默认 20）限制共享的物理并发容量；CGI、HTTP、QIMEI、Android Session 共用该上限；
+* 注入自定义传输时，`Client` 的 `max_concurrency` 控制不支持批量发送的传输的并发回退；传输自身的批量发送与共享容量限制由其实现负责；
 * HTTP 请求从不合并，每个请求独立执行、独立释放。
 
 ## 资源释放与关闭
 
-* 常规响应在解析完成后立即释放连接；`disable_parse=True` 时原始响应交付给调用者，**缓冲响应** 可在连接释放后继续读取，**流式响应**（`stream=True`）必须由调用者主动关闭，`Client.close` 之后不保证未读流可用。
+* 常规响应在解析完成后立即释放连接。HTTP 请求设置 `disable_parse=True` 时仍检查 HTTP 状态，4xx/5xx 响应抛出 `HTTPError` 并释放；成功交付的原始响应由调用者负责关闭。**缓冲响应**可在关闭后读取已缓冲内容，**流式响应**（`stream=True`）应在关闭前读取，`Client.close()` 之后不保证未读流可用。
+* CGI 请求的 `disable_parse=True` 仅跳过模型转换，仍检查 HTTP 状态与业务错误码，返回子响应的 `data`，不返回原始 HTTP 响应。
 * `close()` 进入关闭流程后：拒绝新操作（抛 `RuntimeError`）、取消并等待在途操作清理，然后关闭网络资源；重复 `close()` 为幂等空操作，关闭失败可重试。
-* 客户端关闭后调用 `execute`/`gather`/新的登录操作会抛出 `RuntimeError`。
+* 客户端关闭后调用 `execute()` / `gather()` 会抛出 `RuntimeError`。
 
-## 自定义传输
+## 传输配置
 
-可通过 `transport` 参数注入满足传输协议的自定义实现（提供 `request`/`release`/`close`）：
+默认使用 `NiquestsTransport`。它支持配置请求速率、令牌桶容量、连接重试、代理、TLS 证书验证、请求钩子和最大并发数。构造后通过 `transport` 参数传给 `Client`：
 
-* 注入后该传输实例的生命周期归 `Client` 所有，`close()` 时一并关闭；不支持多个 Client 共享同一传输实例；
-* 注入时显式提供任一内置专用配置（`rate`/`capacity`/`connect_retries`/`proxies`/`cert`/`verify`/`hooks`/`max_concurrency`）会抛出 `ValueError`；
-* `client.proxies`/`cert`/`verify`/`hooks` 属性仅对内置传输有效，自定义模式下读写会抛出 `NotImplementedError`。
+```python
+from qqmusic_api import Client
+from qqmusic_api.core.transport import NiquestsTransport
+
+transport = NiquestsTransport(
+    proxies={"https": "http://127.0.0.1:7890"},
+    connect_retries=2,
+    max_concurrency=20,
+)
+
+async with Client(transport=transport, max_concurrency=20) as client:
+    result = await client.search.quick_search("周杰伦")
+```
+
+也可以通过 `transport` 注入实现 `request()`、`release()` 和 `close()` 的自定义传输。传输实例由 `Client` 管理，并在 `Client.close()` 时关闭。
