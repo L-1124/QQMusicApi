@@ -8,14 +8,13 @@ Client 内存 (LRU, 最多 32 个身份); 刷新使用单一管理器锁, 锁内
 
 from __future__ import annotations
 
-import hashlib
 import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 import anyio
-import orjson as json
 
+from .engine import RequestScope, credential_fingerprint
 from .exceptions import ApiDataError
 from .response import parse_cgi_item, unwrap_cgi_envelope
 from .transport import PreparedRequest
@@ -24,7 +23,6 @@ from .versioning import Platform, VersionPolicy
 if TYPE_CHECKING:
     from ..utils.device import DeviceManager
     from ..utils.qimei import QimeiManager
-    from .runtime import RequestScope
     from .transport import Transport
 
 SESSION_VALID_SECONDS = 86400
@@ -58,21 +56,6 @@ class AndroidSession:
             是否有效.
         """
         return now < self.expires_at
-
-
-def credential_fingerprint(credential: Any) -> str:
-    """计算完整凭证规范序列化的 SHA-256 摘要.
-
-    摘要不输出到日志, 不持久化.
-
-    Args:
-        credential: 登录凭证.
-
-    Returns:
-        十六进制摘要字符串.
-    """
-    canonical = json.dumps(credential.model_dump(), option=json.OPT_SORT_KEYS)
-    return hashlib.sha256(canonical).hexdigest()
 
 
 class AndroidSessionManager:

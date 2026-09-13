@@ -15,9 +15,10 @@
   -> BaseRequest 描述符
   -> await request
   -> Client.execute(request)
-  -> ApiContext 注入环境与凭证
-  -> Session.post(...) / Session.request(...)
-  -> Request._parse_response(...)
+  -> Engine 冻结执行快照 (凭证深复制, 描述符副本, scope)
+  -> CgiExecutor / HttpExecutor 准备物理请求
+  -> Transport.request(prepared) 发送并释放响应
+  -> core/response.py 统一解析
   -> 返回原始 dict 或 Pydantic 模型
 ```
 
@@ -28,15 +29,15 @@
   -> self._build_cgi(...)
   -> BaseRequest 描述符列表
     -> Client.gather(requests)
-    -> 按协议、平台、公共参数和凭证配置键自动分组
+    -> Engine 冻结全部执行条目并按协议分区
+    -> CGI 条目按快照身份 (平台, 凭证指纹, comm, 签名) 自动分组
     -> 每组按 batch_size 拆分为批量请求
-    -> 依次发起合并的多参 CGI 请求（req_0, req_1...）
-    -> 使用客户端内部的 Session 并发执行这些任务（self._session.gather）
-    -> 统一解包解析每个响应项
+    -> 全部物理批次经 send_many 一次批量发送 (多路复用: 先提交 lazy 请求, 再集中 gather)
+    -> 统一解包解析每个响应项, 逐项归属错误
     -> 按输入顺序返回结果列表
 ```
 
-`gather` 的分组边界由 `BaseRequest._group_key` 决定。只有协议类型、显式平台、公共参数和凭证相同的请求才会安全地合并到同一个批量请求中。
+`gather` 的分组边界由执行器按 **快照身份** 计算 (生效平台, 完整凭证指纹, 规范化公共参数, 覆盖模式与签名)。只有这些线上环境完全一致的请求才会安全地合并到同一个批量请求中。
 
 ## 编写新的 API
 

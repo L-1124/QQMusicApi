@@ -10,10 +10,9 @@ from qqmusic_api.core.android_session import (
     SESSION_CACHE_MAX_IDENTITIES,
     AndroidSession,
     AndroidSessionManager,
-    credential_fingerprint,
 )
+from qqmusic_api.core.engine import ClientDefaults, RequestScope, credential_fingerprint, resolve_scope
 from qqmusic_api.core.exceptions import ApiDataError, HTTPError
-from qqmusic_api.core.runtime import ClientDefaults, RequestScope, resolve_scope
 from qqmusic_api.core.versioning import DEFAULT_VERSION_POLICY, Platform
 from qqmusic_api.models.request import Credential
 from qqmusic_api.utils.device import DeviceManager

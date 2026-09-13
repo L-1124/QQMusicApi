@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+from dataclasses import dataclass, field
 from functools import cached_property
 from typing import TYPE_CHECKING, Any, Literal, cast, overload
 
@@ -13,14 +14,13 @@ from ..models.request import Credential
 from ..utils.device import DeviceManager
 from ..utils.qimei import QimeiManager
 from .android_session import AndroidSessionManager
-from .engine import RequestEngine
+from .engine import ClientDefaults, RequestEngine
 from .exceptions import NetworkError
-from .executors.cgi import CgiExecutor
-from .executors.http import HttpExecutor
-from .preparation import CgiPreparer, HttpPreparer
-from .runtime import CLOSE_CLEANUP_BUDGET_SECONDS, DEFAULT_MAX_CONCURRENCY, ClientDefaults, OperationRegistry
-from .transport import NiquestsTransport, Transport
+from .executor import CgiExecutor, HttpExecutor
+from .transport import DEFAULT_MAX_CONCURRENCY, NiquestsTransport, Transport
 from .versioning import DEFAULT_VERSION_POLICY, Platform
+
+CLOSE_CLEANUP_BUDGET_SECONDS = 5.0
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -44,6 +44,63 @@ if TYPE_CHECKING:
     from ..modules.top import TopApi
     from ..modules.user import UserApi
     from .request import BaseRequest, ResultT
+
+
+@dataclass(eq=False)
+class OperationHandle:
+    """客户端操作登记: 可取消作用域, 完成事件与关闭取消标志."""
+
+    scope: Any = None
+    done: anyio.Event = field(default_factory=anyio.Event)
+    cancelled_by_close: bool = False
+
+
+class OperationRegistry:
+    """客户端在途操作登记表.
+
+    Client.close 取消全部已登记操作并等待其清理完成;
+    操作自身不得等待正在取消自己的关闭流程.
+    """
+
+    def __init__(self) -> None:
+        """初始化空登记表."""
+        self._handles: set[OperationHandle] = set()
+        self._lock = anyio.Lock()
+
+    async def register(self) -> OperationHandle:
+        """登记一个新操作.
+
+        Returns:
+            操作句柄; 作用域在操作实际进入时设置.
+        """
+        handle = OperationHandle()
+        async with self._lock:
+            self._handles.add(handle)
+        return handle
+
+    async def unregister(self, handle: OperationHandle) -> None:
+        """注销已完成操作并唤醒等待者.
+
+        Args:
+            handle: 待注销的操作句柄.
+        """
+        async with self._lock:
+            self._handles.discard(handle)
+        handle.done.set()
+
+    def cancel_all(self) -> list[OperationHandle]:
+        """取消全部已登记操作.
+
+        Returns:
+            被取消的句柄列表 (含调用者完成事件, 供关闭流程等待).
+        """
+        cancelled: list[OperationHandle] = []
+        for handle in tuple(self._handles):
+            handle.cancelled_by_close = True
+            if handle.scope is not None:
+                handle.scope.cancel()
+            cancelled.append(handle)
+        return cancelled
 
 
 class Client:
@@ -150,20 +207,16 @@ class Client:
             transport=self._transport,
         )
         self._cgi_executor = CgiExecutor(
-            preparer=CgiPreparer(
-                android_session=self._android_session,
-                device_store=self._device_store,
-                qimei_manager=self._qimei_manager,
-                version_policy=self._defaults.version_policy,
-            ),
+            android_session=self._android_session,
+            device_store=self._device_store,
+            qimei_manager=self._qimei_manager,
+            version_policy=self._defaults.version_policy,
             transport=self._transport,
             max_concurrency=self._max_concurrency,
         )
         self._http_executor = HttpExecutor(
-            preparer=HttpPreparer(
-                device_store=self._device_store,
-                version_policy=self._defaults.version_policy,
-            ),
+            device_store=self._device_store,
+            version_policy=self._defaults.version_policy,
             transport=self._transport,
             max_concurrency=self._max_concurrency,
         )

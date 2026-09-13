@@ -5,10 +5,9 @@ from typing import Any, cast
 
 import pytest
 
-from qqmusic_api.core.engine import RequestEngine
+from qqmusic_api.core.engine import ClientDefaults, RequestEngine, RequestScope, ScopedCall, resolve_scope
 from qqmusic_api.core.exceptions import ApiDataError, NetworkError
 from qqmusic_api.core.request import CgiRequest, HttpRequest
-from qqmusic_api.core.runtime import ClientDefaults, ScopedCall
 from qqmusic_api.core.versioning import DEFAULT_VERSION_POLICY, Platform
 from qqmusic_api.models.request import Credential
 from tests.kernel_contract import StubTransport
@@ -236,3 +235,66 @@ async def test_gather_missing_result_guard_raises_api_data_error():
     engine, _, _ = _engine(cgi=PartialCgiExecutor())
     with pytest.raises(ApiDataError, match="缺少以下索引结果"):
         await engine.gather([_cgi_request(), _cgi_request()])
+
+
+# ---------------------------------------------------------------------------
+# 身份解析 (原 runtime 语义: 默认共享副本, 覆盖单独解析, 凭证深复制)
+# ---------------------------------------------------------------------------
+
+
+class _StubRequest:
+    """带覆盖字段的请求桩."""
+
+    def __init__(self, credential: Credential | None = None, platform: Platform | None = None) -> None:
+        """初始化覆盖字段."""
+        self.credential = credential
+        self.platform = platform
+
+
+def _make_defaults(platform: Platform = Platform.WEB) -> ClientDefaults:
+    """构造测试用客户端默认值."""
+    return ClientDefaults(
+        credential=Credential(musicid=1, musickey="global"),
+        platform=platform,
+        version_policy=DEFAULT_VERSION_POLICY,
+    )
+
+
+def test_resolve_scope_defaults_used_when_request_has_no_override() -> None:
+    """测试请求无覆盖时使用客户端默认凭证与平台."""
+    defaults = _make_defaults()
+    scope = resolve_scope(_StubRequest(), defaults)
+    assert scope.platform == Platform.WEB
+    assert scope.credential.musicid == 1
+
+
+def test_resolve_scope_request_credential_overrides_default() -> None:
+    """测试请求级凭证覆盖默认凭证."""
+    defaults = _make_defaults()
+    override = Credential(musicid=2, musickey="request")
+    scope = resolve_scope(_StubRequest(credential=override), defaults)
+    assert scope.credential.musicid == 2
+
+
+def test_resolve_scope_request_platform_overrides_default() -> None:
+    """测试请求级平台覆盖默认平台."""
+    defaults = _make_defaults(platform=Platform.WEB)
+    scope = resolve_scope(_StubRequest(platform=Platform.ANDROID), defaults)
+    assert scope.platform == Platform.ANDROID
+
+
+def test_resolve_scope_credential_is_deep_copy() -> None:
+    """测试解析出的凭证是深复制, 与来源不是同一对象."""
+    defaults = _make_defaults()
+    scope = resolve_scope(_StubRequest(), defaults)
+    assert scope.credential == defaults.credential
+    assert scope.credential is not defaults.credential
+
+
+def test_request_scope_is_frozen() -> None:
+    """测试 RequestScope 不可变, 字段赋值抛出 FrozenInstanceError."""
+    import dataclasses
+
+    scope = RequestScope(credential=Credential(), platform=Platform.WEB)
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        scope.platform = Platform.ANDROID  # type: ignore[reportAttributeIssue]
