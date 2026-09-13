@@ -151,12 +151,14 @@ class Client:
             app_version=self._defaults.version_policy.get_qimei_app_version(),
             sdk_version=self._defaults.version_policy.get_qimei_sdk_version(),
             transport=self._transport,
+            cache_store=self._device_store.cache_store,
         )
         self._android_session = AndroidSessionManager(
             device_store=self._device_store,
             qimei_manager=self._qimei_manager,
             version_policy=self._defaults.version_policy,
             transport=self._transport,
+            cache_store=self._device_store.cache_store,
         )
         self._cgi_executor = CgiExecutor(
             android_session=self._android_session,

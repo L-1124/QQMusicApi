@@ -18,7 +18,7 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from ..core.exceptions import HTTPError
 from ..core.transport import PreparedRequest, Transport
 from .common import calc_md5
-from .device import Device, DeviceManager
+from .device import Device, DeviceCacheStore, DeviceManager
 
 if TYPE_CHECKING:
     from cryptography.hazmat.primitives.asymmetric.rsa import RSAPublicKey
@@ -52,43 +52,45 @@ class QimeiManager:
         app_version: str,
         sdk_version: str,
         transport: Transport,
+        cache_store: DeviceCacheStore | None = None,
     ) -> None:
         """初始化 QIMEI 管理器."""
         self._device_store = device_store
         self._app_version = app_version
         self._sdk_version = sdk_version
         self._transport = transport
+        self._cache_store = cache_store or getattr(device_store, "cache_store", None) or DeviceCacheStore()
         self._lock = anyio.Lock()
-        self._loaded = False
         self._cache: dict[str, str] | None = None
 
     async def get_cached(self) -> dict[str, str]:
         """获取并缓存当前设备的 QIMEI 信息."""
-        device = await self._device_store.get_device()
-        current_time = int(time())
-        is_expired = device.qimei_save_time is None or (current_time - device.qimei_save_time) >= 86400
-
-        if not is_expired and self._cache is not None:
+        if self._cache is not None:
             return self._cache
 
         async with self._lock:
-            device = await self._device_store.get_device()
+            if self._cache is not None:
+                return self._cache
+
             current_time = int(time())
-            is_expired = device.qimei_save_time is None or (current_time - device.qimei_save_time) >= 86400
+            cached = await self._cache_store.get_qimei()
+            if cached is not None:
+                saved_at = cached.get("saved_at")
+                if saved_at is not None and (current_time - saved_at) < 86400:
+                    q16 = cached.get("q16")
+                    q36 = cached.get("q36")
+                    if q16 and q36:
+                        self._cache = {"q16": q16, "q36": q36}
+                        return self._cache
 
-            if not is_expired and self._cache is not None:
-                return self._cache
-
-            if not is_expired and device.qimei and device.qimei36:
-                self._cache = {"q16": device.qimei, "q36": device.qimei36}
-                return self._cache
-
+            device = await self._device_store.get_device()
             cache = await self._request_qimei(device)
             self._cache = cache
             with contextlib.suppress(Exception):
-                await self._device_store.apply_qimei(
+                await self._cache_store.set_qimei(
                     cache.get("q16") or "",
                     cache.get("q36") or "",
+                    saved_at=current_time,
                 )
             return cache
 

@@ -62,8 +62,11 @@ async def test_refresh_posts_and_publishes_session(device_store: DeviceManager):
     assert session.vkey == "v"
     device = device_store.device
     assert device is not None
-    assert device.session_uid == "1"
-    assert device.session_sid == "s"
+    cached = await device_store.cache_store.get_session()
+    assert cached is not None
+    assert cached["uid"] == "1"
+    assert cached["sid"] == "s"
+    assert cached["vkey"] == "v"
     assert len(transport.start_calls) == 1
     assert transport.start_calls[0].url == "https://u.y.qq.com/cgi-bin/musicu.fcg"
     assert transport.start_calls[0].kwargs["json"]["req_0"]["param"]["caller"] == 2

@@ -10,7 +10,7 @@ import pytest_asyncio
 
 from qqmusic_api.core.exceptions import HTTPError
 from qqmusic_api.core.transport import TransportTimeout
-from qqmusic_api.utils.device import Device, DeviceManager
+from qqmusic_api.utils.device import DeviceManager
 from qqmusic_api.utils.qimei import QimeiManager
 from tests.kernel_contract import StubResponse, StubTransport
 
@@ -33,21 +33,14 @@ def _make_manager(transport: StubTransport, device_store: DeviceManager) -> Qime
     )
 
 
-def _cache_valid_device(device_store: DeviceManager) -> None:
+async def _cache_valid_device(device_store: DeviceManager) -> None:
     """将设备写入未过期的 QIMEI 缓存."""
-    device = device_store.device
-    assert device is not None
-    device.qimei = "cached_q16"
-    device.qimei36 = "cached_q36"
-    device.qimei_save_time = int(time.time())
+    await device_store.cache_store.set_qimei("cached_q16", "cached_q36", int(time.time()))
 
 
-def _expire_device(device_store: DeviceManager) -> Device:
-    """返回设备对象并使 QIMEI 缓存过期."""
-    device = device_store.device
-    assert device is not None
-    device.qimei_save_time = None
-    return device
+async def _expire_device(device_store: DeviceManager) -> None:
+    """使 QIMEI 缓存过期."""
+    await device_store.cache_store.set_qimei("expired_q16", "expired_q36", 0)
 
 
 @pytest_asyncio.fixture
@@ -60,7 +53,7 @@ async def device_store() -> DeviceManager:
 
 async def test_cache_hit_does_not_request(device_store: DeviceManager):
     """测试设备缓存有效时直接返回 QIMEI 且不发起请求."""
-    _cache_valid_device(device_store)
+    await _cache_valid_device(device_store)
     transport = StubTransport()
     manager = _make_manager(transport, device_store)
     result = await manager.get_cached()
@@ -71,7 +64,7 @@ async def test_cache_hit_does_not_request(device_store: DeviceManager):
 
 async def test_expired_device_refreshes_once(device_store: DeviceManager):
     """测试过期设备仅刷新一次并回写缓存."""
-    device = _expire_device(device_store)
+    await _expire_device(device_store)
     transport = StubTransport(starts=[StubResponse({}, content=_qimei_payload())])
     manager = _make_manager(transport, device_store)
     first = await manager.get_cached()
@@ -79,14 +72,16 @@ async def test_expired_device_refreshes_once(device_store: DeviceManager):
     assert first == second
     assert first["q16"] == "test_q16"
     assert len(transport.start_calls) == 1
-    assert device.qimei == "test_q16"
-    assert device.qimei36 == "test_q36"
-    assert device.qimei_save_time is not None
+    cached = await device_store.cache_store.get_qimei()
+    assert cached is not None
+    assert cached["q16"] == "test_q16"
+    assert cached["q36"] == "test_q36"
+    assert cached["saved_at"] is not None
 
 
 async def test_concurrent_calls_send_single_request(device_store: DeviceManager):
     """测试并发调用下仅发送一次 QIMEI 请求."""
-    _expire_device(device_store)
+    await _expire_device(device_store)
     transport = StubTransport(starts=[StubResponse({}, content=_qimei_payload())])
     manager = _make_manager(transport, device_store)
 
@@ -105,14 +100,14 @@ async def test_concurrent_calls_send_single_request(device_store: DeviceManager)
 
 async def test_persistence_failure_keeps_result(device_store: DeviceManager):
     """测试持久化失败时不丢失成功的 QIMEI 结果."""
-    _expire_device(device_store)
+    await _expire_device(device_store)
     transport = StubTransport(starts=[StubResponse({}, content=_qimei_payload())])
     manager = _make_manager(transport, device_store)
 
-    async def broken_apply(q16: str, q36: str) -> None:
+    async def broken_apply(q16: str, q36: str, saved_at: int) -> None:
         raise OSError("模拟持久化失败")
 
-    cast("Any", device_store).apply_qimei = broken_apply
+    cast("Any", device_store.cache_store).set_qimei = broken_apply
     result = await manager.get_cached()
     # 持久化异常被吞掉, 成功结果正常返回.
     assert result["q16"] == "test_q16"
@@ -121,7 +116,7 @@ async def test_persistence_failure_keeps_result(device_store: DeviceManager):
 
 async def test_malformed_response_raises_deterministic_error(device_store: DeviceManager):
     """测试响应缺少必要字段时抛出确定异常."""
-    _expire_device(device_store)
+    await _expire_device(device_store)
     inner = json.dumps({"data": {"unexpected": 1}}).decode()
     payload = json.dumps({"data": inner})
     transport = StubTransport(starts=[StubResponse({}, content=payload)])
@@ -132,7 +127,7 @@ async def test_malformed_response_raises_deterministic_error(device_store: Devic
 
 async def test_timeout_wraps_into_transport_error(device_store: DeviceManager):
     """测试传输超时异常透传为 TransportTimeout."""
-    _expire_device(device_store)
+    await _expire_device(device_store)
     transport = StubTransport(starts=[TransportTimeout("timed out")])
     manager = _make_manager(transport, device_store)
     with pytest.raises(TransportTimeout):
@@ -141,7 +136,7 @@ async def test_timeout_wraps_into_transport_error(device_store: DeviceManager):
 
 async def test_http_status_error_raises_project_http_error(device_store: DeviceManager):
     """测试非 200 状态码抛出项目 HTTPError 而非底层异常."""
-    _expire_device(device_store)
+    await _expire_device(device_store)
     transport = StubTransport(starts=[StubResponse({}, status_code=503)])
     manager = _make_manager(transport, device_store)
     with pytest.raises(HTTPError) as exc_info:
@@ -151,7 +146,7 @@ async def test_http_status_error_raises_project_http_error(device_store: DeviceM
 
 async def test_request_uses_prepared_post(device_store: DeviceManager):
     """测试 QIMEI 请求通过 PreparedRequest POST 发出并带预置头."""
-    _expire_device(device_store)
+    await _expire_device(device_store)
     transport = StubTransport(starts=[StubResponse({}, content=_qimei_payload())])
     manager = _make_manager(transport, device_store)
     await manager.get_cached()
