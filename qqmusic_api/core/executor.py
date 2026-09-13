@@ -11,17 +11,17 @@ from ..utils.android_session import AndroidSessionManager
 from ..utils.common import bool_to_int
 from ..utils.device import DeviceManager
 from ..utils.qimei import QimeiManager
-from .engine import OperationScope, RequestScope, ScopedCall
-from .exceptions import ApiDataError, CredentialInvalidError, NetworkError
+from .engine import RequestScope, ScopedCall
+from .exceptions import ApiDataError, CredentialInvalidError
 from .request import CgiRequest, HttpRequest
-from .response import parse_cgi_item, parse_http_response, unwrap_cgi_envelope
+from .response import ensure_http_success, parse_cgi_item, parse_http_response, snapshot_payload, unwrap_cgi_envelope
 from .transport import (
     DEFAULT_MAX_CONCURRENCY,
     PreparedRequest,
     Transport,
     TransportError,
-    _release_responses,
     send_many,
+    to_network_error,
 )
 from .versioning import Platform, VersionPolicy
 
@@ -114,16 +114,13 @@ class CgiExecutor:
         )[0]
         if isinstance(outcome, Exception):
             if isinstance(outcome, TransportError):
-                raise NetworkError(str(outcome)) from outcome
+                raise to_network_error(outcome) from outcome
             raise outcome
 
-        try:
-            result = self._decode_batch(batch, outcome)[0]
-            if isinstance(result, Exception):
-                raise result
-            return result
-        finally:
-            await _release_responses(self._transport, [outcome])
+        result = self._decode_batch(batch, outcome)[0]
+        if isinstance(result, Exception):
+            raise result
+        return result
 
     async def execute_many(
         self,
@@ -173,7 +170,7 @@ class CgiExecutor:
             try:
                 prepared.append((batch, await self._prepare_batch(batch)))
             except TransportError as exc:  # noqa: PERF203
-                error = NetworkError(str(exc))
+                error = to_network_error(exc)
                 if not return_exceptions:
                     raise error from exc
                 for call in batch.calls:
@@ -193,26 +190,23 @@ class CgiExecutor:
             first_error: Exception | None = None
             for (batch, _), outcome in zip(prepared, outcomes, strict=True):
                 if isinstance(outcome, Exception):
-                    error = NetworkError(str(outcome)) if isinstance(outcome, TransportError) else outcome
+                    error = to_network_error(outcome) if isinstance(outcome, TransportError) else outcome
                     if return_exceptions:
                         for call in batch.calls:
                             results[call.index] = error
                     elif first_error is None:
                         first_error = error
                     continue
-                try:
-                    decoded = self._decode_batch(batch, outcome)
-                    for position, call in enumerate(batch.calls):
-                        item_outcome = decoded[position]
-                        if isinstance(item_outcome, Exception):
-                            if return_exceptions:
-                                results[call.index] = item_outcome
-                            elif first_error is None:
-                                first_error = item_outcome
-                        else:
+                decoded = self._decode_batch(batch, outcome)
+                for position, call in enumerate(batch.calls):
+                    item_outcome = decoded[position]
+                    if isinstance(item_outcome, Exception):
+                        if return_exceptions:
                             results[call.index] = item_outcome
-                finally:
-                    await _release_responses(self._transport, [outcome])
+                        elif first_error is None:
+                            first_error = item_outcome
+                    else:
+                        results[call.index] = item_outcome
             if first_error is not None:
                 raise first_error
 
@@ -270,7 +264,7 @@ class CgiExecutor:
             device = await self._device_store.get_device()
             qimei = await self._qimei_manager.get_cached() if scope.platform == Platform.ANDROID else None
         except TransportError as exc:
-            raise NetworkError(str(exc)) from exc
+            raise to_network_error(exc) from exc
         final_comm = self._build_comm(base, scope, device, qimei, session)
         user_agent = self._version_policy.get_user_agent(scope.platform, device)
 
@@ -339,15 +333,9 @@ class HttpExecutor:
         self._transport = transport
         self._max_concurrency = max_concurrency
 
-    async def execute_one(
-        self,
-        call: ScopedCall,
-        *,
-        operation: OperationScope | None = None,
-    ) -> Any:
+    async def execute_one(self, call: ScopedCall) -> Any:
         """执行单个 HTTP 请求并返回解析结果."""
-        operation = operation or OperationScope(self._transport)
-        prepared = await self._prepare(call)
+        prepared = await self.prepare(call)
         outcome = (
             await send_many(
                 self._transport,
@@ -357,24 +345,19 @@ class HttpExecutor:
         )[0]
         if isinstance(outcome, Exception):
             if isinstance(outcome, TransportError):
-                raise NetworkError(str(outcome)) from outcome
+                raise to_network_error(outcome) from outcome
             raise outcome
-        return await self._deliver(call, outcome, operation)
+        return await self._deliver(call, outcome)
 
     async def execute_many(
-        self,
-        calls: "Sequence[ScopedCall]",
-        *,
-        operation: OperationScope | None = None,
-        return_exceptions: bool = False,
+        self, calls: "Sequence[ScopedCall]", *, return_exceptions: bool = False
     ) -> "list[tuple[int, Any]]":
         """并发执行 HTTP 请求集合."""
-        operation = operation or OperationScope(self._transport)
         results: dict[int, Any] = {}
         prepared_calls: list[tuple[ScopedCall, PreparedRequest]] = []
         for call in calls:
             try:
-                prepared_calls.append((call, await self._prepare(call)))
+                prepared_calls.append((call, await self.prepare(call)))
             except Exception as exc:  # noqa: PERF203
                 if return_exceptions:
                     results[call.index] = exc
@@ -392,9 +375,9 @@ class HttpExecutor:
                 try:
                     if isinstance(outcome, Exception):
                         if isinstance(outcome, TransportError):
-                            raise NetworkError(str(outcome)) from outcome
+                            raise to_network_error(outcome) from outcome
                         raise outcome
-                    results[call.index] = await self._deliver(call, outcome, operation)
+                    results[call.index] = await self._deliver(call, outcome)
                 except Exception as exc:  # noqa: PERF203
                     if return_exceptions:
                         results[call.index] = exc
@@ -405,7 +388,7 @@ class HttpExecutor:
 
         return list(results.items())
 
-    async def _prepare(self, call: ScopedCall) -> PreparedRequest:
+    async def prepare(self, call: ScopedCall) -> PreparedRequest:
         """组装 HTTP 传输请求."""
         request = cast("HttpRequest[Any]", call.request)
         scope = call.scope
@@ -420,7 +403,10 @@ class HttpExecutor:
         if request.data is not None:
             kwargs["data"] = request.data
         if request.kwargs is not None:
-            kwargs.update(request.kwargs)
+            options = cast("dict[str, Any]", request.kwargs)
+            if "stream" in options:
+                raise ValueError("流式读取请使用 Client.stream(); 请求描述符不支持 stream 选项")
+            kwargs.update(options)
 
         cookies: dict[str, str] = {}
         credential = scope.credential
@@ -444,19 +430,10 @@ class HttpExecutor:
 
         return PreparedRequest(method=request.method, url=request.url, kwargs=kwargs)
 
-    async def _deliver(self, call: ScopedCall, response: Any, operation: OperationScope) -> Any:
-        """交付响应."""
-        delivered = False
-        try:
-            result = parse_http_response(
-                response,
-                disable_parse=call.request.disable_parse,
-                response_model=call.request.response_model,
-            )
-            if call.request.disable_parse:
-                operation.track(response)
-                delivered = True
-            return result
-        finally:
-            if not delivered:
-                await _release_responses(self._transport, [response])
+    async def _deliver(self, call: ScopedCall, response: Any) -> Any:
+        """交付响应: 原始载荷快照或解析结果, 二者均为无资源语义的值."""
+        request = cast("HttpRequest[Any]", call.request)
+        ensure_http_success(response)
+        if request.raw:
+            return snapshot_payload(response)
+        return parse_http_response(response, response_model=request.response_model)

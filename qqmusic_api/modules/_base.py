@@ -23,7 +23,7 @@ from ..core.request import (
     PaginatedCgiRequest,
     ResponseModel,
 )
-from ..core.transport import HttpRawResponse
+from ..core.response import RawPayload
 from ..core.versioning import Platform
 from ..models.request import Credential
 
@@ -160,9 +160,9 @@ class ApiModule:
         credential: Credential | None = None,
         *,
         response_model: type[ResponseModel] | None = None,
-        disable_parse: Literal[True],
+        raw: Literal[True],
         **options: Unpack[HttpRequestOptions],
-    ) -> HttpRequest[HttpRawResponse]: ...
+    ) -> HttpRequest[RawPayload]: ...
 
     @overload
     def _build_http(
@@ -177,7 +177,7 @@ class ApiModule:
         credential: Credential | None = None,
         *,
         response_model: type[ResponseModel],
-        disable_parse: bool = False,
+        raw: bool = False,
         **options: Unpack[HttpRequestOptions],
     ) -> HttpRequest[ResponseModel]: ...
 
@@ -194,7 +194,7 @@ class ApiModule:
         credential: Credential | None = None,
         *,
         response_model: None = None,
-        disable_parse: bool = False,
+        raw: bool = False,
         **options: Unpack[HttpRequestOptions],
     ) -> HttpRequest[dict[str, Any]]: ...
 
@@ -210,7 +210,7 @@ class ApiModule:
         credential: Credential | None = None,
         *,
         response_model: type[ResponseModel] | None = None,
-        disable_parse: bool = False,
+        raw: bool = False,
         **options: Unpack[HttpRequestOptions],
     ) -> HttpRequest[Any]:
         """构建可 await 的标准 HTTP 请求描述符."""
@@ -220,7 +220,7 @@ class ApiModule:
             url=url,
             params=params,
             response_model=response_model,
-            disable_parse=disable_parse,
+            raw=raw,
             headers=headers,
             cookies=cookies,
             json=json,

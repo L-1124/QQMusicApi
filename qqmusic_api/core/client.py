@@ -17,7 +17,7 @@ from .engine import ClientDefaults, RequestEngine
 from .exceptions import NetworkError
 from .executor import CgiExecutor, HttpExecutor
 from .request import BaseRequest, ResultT
-from .transport import DEFAULT_MAX_CONCURRENCY, NiquestsTransport, Transport
+from .transport import DEFAULT_MAX_CONCURRENCY, NiquestsTransport, RawStream, Transport
 from .versioning import DEFAULT_VERSION_POLICY, Platform
 
 if TYPE_CHECKING:
@@ -35,6 +35,7 @@ if TYPE_CHECKING:
     from ..modules.songlist import SonglistApi
     from ..modules.top import TopApi
     from ..modules.user import UserApi
+    from .request import HttpRequest
 
 
 CLOSE_CLEANUP_BUDGET_SECONDS = 5.0
@@ -242,19 +243,15 @@ class Client:
     async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:  # noqa: D105
         await self.close()
 
-    def _ensure_open(self) -> None:
-        """确保客户端处于 OPEN 状态, 否则拒绝新操作.
+    async def _register_operation(self) -> _Operation:
+        """在关闭锁内检查状态并登记操作.
 
         Raises:
             RuntimeError: 客户端已关闭或正在关闭.
         """
-        if self._close_state != "open":
-            raise RuntimeError("Client 已关闭或正在关闭, 不能发起新操作")
-
-    async def _register_operation(self) -> _Operation:
-        """在关闭锁内检查状态并登记操作."""
         async with self._close_lock:
-            self._ensure_open()
+            if self._close_state != "open":
+                raise RuntimeError("Client 已关闭或正在关闭, 不能发起新操作")
             operation = _Operation()
             self._operations.add(operation)
             return operation
@@ -324,6 +321,26 @@ class Client:
         """
         async with self._operation():
             return await self._engine.execute(request)
+
+    @asynccontextmanager
+    async def stream(self, request: "HttpRequest[Any]") -> AsyncGenerator[RawStream, None]:
+        """打开流式响应租约.
+
+        流式响应持有底层连接, 仅允许在作用域内消费; 退出时 (含异常与
+        取消) 由传输实现关闭底层流并归还并发许可.
+
+        Args:
+            request: HTTP 请求描述符.
+
+        Yields:
+            RawStream: 流式响应视图.
+
+        Raises:
+            TypeError: 请求类型不支持流式, 或传输实现无流式能力.
+            RuntimeError: 客户端已关闭或操作被关闭流程取消.
+        """
+        async with self._operation(), await self._engine.open_stream(request) as raw_stream:
+            yield raw_stream
 
     @overload
     async def gather(

@@ -1,9 +1,10 @@
 """统一传输边界."""
 
 import contextlib
-from collections.abc import Mapping, Sequence
+from collections.abc import AsyncGenerator, AsyncIterator, Mapping, Sequence
+from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from dataclasses import dataclass, field
-from typing import Any, Protocol, TypeAlias, runtime_checkable
+from typing import Any, Protocol, TypeAlias, cast, runtime_checkable
 
 import anyio
 from niquests import AsyncSession, AsyncTokenBucketLimiter, RetryConfiguration
@@ -12,23 +13,25 @@ from niquests.exceptions import RequestException, Timeout
 from niquests.models import Response
 from niquests.typing import AsyncHookType, ProxyType, TLSClientCertType, TLSVerifyType
 
+from .exceptions import NetworkError, TimeoutNetworkError
+
 __all__ = [
-    "HttpRawResponse",
     "MultiplexTransport",
     "NiquestsTransport",
     "PreparedRequest",
     "RawResponse",
+    "RawStream",
+    "StreamingTransport",
     "Transport",
     "TransportError",
     "TransportTimeout",
     "send_many",
+    "to_network_error",
 ]
-
-HttpRawResponse = Response
-"""底层 HTTP 响应的公开类型别名. 供请求描述符在 ``disable_parse`` 场景标注结果类型."""
 
 DEFAULT_MAX_CONCURRENCY = 20
 RELEASE_BUDGET_SECONDS = 5.0
+STREAM_CHUNK_SIZE = 65536
 
 BatchOutcome: TypeAlias = "RawResponse | Exception"
 """单个物理请求的批量结果: 响应或归属到该请求的异常."""
@@ -42,6 +45,13 @@ class TransportTimeout(TransportError):
     """传输边界内的网络超时异常."""
 
 
+def to_network_error(exc: TransportError) -> NetworkError:
+    """将传输异常映射为公开网络异常: 超时归 `TimeoutNetworkError`, 其余归 `NetworkError`."""
+    if isinstance(exc, TransportTimeout):
+        return TimeoutNetworkError(str(exc))
+    return NetworkError(str(exc))
+
+
 @dataclass(frozen=True)
 class PreparedRequest:
     """准备完成的协议无关传输请求.
@@ -49,7 +59,7 @@ class PreparedRequest:
     Attributes:
         method: HTTP 方法.
         url: 请求目标 URL.
-        kwargs: 该请求专有的关键字参数 (可含 stream 标志).
+        kwargs: 该请求专有的关键字参数.
     """
 
     method: str
@@ -63,6 +73,21 @@ class RawResponse(Protocol):
     @property
     def status_code(self) -> int | None:
         """HTTP 状态码, 响应未就绪时可为 None."""
+        ...
+
+    @property
+    def url(self) -> str | None:
+        """最终请求 URL (跟随重定向后)."""
+        ...
+
+    @property
+    def headers(self) -> Mapping[str, str]:
+        """响应头, 键大小写不敏感."""
+        ...
+
+    @property
+    def cookies(self) -> Mapping[str, str]:
+        """响应 Cookie 名值映射."""
         ...
 
     @property
@@ -84,26 +109,68 @@ class RawResponse(Protocol):
         ...
 
 
+class RawStream(Protocol):
+    """流式响应租约视图协议."""
+
+    @property
+    def status_code(self) -> int | None:
+        """HTTP 状态码."""
+        ...
+
+    @property
+    def url(self) -> str | None:
+        """最终请求 URL (跟随重定向后)."""
+        ...
+
+    @property
+    def headers(self) -> Mapping[str, str]:
+        """响应头, 键大小写不敏感."""
+        ...
+
+    @property
+    def cookies(self) -> Mapping[str, str]:
+        """响应 Cookie 名值映射."""
+        ...
+
+    def iter_chunks(self, chunk_size: int = ...) -> AsyncIterator[bytes]:
+        """按块异步迭代响应体."""
+        ...
+
+    async def aclose(self) -> None:
+        """提前关闭底层流. 作用域退出时会自动调用, 重复调用无害."""
+        ...
+
+
 class Transport(Protocol):
     """单物理请求传输协议.
 
-    每次调用 ``request`` 恰好对应一个物理 HTTP 请求; 异常按请求归属.
-    返回的响应由调用者 ``release``; ``close`` 幂等.
+    缓冲交付契约: ``request`` 返回时响应体已完整读取并缓冲于内存, 底层
+    连接已归还, 调用者仅消费数据, 不承担释放责任. ``close`` 幂等.
     """
 
     async def request(self, request: PreparedRequest) -> RawResponse:
-        """执行单个物理请求并返回响应.
+        """执行单个物理请求并返回缓冲响应.
 
-        缓冲请求返回时状态与响应体就绪; 流式请求返回到响应头就绪.
+        返回时状态与响应体均就绪; 实现必须在返回前完成响应体读取并
+        归还底层连接, 保证交付后无资源占用.
         """
-        ...
-
-    async def release(self, response: RawResponse) -> None:
-        """释放响应占用的连接或流资源. 幂等, 允许释放已消费的响应."""
         ...
 
     async def close(self) -> None:
         """关闭底层连接, 幂等."""
+        ...
+
+
+@runtime_checkable
+class StreamingTransport(Protocol):
+    """支持显式租约流式读取的传输扩展.
+
+    流式响应持有底层连接, 因此只能经上下文管理器租约使用: 进入时建立
+    流, 退出时 (含异常与取消) 由租约保证关闭与许可归还.
+    """
+
+    def open_stream(self, request: PreparedRequest) -> AbstractAsyncContextManager[RawStream]:
+        """返回流式租约上下文管理器, 进入后产出 RawStream."""
         ...
 
 
@@ -151,7 +218,7 @@ def _map_transport_exception(exc: RequestException) -> TransportError:
     return TransportError(str(exc))
 
 
-async def _release_raw(response: RawResponse) -> None:
+async def _release_raw(response: Any) -> None:
     """释放底层响应资源, 兼容同步与异步 close 实现."""
     closer = getattr(response, "close", None)
     if closer is None:
@@ -161,13 +228,13 @@ async def _release_raw(response: RawResponse) -> None:
         await result
 
 
-async def _release_responses(transport: Transport, responses: Sequence[RawResponse]) -> None:
+async def _release_responses(responses: Sequence[Any]) -> None:
     """在 5 秒预算内屏蔽取消并尽力释放全部响应."""
     with anyio.CancelScope(shield=True):
         with anyio.move_on_after(RELEASE_BUDGET_SECONDS):
             for response in responses:
                 with contextlib.suppress(Exception):
-                    await transport.release(response)
+                    await _release_raw(response)
 
 
 async def send_many(
@@ -194,7 +261,6 @@ async def _send_many_fallback(
 ) -> "list[BatchOutcome]":
     """无批量能力传输的有限并发 worker 回退."""
     outcomes: list[BatchOutcome] = [TransportError("未发送")] * len(requests)
-    completed: list[RawResponse] = []
     pending = iter(list(enumerate(requests)))
     pending_lock = anyio.Lock()
 
@@ -206,19 +272,13 @@ async def _send_many_fallback(
                 return
             position, request = entry
             try:
-                response = await transport.request(request)
-                outcomes[position] = response
-                completed.append(response)
+                outcomes[position] = await transport.request(request)
             except Exception as exc:
                 outcomes[position] = exc
 
-    try:
-        async with anyio.create_task_group() as task_group:
-            for _ in range(min(max_concurrency, len(requests)) or 1):
-                task_group.start_soon(_worker)
-    except BaseException:
-        await _release_responses(transport, completed)
-        raise
+    async with anyio.create_task_group() as task_group:
+        for _ in range(min(max_concurrency, len(requests)) or 1):
+            task_group.start_soon(_worker)
 
     return outcomes
 
@@ -267,7 +327,7 @@ class NiquestsTransport:
         self._close_lock = anyio.Lock()
 
     async def request(self, request: PreparedRequest) -> RawResponse:
-        """执行单个物理请求并返回响应.
+        """执行单个物理请求并返回缓冲响应. 状态与响应体在返回时均就绪.
 
         Raises:
             TransportTimeout: 请求超时.
@@ -291,7 +351,7 @@ class NiquestsTransport:
                 collected.extend(response for response in chunk_outcomes if isinstance(response, Response))
         except BaseException:
             # 后续分块失败时, 释放之前分块已收集但尚未交付的响应.
-            await _release_responses(self, collected)
+            await _release_responses(collected)
             raise
         return outcomes
 
@@ -330,7 +390,7 @@ class NiquestsTransport:
                     await self._fail_unresolved(chunk_outcomes, lazy_pairs, exc)
         except BaseException:
             # 外层取消等异常: 尽力释放本分块已收集的响应后继续传播.
-            await _release_responses(self, [response for _, response in submitted])
+            await _release_responses([response for _, response in submitted])
             raise
         finally:
             with anyio.CancelScope(shield=True):
@@ -348,11 +408,46 @@ class NiquestsTransport:
         unresolved = [(position, response) for position, response in lazy_pairs if response.lazy]
         for position, _response in unresolved:
             chunk_outcomes[position] = error
-        await _release_responses(self, [response for _position, response in unresolved])
+        await _release_responses([response for _position, response in unresolved])
 
-    async def release(self, response: RawResponse) -> None:
-        """释放响应占用的连接或流资源."""
-        await _release_raw(response)
+    @asynccontextmanager
+    async def open_stream(self, request: PreparedRequest) -> AsyncGenerator[RawStream, None]:
+        """返回流式响应租约.
+
+        进入时发起请求 (响应头就绪) 并占用一个并发许可; 退出时
+        (含异常与取消) 在屏蔽取消的 5 秒预算内关闭底层流并归还许可.
+
+        Yields:
+            RawStream: 流式响应视图.
+
+        Raises:
+            TransportTimeout: 建流超时.
+            TransportError: 建流发生其他网络异常.
+        """
+        await self._capacity.acquire(1)
+        response: Response | None = None
+        try:
+            try:
+                response = await self._client.request(
+                    request.method,
+                    request.url,
+                    **dict(request.kwargs),
+                    stream=True,
+                    proxies=self.proxies,
+                    hooks=self.hooks,
+                    cert=self.cert,
+                    verify=self.verify,
+                )
+            except (Timeout, RequestException) as exc:
+                raise _map_transport_exception(exc) from exc
+            yield _NiquestsStream(response)
+        finally:
+            if response is not None:
+                with anyio.CancelScope(shield=True):
+                    with anyio.move_on_after(RELEASE_BUDGET_SECONDS):
+                        await _release_raw(response)
+            with anyio.CancelScope(shield=True):
+                await self._capacity.release(1)
 
     async def close(self) -> None:
         """关闭底层会话. 重复调用为空操作."""
@@ -361,3 +456,42 @@ class NiquestsTransport:
                 return
             await self._client.close()
             self._closed = True
+
+
+class _NiquestsStream:
+    """niquests 流式响应的租约视图."""
+
+    def __init__(self, response: Response) -> None:
+        """以底层流式响应构造租约视图."""
+        self._response = response
+
+    @property
+    def status_code(self) -> int | None:
+        """HTTP 状态码."""
+        return self._response.status_code
+
+    @property
+    def url(self) -> str | None:
+        """最终请求 URL (跟随重定向后)."""
+        return self._response.url
+
+    @property
+    def headers(self) -> Mapping[str, str]:
+        """响应头, 键大小写不敏感."""
+        return self._response.headers
+
+    @property
+    def cookies(self) -> Mapping[str, str]:
+        """响应 Cookie 名值映射."""
+        return self._response.cookies
+
+    async def iter_chunks(self, chunk_size: int = STREAM_CHUNK_SIZE) -> AsyncIterator[bytes]:
+        """按块异步迭代响应体."""
+        # niquests 对异步模式 iter_content 的返回类型标注不完整, 实际为可等待对象.
+        iterator = await cast("Any", self._response).iter_content(chunk_size)
+        async for chunk in iterator:
+            yield chunk
+
+    async def aclose(self) -> None:
+        """提前关闭底层流. 作用域退出时自动调用, 重复调用无害."""
+        await _release_raw(self._response)

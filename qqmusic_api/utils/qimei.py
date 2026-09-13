@@ -116,25 +116,22 @@ class QimeiManager:
             ),
         )
 
-        try:
-            status = response.status_code
-            if status != 200:
-                raise HTTPError(
-                    f"HTTP 请求状态码异常: {status}",
-                    status_code=status if isinstance(status, int) else -1,
-                )
+        status = response.status_code
+        if status != 200:
+            raise HTTPError(
+                f"HTTP 请求状态码异常: {status}",
+                status_code=status if isinstance(status, int) else -1,
+            )
 
-            if response.content is None:
-                raise RuntimeError("QIMEI response content is empty")
+        if response.content is None:
+            raise RuntimeError("QIMEI response content is empty")
 
-            qimei_data: dict[str, str] = json.loads(json.loads(response.content).get("data", "{}")).get("data", {})
+        qimei_data: dict[str, str] = json.loads(json.loads(response.content).get("data", "{}")).get("data", {})
 
-            if not qimei_data or "q36" not in qimei_data or "q16" not in qimei_data:
-                raise RuntimeError(f"QIMEI response missing required fields: {qimei_data}")
+        if not qimei_data or "q36" not in qimei_data or "q16" not in qimei_data:
+            raise RuntimeError(f"QIMEI response missing required fields: {qimei_data}")
 
-            return {"q16": qimei_data["q16"], "q36": qimei_data["q36"]}
-        finally:
-            await self._transport.release(response)
+        return {"q16": qimei_data["q16"], "q36": qimei_data["q36"]}
 
 
 def rsa_encrypt(content: bytes) -> bytes:

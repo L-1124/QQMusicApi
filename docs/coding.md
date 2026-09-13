@@ -124,13 +124,13 @@ async def quick_search(self, keyword: str) -> dict[str, Any]:
 
 `_build_http` 用于构建标准 HTTP 请求描述符，自动装配凭证 Cookies 和平台 User-Agent：
 
-| 参数            | 类型                   |                                                                              说明 |
-|-----------------|------------------------|----------------------------------------------------------------------------------:|
-| `method`        | `str`                  |                                                   HTTP 方法，如 `"GET"`、`"POST"` |
-| `url`           | `str`                  |                                                                          请求地址 |
-| `credential`    | `Credential` 或 `None` |                                            覆盖本次请求的凭证，默认使用客户端凭证 |
-| `disable_parse` | `bool`                 |                                    校验 HTTP 状态并返回原始响应，响应由调用者关闭 |
-| `**kwargs`      |                        | 透传给底层 `niquests` 的参数（`params`、`json`、`data`、`headers`、`cookies` 等） |
+| 参数           | 类型                     |                                                                                说明 |
+| -------------- | ------------------------ | ----------------------------------------------------------------------------------: |
+| `method`       | `str`                    |                                                     HTTP 方法，如 `"GET"`、`"POST"` |
+| `url`          | `str`                    |                                                                            请求地址 |
+| `credential`   | `Credential` 或 `None`   |                                              覆盖本次请求的凭证，默认使用客户端凭证 |
+| `raw`          | `bool`                   |                  校验 HTTP 状态并返回原始载荷快照（`RawPayload`，值语义，无需释放） |
+| `**kwargs`     |                          |   透传给底层 `niquests` 的参数（`params`、`json`、`data`、`headers`、`cookies` 等） |
 
 !!! note
 
@@ -148,8 +148,8 @@ req = self._build_http("POST", "https://example.com/api", json={"key": "value"})
 # 覆盖凭证
 req = self._build_http("GET", "https://example.com/api", credential=my_credential)
 
-# 返回原始 Response 而非解析 JSON
-req = self._build_http("GET", "https://example.com/api", disable_parse=True)
+# 返回原始载荷快照而非解析 JSON
+req = self._build_http("GET", "https://example.com/api", raw=True)
 ```
 
 ## 响应模型

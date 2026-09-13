@@ -18,8 +18,11 @@ from .exceptions import (
     LoginRateLimitError,
     NetworkError,
     RatelimitedError,
+    TimeoutNetworkError,
 )
 from .request import BaseRequest, CgiRequest, HttpRequest, ItemPaginatedCgiRequest, PaginatedCgiRequest
+from .response import RawPayload
+from .transport import RawStream, StreamingTransport
 from .versioning import DEFAULT_VERSION_POLICY, Platform, VersionPolicy, VersionProfile
 
 __all__ = [
@@ -47,6 +50,10 @@ __all__ = [
     "PaginatedCgiRequest",
     "Platform",
     "RatelimitedError",
+    "RawPayload",
+    "RawStream",
+    "StreamingTransport",
+    "TimeoutNetworkError",
     "VersionPolicy",
     "VersionProfile",
 ]

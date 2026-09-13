@@ -19,6 +19,7 @@ from qqmusic_api.core.response import (
     build_result,
     parse_cgi_item,
     parse_http_response,
+    snapshot_payload,
     unwrap_cgi_envelope,
 )
 from tests.kernel_contract import StubResponse, make_cgi_envelope, make_cgi_sub
@@ -215,14 +216,46 @@ def test_cgi_error_map_contents():
 
 
 # ---------------------------------------------------------------------------
-# parse_http_response
+# RawPayload 快照
 # ---------------------------------------------------------------------------
 
 
-def test_parse_http_response_disable_parse_returns_raw():
-    """测试 disable_parse 时原样返回底层响应对象."""
-    response = StubResponse({"ok": True})
-    assert parse_http_response(response, disable_parse=True) is response
+def test_snapshot_payload_copies_all_fields():
+    """测试快照完整保留状态码, URL, 响应头, Cookie, 字节与文本."""
+    response = StubResponse(
+        {"ok": True},
+        headers={"Location": "https://example.com/next"},
+        cookies={"sid": "abc"},
+        content=b'{"ok": true}',
+        text='{"ok": true}',
+    )
+    payload = snapshot_payload(response)
+    assert payload.status_code == 200
+    assert payload.url == "https://stub.example.com/"
+    assert payload.headers["Location"] == "https://example.com/next"
+    assert payload.cookies == {"sid": "abc"}
+    assert payload.content == b'{"ok": true}'
+    assert payload.text == '{"ok": true}'
+
+
+def test_snapshot_payload_json_decodes():
+    """测试快照 json 方法解析响应体字节."""
+    payload = snapshot_payload(StubResponse(None, content=b'{"value": 3}', text=""))
+    assert payload.json() == {"value": 3}
+
+
+def test_snapshot_payload_is_frozen():
+    """测试快照不可变, 字段赋值抛出 FrozenInstanceError."""
+    import dataclasses
+
+    payload = snapshot_payload(StubResponse({"ok": True}))
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        payload.content = b"x"  # type: ignore[reportAttributeIssue]
+
+
+# ---------------------------------------------------------------------------
+# parse_http_response
+# ---------------------------------------------------------------------------
 
 
 def test_parse_http_response_json_dict():

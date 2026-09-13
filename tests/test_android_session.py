@@ -66,7 +66,6 @@ async def test_refresh_posts_and_publishes_session(device_store: DeviceManager):
     assert len(transport.start_calls) == 1
     assert transport.start_calls[0].url == "https://u.y.qq.com/cgi-bin/musicu.fcg"
     assert transport.start_calls[0].kwargs["json"]["req_0"]["param"]["caller"] == 2
-    assert len(transport.release_calls) == 1
 
 
 async def test_valid_cache_hit_short_circuits(device_store: DeviceManager):

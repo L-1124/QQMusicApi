@@ -14,6 +14,7 @@ import niquests
 
 __all__ = [
     "StubResponse",
+    "StubStreamLease",
     "StubTransport",
     "make_cgi_envelope",
     "make_cgi_sub",
@@ -32,6 +33,8 @@ class StubResponse:
         text: str | None = "",
         json_error: bool = False,
         http_error: bool = False,
+        headers: dict[str, str] | None = None,
+        cookies: dict[str, str] | None = None,
     ) -> None:
         """以预置载荷与可选状态码构造响应桩.
 
@@ -42,9 +45,14 @@ class StubResponse:
             text: 响应文本.
             json_error: 是否让 json() 抛出解析异常.
             http_error: 是否让 raise_for_status() 抛出 HTTP 状态异常.
+            headers: 响应头快照.
+            cookies: 响应 Cookie 名值快照.
         """
         self._payload = payload
         self.status_code = status_code
+        self.url = "https://stub.example.com/"
+        self.headers: dict[str, str] = headers or {}
+        self.cookies: dict[str, str] = cookies or {}
         self.content = content
         self.text = text
         self._json_error = json_error
@@ -62,8 +70,36 @@ class StubResponse:
             raise niquests.HTTPError(f"HTTP {self.status_code}")
 
 
+class StubStreamLease:
+    """进入后产出预置流或抛出异常的流式租约桩."""
+
+    def __init__(self, stream: Any = None, error: Exception | None = None) -> None:
+        """构造租约桩.
+
+        Args:
+            stream: 进入时产出的流对象.
+            error: 进入时抛出的异常.
+        """
+        self.stream = stream
+        self.error = error
+        self.entered = False
+        self.exited = False
+
+    async def __aenter__(self) -> Any:
+        """记录进入并产出预置流或抛出异常."""
+        self.entered = True
+        if self.error is not None:
+            raise self.error
+        return self.stream
+
+    async def __aexit__(self, *exc_info: object) -> bool:
+        """记录退出且不抑制异常."""
+        self.exited = True
+        return False
+
+
 class StubTransport:
-    """记录 request/release/close 调用并按队列返回预置结果的传输桩."""
+    """记录 request/open_stream/close 调用并按队列返回预置结果的传输桩."""
 
     def __init__(self, starts: list[Any] | None = None) -> None:
         """以预置的 request 结果/异常队列构造传输桩.
@@ -73,7 +109,8 @@ class StubTransport:
                 队列耗尽时抛出 AssertionError. 可在运行前继续追加.
         """
         self.start_calls: list[Any] = []
-        self.release_calls: list[Any] = []
+        self.open_stream_calls: list[Any] = []
+        self.stream_leases: list[StubStreamLease] = []
         self.close_calls = 0
         self._closed = False
         self.starts = list(starts or [])
@@ -88,15 +125,40 @@ class StubTransport:
             raise item
         return item
 
-    async def release(self, response: Any) -> None:
-        """记录释放调用."""
-        self.release_calls.append(response)
+    def open_stream(self, request: Any) -> Any:
+        """记录流式打开调用并返回下一个预置租约."""
+        self.open_stream_calls.append(request)
+        if not self.stream_leases:
+            raise AssertionError("流式租约桩队列耗尽, 意外 open_stream 调用")
+        return self.stream_leases.pop(0)
 
     async def close(self) -> None:
         """记录关闭调用, 幂等."""
         if self._closed:
             return
         self._closed = True
+        self.close_calls += 1
+
+
+class StubStream:
+    """产出预置字节块的流式视图桩."""
+
+    def __init__(self, chunks: list[bytes], *, status_code: int = 200) -> None:
+        """以预置字节块构造流式视图桩."""
+        self.chunks = chunks
+        self.status_code = status_code
+        self.url = "https://stub.example.com/"
+        self.headers: dict[str, str] = {}
+        self.cookies: dict[str, str] = {}
+        self.close_calls = 0
+
+    async def iter_chunks(self, chunk_size: int = 65536) -> Any:
+        """按预置字节块异步迭代."""
+        for chunk in self.chunks:
+            yield chunk
+
+    async def aclose(self) -> None:
+        """记录关闭调用."""
         self.close_calls += 1
 
 

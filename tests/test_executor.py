@@ -17,9 +17,11 @@ from qqmusic_api.core.exceptions import (
     HTTPError,
     NetworkError,
     RatelimitedError,
+    TimeoutNetworkError,
 )
 from qqmusic_api.core.executor import CgiBatch, CgiBatchKey, CgiExecutor, HttpExecutor
 from qqmusic_api.core.request import CgiRequest, HttpRequest
+from qqmusic_api.core.response import RawPayload
 from qqmusic_api.core.transport import TransportTimeout
 from qqmusic_api.core.versioning import DEFAULT_VERSION_POLICY, Platform
 from qqmusic_api.models.request import Credential
@@ -195,7 +197,6 @@ async def test_execute_one_returns_parsed_result():
     result = await executor.execute_one(_callsc(_cgi_request(response_model=DummyModel)))
     assert result == DummyModel(value=5)
     assert len(transport.start_calls) == 1
-    assert len(transport.release_calls) == 1
 
 
 async def test_execute_one_start_error_raises_network_error():
@@ -261,13 +262,12 @@ async def test_execute_one_data_error_passthrough():
 
 
 async def test_execute_many_groups_same_credential_into_one_call():
-    """测试同组请求合并为一次网络调用并逐项释放."""
+    """测试同组请求合并为一次网络调用."""
     transport = StubTransport(starts=[make_cgi_envelope([make_cgi_sub(), make_cgi_sub()])])
     executor = _make_cgi_executor(transport)
     indexed = [(0, _cgi_request()), (1, _cgi_request())]
     results = await executor.execute_many(_callsc(indexed), batch_size=20, return_exceptions=False)
     assert len(transport.start_calls) == 1
-    assert len(transport.release_calls) == 1
     assert sorted(index for index, _ in results) == [0, 1]
 
 
@@ -278,8 +278,6 @@ async def test_execute_many_batch_size_splits_into_chunks():
     indexed = [(0, _cgi_request()), (1, _cgi_request())]
     results = await executor.execute_many(_callsc(indexed), batch_size=1, return_exceptions=False)
     assert len(transport.start_calls) == 2
-    # 每个批次独立执行并各自释放响应.
-    assert len(transport.release_calls) == 2
     assert [index for index, _ in results] == [0, 1]
 
 
@@ -657,16 +655,27 @@ async def test_http_execute_one_returns_json_dict():
     result = await executor.execute_one(_callsc(_http_request()))
     assert result == {"ok": True}
     assert len(transport.start_calls) == 1
-    assert len(transport.release_calls) == 1
 
 
-async def test_http_execute_one_disable_parse_returns_raw_response():
-    """测试 disable_parse 时返回底层响应对象."""
-    response = StubResponse({"ok": True})
+async def test_http_execute_one_raw_returns_payload_snapshot():
+    """测试 raw 交付返回值语义的原始载荷快照."""
+    response = StubResponse(
+        {"ok": True},
+        content=b'{"ok": true}',
+        text='{"ok": true}',
+        headers={"Location": "https://example.com/next"},
+        cookies={"sid": "abc"},
+    )
     transport = StubTransport(starts=[response])
     executor = _make_http_executor(transport)
-    result = await executor.execute_one(_callsc(_http_request(disable_parse=True)))
-    assert result is response
+    result = await executor.execute_one(_callsc(_http_request(raw=True)))
+    assert isinstance(result, RawPayload)
+    assert result.status_code == 200
+    assert result.url == "https://stub.example.com/"
+    assert result.headers["Location"] == "https://example.com/next"
+    assert result.cookies == {"sid": "abc"}
+    assert result.content == b'{"ok": true}'
+    assert result.json() == {"ok": True}
 
 
 async def test_http_execute_one_returns_model():
@@ -685,25 +694,31 @@ async def test_http_execute_one_network_error():
         await executor.execute_one(_callsc(_http_request()))
 
 
-@pytest.mark.parametrize("disable_parse", [False, True])
-async def test_http_execute_one_http_status_error(*, disable_parse: bool):
+async def test_http_execute_one_timeout_maps_to_timeout_network_error():
+    """测试传输超时转换为 TimeoutNetworkError 以保留超时语义."""
+    transport = StubTransport(starts=[TransportTimeout("timed out")])
+    executor = _make_http_executor(transport)
+    with pytest.raises(TimeoutNetworkError):
+        await executor.execute_one(_callsc(_http_request()))
+
+
+@pytest.mark.parametrize("raw", [False, True])
+async def test_http_execute_one_http_status_error(*, raw: bool):
     """测试响应状态异常转换为项目 HTTPError."""
     transport = StubTransport(starts=[StubResponse({}, status_code=503, http_error=True)])
     executor = _make_http_executor(transport)
     with pytest.raises(HTTPError) as exc_info:
-        await executor.execute_one(_callsc(_http_request(disable_parse=disable_parse)))
+        await executor.execute_one(_callsc(_http_request(raw=raw)))
     assert exc_info.value.status_code == 503
-    assert len(transport.release_calls) == 1
 
 
-async def test_http_execute_many_runs_items_independently_and_releases_each():
-    """测试批量请求逐项独立执行并逐项释放响应."""
+async def test_http_execute_many_runs_items_independently():
+    """测试批量请求逐项独立执行."""
     transport = SlowTransport(starts=[StubResponse({"i": 0}), StubResponse({"i": 1}), StubResponse({"i": 2})])
     executor = _make_http_executor(transport)
     indexed = [(0, _http_request()), (1, _http_request()), (2, _http_request())]
     results = dict(await executor.execute_many(_callsc(indexed), return_exceptions=False))
     assert len(transport.start_calls) == 3
-    assert len(transport.release_calls) == 3
     assert [results[i]["i"] for i in (0, 1, 2)] == [0, 1, 2]
 
 
@@ -782,7 +797,7 @@ async def http_executor() -> HttpExecutor:
 async def test_http_prepare_injects_cookies(http_executor: HttpExecutor):
     """测试 scope 凭证注入 Cookies 且 str_musicid 优先."""
     scope = _scope(credential=Credential(musicid=123, str_musicid="456", musickey="key"))
-    prepared = await http_executor._prepare(_call(_http_request(), scope))
+    prepared = await http_executor.prepare(_call(_http_request(), scope))
     cookies = prepared.kwargs["cookies"]
     assert cookies["uin"] == "456"
     assert cookies["qqmusic_uin"] == "456"
@@ -794,7 +809,7 @@ async def test_http_prepare_user_cookies_override(http_executor: HttpExecutor):
     """测试用户 cookies 覆盖凭证注入的同名键."""
     scope = _scope(credential=Credential(musicid=123, musickey="key"))
     request = _http_request(cookies={"uin": "custom", "extra": "x"})
-    prepared = await http_executor._prepare(_call(request, scope))
+    prepared = await http_executor.prepare(_call(request, scope))
     cookies = prepared.kwargs["cookies"]
     assert cookies["uin"] == "custom"
     assert cookies["extra"] == "x"
@@ -803,20 +818,20 @@ async def test_http_prepare_user_cookies_override(http_executor: HttpExecutor):
 
 async def test_http_prepare_no_credential_no_cookies(http_executor: HttpExecutor):
     """测试无凭证时不注入 cookies."""
-    prepared = await http_executor._prepare(_call(_http_request(), _scope(credential=Credential())))
+    prepared = await http_executor.prepare(_call(_http_request(), _scope(credential=Credential())))
     assert "cookies" not in prepared.kwargs
 
 
 async def test_http_prepare_default_web_ua(http_executor: HttpExecutor):
     """测试缺少 UA 时注入 WEB 平台 UA."""
-    prepared = await http_executor._prepare(_call(_http_request(), _scope()))
+    prepared = await http_executor.prepare(_call(_http_request(), _scope()))
     assert prepared.kwargs["headers"]["User-Agent"].startswith("Mozilla/5.0")
 
 
 async def test_http_prepare_respects_existing_ua(http_executor: HttpExecutor):
     """测试已有 User-Agent 不被覆盖 (header 名不区分大小写)."""
     request = _http_request(headers={"user-agent": "custom-ua"})
-    prepared = await http_executor._prepare(_call(request, _scope()))
+    prepared = await http_executor.prepare(_call(request, _scope()))
     assert prepared.kwargs["headers"]["user-agent"] == "custom-ua"
 
 
@@ -825,18 +840,24 @@ async def test_http_prepare_passes_all_options(http_executor: HttpExecutor):
     request = _http_request(
         params={"q": 1},
         json={"body": True},
-        kwargs={"timeout": 3.0, "allow_redirects": False, "stream": True, "auth": ("u", "p")},
+        kwargs={"timeout": 3.0, "allow_redirects": False, "auth": ("u", "p")},
     )
-    prepared = await http_executor._prepare(_call(request, _scope()))
+    prepared = await http_executor.prepare(_call(request, _scope()))
     kwargs = prepared.kwargs
     assert kwargs["params"] == {"q": 1}
     assert kwargs["json"] == {"body": True}
     assert kwargs["timeout"] == 3.0
     assert kwargs["allow_redirects"] is False
-    assert kwargs["stream"] is True
     assert kwargs["auth"] == ("u", "p")
     assert prepared.method == "GET"
     assert prepared.url == "https://example.com/api"
+
+
+async def test_http_prepare_rejects_stream_option(http_executor: HttpExecutor):
+    """测试描述符携带 stream 选项时准备阶段直接拒绝."""
+    request = _http_request(kwargs={"stream": True})
+    with pytest.raises(ValueError, match="stream"):
+        await http_executor.prepare(_call(request, _scope()))
 
 
 async def test_http_prepare_does_not_mutate_input(http_executor: HttpExecutor):
@@ -845,6 +866,6 @@ async def test_http_prepare_does_not_mutate_input(http_executor: HttpExecutor):
     cookies = {"uin": "orig"}
     request = _http_request(headers=headers, cookies=cookies)
     scope = _scope(credential=Credential(musicid=9, musickey="k"))
-    await http_executor._prepare(_call(request, scope))
+    await http_executor.prepare(_call(request, scope))
     assert headers == {"Accept": "application/json"}
     assert cookies == {"uin": "orig"}

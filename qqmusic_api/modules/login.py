@@ -22,8 +22,8 @@ from ..core import (
     LoginRateLimitError,
     NetworkError,
     Platform,
+    TimeoutNetworkError,
 )
-from ..core.transport import PreparedRequest, TransportError, TransportTimeout
 from ..models.login import (
     QR,
     PhoneAuthCodeResult,
@@ -248,17 +248,11 @@ class LoginApi(ApiModule):
         """
         client_id = f"{int(time() * 1000)}{random.randint(1000, 9999)}"
 
-        def get_timeout_left() -> float | None:
-            """返回当前 deadline 剩余秒数."""
-            if deadline is None:
-                return None
-            return deadline - anyio.current_time()
-
         async def await_before_deadline(operation: Callable[[], Any]) -> Any:
             """在 deadline 之前完成单次异步操作."""
-            timeout_left = get_timeout_left()
-            if timeout_left is None:
+            if deadline is None:
                 return await operation()
+            timeout_left = deadline - anyio.current_time()
             if timeout_left <= 0:
                 raise TimeoutError
             with anyio.fail_after(timeout_left):
@@ -412,7 +406,7 @@ class LoginApi(ApiModule):
 
     async def _get_qq_qr(self) -> QR:
         """获取 QQ 授权二维码."""
-        response = await self._build_http(
+        payload = await self._build_http(
             "GET",
             "https://ssl.ptlogin2.qq.com/ptqrshow",
             params={
@@ -428,14 +422,14 @@ class LoginApi(ApiModule):
             },
             headers={"Referer": "https://xui.ptlogin2.qq.com/"},
             cookies={},
-            disable_parse=True,
+            raw=True,
         )
-        qrsig = response.cookies["qrsig"]  # type: ignore
-        return QR(response.content or b"", QRLoginType.QQ, "image/png", qrsig)
+        qrsig = payload.cookies["qrsig"]
+        return QR(payload.content, QRLoginType.QQ, "image/png", qrsig)
 
     async def _get_wx_qr(self) -> QR:
         """获取微信登录二维码."""
-        response = await self._build_http(
+        payload = await self._build_http(
             "GET",
             "https://open.weixin.qq.com/connect/qrconnect",
             params={
@@ -447,24 +441,22 @@ class LoginApi(ApiModule):
                 "href": "https://y.qq.com/mediastyle/music_v17/src/css/popup_wechat.css#wechat_redirect",
             },
             cookies={},
-            disable_parse=True,
+            raw=True,
         )
-        if not response.text:
+        if not payload.text:
             raise ApiDataError("获取二维码失败")
-        matches = _WX_UUID_RE.findall(response.text)
+        matches = _WX_UUID_RE.findall(payload.text)
         if not matches:
             raise ApiDataError("获取 uuid 失败")
         uuid = matches[0]
-        qrcode_data = (
-            await self._build_http(
-                "GET",
-                f"https://open.weixin.qq.com/connect/qrcode/{uuid}",
-                headers={"Referer": "https://open.weixin.qq.com/connect/qrconnect"},
-                cookies={},
-                disable_parse=True,
-            )
-        ).content or b""
-        return QR(qrcode_data, QRLoginType.WX, "image/jpeg", uuid)
+        qrcode_payload = await self._build_http(
+            "GET",
+            f"https://open.weixin.qq.com/connect/qrcode/{uuid}",
+            headers={"Referer": "https://open.weixin.qq.com/connect/qrconnect"},
+            cookies={},
+            raw=True,
+        )
+        return QR(qrcode_payload.content, QRLoginType.WX, "image/jpeg", uuid)
 
     async def _get_mobile_qr(self) -> QR:
         """获取手机客户端登录二维码."""
@@ -494,7 +486,7 @@ class LoginApi(ApiModule):
         """检查 QQ 二维码状态."""
         qrsig = qrcode.identifier
         try:
-            response = await self._build_http(
+            payload = await self._build_http(
                 "GET",
                 "https://ssl.ptlogin2.qq.com/ptqrlogin",
                 params={
@@ -517,12 +509,12 @@ class LoginApi(ApiModule):
                 },
                 headers={"Referer": "https://xui.ptlogin2.qq.com/"},
                 cookies={"qrsig": qrsig},
-                disable_parse=True,
+                raw=True,
             )
         except HTTPError as exc:
             raise ApiDataError("无效 qrsig") from exc
 
-        match = _QQ_STATUS_RE.search(response.text or "")
+        match = _QQ_STATUS_RE.search(payload.text)
         if not match:
             raise ApiDataError("获取二维码状态失败: 无法解析响应")
 
@@ -553,48 +545,40 @@ class LoginApi(ApiModule):
     async def _check_wx_qr(self, qrcode: QR) -> QRLoginResult:
         """检查微信二维码状态.
 
-        长轮询通过 Transport.request 直连并登记到 Client 操作生命周期;
-        超时传输异常解释为扫码中事件, 其他传输错误转换为 NetworkError.
+        长轮询请求不携带登录 Cookies; 超时网络异常解释为扫码中事件,
+        其他网络错误以 NetworkError 冒泡.
         """
         uuid = qrcode.identifier
-        async with self._client._operation():
-            try:
-                response = await self._client._transport.request(
-                    PreparedRequest(
-                        method="GET",
-                        url="https://lp.open.weixin.qq.com/connect/l/qrconnect",
-                        kwargs={
-                            "params": {"uuid": uuid, "_": str(int(time()) * 1000)},
-                            "headers": {"Referer": "https://open.weixin.qq.com/"},
-                            "timeout": 35.0,
-                        },
-                    ),
-                )
-            except TransportTimeout:
-                return QRLoginResult(event=QRCodeLoginEvents.SCAN)
-            except TransportError as exc:
-                raise NetworkError(str(exc)) from exc
+        try:
+            payload = await self._build_http(
+                "GET",
+                "https://lp.open.weixin.qq.com/connect/l/qrconnect",
+                params={"uuid": uuid, "_": str(int(time()) * 1000)},
+                headers={"Referer": "https://open.weixin.qq.com/"},
+                credential=Credential(),
+                raw=True,
+                timeout=35.0,
+            )
+        except TimeoutNetworkError:
+            return QRLoginResult(event=QRCodeLoginEvents.SCAN)
 
-            try:
-                match = _WX_STATUS_RE.search(response.text or "")
-                if not match:
-                    raise ApiDataError("获取二维码状态失败: 无法解析响应")
+        match = _WX_STATUS_RE.search(payload.text)
+        if not match:
+            raise ApiDataError("获取二维码状态失败: 无法解析响应")
 
-                wx_errcode = match.group(1)
-                if not wx_errcode.isdigit():
-                    raise ApiDataError("获取二维码状态失败: 无效的错误码")
+        wx_errcode = match.group(1)
+        if not wx_errcode.isdigit():
+            raise ApiDataError("获取二维码状态失败: 无效的错误码")
 
-                event = QRCodeLoginEvents.get_by_value(int(wx_errcode))
-                if event != QRCodeLoginEvents.DONE:
-                    return QRLoginResult(event=event)
+        event = QRCodeLoginEvents.get_by_value(int(wx_errcode))
+        if event != QRCodeLoginEvents.DONE:
+            return QRLoginResult(event=event)
 
-                wx_code = match.group(2)
-                if not wx_code:
-                    raise ApiDataError("获取 code 失败: 无效的 code")
-            finally:
-                await self._client._transport.release(response)
+        wx_code = match.group(2)
+        if not wx_code:
+            raise ApiDataError("获取 code 失败: 无效的 code")
 
-            return QRLoginResult(event=event, credential=await self._authorize_wx_qr(wx_code))
+        return QRLoginResult(event=event, credential=await self._authorize_wx_qr(wx_code))
 
     async def _connect_mobile_mqtt(self, client: MqttClient, qrcode_id: str) -> None:
         """建立手机客户端二维码 MQTT 连接."""
@@ -664,7 +648,7 @@ class LoginApi(ApiModule):
 
     async def _authorize_qq_qr(self, uin: str, sigx: str) -> Credential:
         """完成 QQ 二维码鉴权并返回凭证."""
-        response = await self._build_http(
+        payload = await self._build_http(
             "GET",
             "https://ssl.ptlogin2.graph.qq.com/check_sig",
             params={
@@ -689,14 +673,14 @@ class LoginApi(ApiModule):
             },
             headers={"Referer": "https://xui.ptlogin2.qq.com/"},
             cookies={},
-            disable_parse=True,
+            raw=True,
             allow_redirects=False,
         )
-        p_skey = response.cookies["p_skey"]  # type: ignore
+        p_skey = payload.cookies.get("p_skey", "")
         if not p_skey:
             raise ApiDataError("获取 p_skey 失败")
 
-        authorize_response = await self._build_http(
+        authorize_payload = await self._build_http(
             "POST",
             "https://graph.qq.com/oauth2.0/authorize",
             data={
@@ -714,12 +698,12 @@ class LoginApi(ApiModule):
                 "auth_time": str(int(time()) * 1000),
                 "ui": str(uuid4()),
             },
-            cookies=response.cookies,
-            disable_parse=True,
+            cookies=dict(payload.cookies),
+            raw=True,
             allow_redirects=False,
         )
 
-        location = authorize_response.headers.get("Location", "")
+        location = authorize_payload.headers.get("Location", "")
         code_match = re.findall(r"(?<=code=)(.+?)(?=&)", location)
         if not code_match:
             raise ApiDataError("获取 code 失败")

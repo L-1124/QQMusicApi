@@ -8,6 +8,7 @@ import pytest
 from qqmusic_api.core.engine import ClientDefaults, RequestEngine, RequestScope, ScopedCall
 from qqmusic_api.core.exceptions import ApiDataError, NetworkError
 from qqmusic_api.core.request import CgiRequest, HttpRequest
+from qqmusic_api.core.transport import PreparedRequest
 from qqmusic_api.core.versioning import DEFAULT_VERSION_POLICY, Platform
 from qqmusic_api.models.request import Credential
 from tests.kernel_contract import StubTransport
@@ -31,7 +32,7 @@ class StubCgiExecutor:
         self.received_batch_size: int | None = None
         self.received_return_exceptions: bool | None = None
 
-    async def execute_one(self, call: ScopedCall, *, operation: Any = None) -> Any:
+    async def execute_one(self, call: ScopedCall) -> Any:
         """记录单请求调用并返回固定值."""
         self.calls.append(("one", call))
         return "cgi-one"
@@ -41,7 +42,6 @@ class StubCgiExecutor:
         calls: Sequence[ScopedCall],
         *,
         batch_size: int,
-        operation: Any = None,
         return_exceptions: bool = False,
     ) -> list[tuple[int, Any]]:
         """记录批量调用并按预置行为返回."""
@@ -67,7 +67,12 @@ class StubHttpExecutor:
         self.results = results or {}
         self.error = error
 
-    async def execute_one(self, call: ScopedCall, *, operation: Any = None) -> Any:
+    async def prepare(self, call: ScopedCall) -> Any:
+        """记录准备调用并返回空传输请求."""
+        self.calls.append(("prepare", call))
+        return PreparedRequest(method="GET", url="https://example.com")
+
+    async def execute_one(self, call: ScopedCall) -> Any:
         """记录单请求调用并返回固定值."""
         self.calls.append(("one", call))
         return "http-one"
@@ -76,7 +81,6 @@ class StubHttpExecutor:
         self,
         calls: Sequence[ScopedCall],
         *,
-        operation: Any = None,
         return_exceptions: bool = False,
     ) -> list[tuple[int, Any]]:
         """记录批量调用并按预置行为返回."""
@@ -226,7 +230,6 @@ async def test_gather_missing_result_guard_raises_api_data_error():
             calls: Sequence[ScopedCall],
             *,
             batch_size: int,
-            operation: Any = None,
             return_exceptions: bool = False,
         ) -> list[tuple[int, Any]]:
             """仅返回首个索引的结果."""

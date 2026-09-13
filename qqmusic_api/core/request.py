@@ -22,8 +22,7 @@ from typing_extensions import Self
 
 from ..models.request import Credential
 from .pagination import ItemPaginatedMixin, ItemT_co, PaginatedMixin
-from .response import AllowErrorCodes, ResponseModel
-from .transport import HttpRawResponse
+from .response import AllowErrorCodes, RawPayload, ResponseModel
 from .versioning import Platform
 
 if TYPE_CHECKING:
@@ -31,7 +30,7 @@ if TYPE_CHECKING:
 
 ResultT = TypeVar("ResultT")
 CgiRequestResultT = TypeVar("CgiRequestResultT", bound=BaseModel | dict[str, Any])
-HttpRequestResultT = TypeVar("HttpRequestResultT", bound=HttpRawResponse | BaseModel | dict[str, Any])
+HttpRequestResultT = TypeVar("HttpRequestResultT", bound=RawPayload | BaseModel | dict[str, Any])
 NewItemT = TypeVar("NewItemT")
 
 __all__ = [
@@ -56,12 +55,10 @@ class BaseRequest(Generic[ResultT]):
     Attributes:
         _client: 请求执行的客户端实例, 用于调度请求.
         response_model: 期望的响应模型类型, 支持 Pydantic BaseModel.
-        disable_parse: 是否禁用响应解析, 直接返回原始响应数据.
     """
 
     _client: "Client"
     response_model: type[BaseModel] | None = None
-    disable_parse: bool = False
 
     def __await__(self) -> Generator[Any, Any, ResultT]:
         """将自身作为载体, 委派给 Client 进行多态调度执行."""
@@ -95,11 +92,13 @@ class CgiRequest(BaseRequest[CgiRequestResultT]):
         preserve_bool: 是否在参数中保留布尔值 (而非转换为整型等).
         allow_error_codes: 允许的错误码集合, 如果响应中包含这些错误码,
             将不会抛出异常.
-        parse_on_allow: 当响应包含允许的错误码时, 是否仍尝试解析响应数据, 优先级大于 `disable_parse`.
+        parse_on_allow: 当响应包含允许的错误码时, 是否仍尝试解析响应数据.
         credential: 可选的凭证对象, 优先于客户端的全局凭证.
         require_login: 请求是否需要凭证.
         platform: 可选的平台标识, 优先于客户端的全局平台设置.
         sign: 指示该请求是否需要签名处理.
+        disable_parse: 解析策略开关: 为 True 时跳过模型转换, 直接返回
+            内层 data 原始字典.
     """
 
     module: str
@@ -114,6 +113,7 @@ class CgiRequest(BaseRequest[CgiRequestResultT]):
     sign: bool = False
     allow_error_codes: AllowErrorCodes | None = None
     parse_on_allow: bool = False
+    disable_parse: bool = False
 
 
 class HttpRequestOptions(TypedDict, total=False):
@@ -123,7 +123,6 @@ class HttpRequestOptions(TypedDict, total=False):
     auth: HttpAuthenticationType | AsyncHttpAuthenticationType | None
     timeout: TimeoutType | None
     allow_redirects: bool
-    stream: bool | None
 
 
 @dataclass(kw_only=True)
@@ -142,6 +141,8 @@ class HttpRequest(BaseRequest[HttpRequestResultT]):
         data: 原始请求体数据 (非 JSON 场景, 如表单、二进制等).
         kwargs: 透传给底层 HTTP 客户端的其它可选关键字参数字典.
         credential: 可选的凭证对象, 优先于客户端的全局凭证.
+        raw: 是否返回原始载荷快照 (RawPayload) 而非解析结果; 快照为
+            值语义, 无需释放.
     """
 
     method: HttpMethodType
@@ -153,6 +154,7 @@ class HttpRequest(BaseRequest[HttpRequestResultT]):
     data: BodyType | AsyncBodyType | None = None
     kwargs: HttpRequestOptions | None = None
     credential: Credential | None = None
+    raw: bool = False
 
 
 @dataclass(kw_only=True)

@@ -149,19 +149,14 @@ class AndroidSessionManager:
             ),
         )
 
-        try:
-            items = unwrap_cgi_envelope(response, expected_count=1)
-            item = items[0]
-            if item is None:
-                raise ApiDataError("Android Session 响应格式异常, 缺少 req_0")
-            data = parse_cgi_item(item, disable_parse=True)
-            if not isinstance(data, dict) or not isinstance(data.get("session"), dict):
-                raise ApiDataError("Android Session 响应格式异常, 缺少会话字段")
-            session = await self._publish(data["session"])
-        finally:
-            await self._transport.release(response)
-
-        return session
+        items = unwrap_cgi_envelope(response, expected_count=1)
+        item = items[0]
+        if item is None:
+            raise ApiDataError("Android Session 响应格式异常, 缺少 req_0")
+        data = parse_cgi_item(item, disable_parse=True)
+        if not isinstance(data, dict) or not isinstance(data.get("session"), dict):
+            raise ApiDataError("Android Session 响应格式异常, 缺少会话字段")
+        return await self._publish(data["session"])
 
     async def _publish(self, session_data: Any) -> AndroidSession:
         """校验会话字段并一次发布到缓存.

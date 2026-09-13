@@ -1,7 +1,11 @@
-"""响应解析. CGI 信封解包, 子项解析与 HTTP 响应解析的全库唯一实现."""
+"""响应载荷快照与解析. 载荷值对象, CGI 信封解包, 子项解析与 HTTP 响应解析的全库唯一实现."""
 
+from collections.abc import Mapping
+from dataclasses import dataclass
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Literal, TypeAlias, TypeVar, overload
 
+import orjson as json
 from pydantic import BaseModel
 
 from .exceptions import (
@@ -20,6 +24,80 @@ if TYPE_CHECKING:
 ResponseModel = TypeVar("ResponseModel", bound=BaseModel)
 
 AllowErrorCodes: TypeAlias = Literal["all"] | set[int] | frozenset[int] | tuple[int, ...]
+
+
+@dataclass(frozen=True)
+class RawPayload:
+    """原始响应载荷快照.
+
+    值语义的不可变数据对象, 不持有任何传输资源, 使用者无需释放.
+
+    Attributes:
+        status_code: HTTP 状态码.
+        url: 最终请求 URL (跟随重定向后).
+        headers: 响应头, 键大小写不敏感.
+        cookies: 响应 Cookie 名值快照.
+        content: 响应体字节.
+        text: 响应体文本 (按响应编码解码).
+    """
+
+    status_code: int | None
+    url: str | None
+    headers: Mapping[str, str]
+    cookies: Mapping[str, str]
+    content: bytes
+    text: str
+
+    def json(self) -> Any:
+        """将响应体字节解析为 JSON.
+
+        Returns:
+            解析后的 JSON 载荷.
+
+        Raises:
+            JSONDecodeError: 响应体不是有效 JSON.
+        """
+        return json.loads(self.content)
+
+
+def snapshot_payload(response: "RawResponse") -> RawPayload:
+    """从缓冲响应构造不可变载荷快照.
+
+    Args:
+        response: 已完整缓冲的底层响应.
+
+    Returns:
+        与响应内容等价的 RawPayload 快照.
+    """
+    cookies: dict[str, str] = {}
+    # RequestsCookieJar 迭代产出 Cookie 对象而非键名, 必须经 keys() 取名值.
+    for name in response.cookies.keys():  # noqa: SIM118
+        cookies[name] = response.cookies[name]
+    return RawPayload(
+        status_code=response.status_code,
+        url=response.url,
+        headers=MappingProxyType(response.headers),
+        cookies=cookies,
+        content=response.content or b"",
+        text=response.text or "",
+    )
+
+
+def ensure_http_success(response: "RawResponse") -> None:
+    """校验响应状态码, 异常状态抛出 HTTPError.
+
+    Args:
+        response: 原始 HTTP 响应.
+
+    Raises:
+        HTTPError: HTTP 状态码异常.
+    """
+    try:
+        response.raise_for_status()
+    except Exception as exc:
+        status = response.status_code
+        raise HTTPError(str(exc), status_code=status if isinstance(status, int) else -1) from exc
+
 
 CGI_ERROR_MAP: dict[int, type[CgiApiException]] = {
     2000: SignatureRequiredError,
@@ -156,32 +234,23 @@ def parse_cgi_item(
 def parse_http_response(
     response: "RawResponse",
     *,
-    disable_parse: bool = False,
     response_model: type[BaseModel] | None = None,
 ) -> Any:
     """解析标准 HTTP 响应并校验状态.
 
-    支持 JSON 模型转换、文本回退或返回底层传输对象.
+    支持 JSON 模型转换或文本回退.
 
     Args:
         response: 原始 HTTP 响应.
-        disable_parse: 是否跳过解析直接返回原始对象.
         response_model: 期望的响应模型类型.
 
     Returns:
-        模型实例、JSON 字典、文本或底层响应对象.
+        模型实例、JSON 字典、文本或字节.
 
     Raises:
         HTTPError: HTTP 状态码异常.
     """
-    try:
-        response.raise_for_status()
-    except Exception as exc:
-        status = response.status_code
-        raise HTTPError(str(exc), status_code=status if isinstance(status, int) else -1) from exc
-
-    if disable_parse:
-        return response
+    ensure_http_success(response)
 
     try:
         parsed = response.json()

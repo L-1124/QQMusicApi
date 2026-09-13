@@ -11,6 +11,7 @@ from qqmusic_api.core.transport import (
     PreparedRequest,
     TransportError,
     TransportTimeout,
+    _release_raw,
 )
 
 pytestmark = pytest.mark.core
@@ -50,6 +51,9 @@ class StubRawResponse:
     def __init__(self) -> None:
         """构造空响应桩."""
         self.status_code = 200
+        self.url = "https://example.com/"
+        self.headers: dict[str, str] = {}
+        self.cookies: dict[str, str] = {}
         self.content = b"{}"
         self.text = "{}"
         self.close_calls = 0
@@ -61,6 +65,32 @@ class StubRawResponse:
     def raise_for_status(self) -> object:
         """无状态异常, 返回自身."""
         return self
+
+    def close(self) -> None:
+        """记录释放调用."""
+        self.close_calls += 1
+
+
+class StubStreamResponse:
+    """满足流式租约验证需求的响应桩."""
+
+    def __init__(self, chunks: list[bytes] | None = None) -> None:
+        """以预置字节块构造流式响应桩."""
+        self.status_code = 200
+        self.url = "https://example.com/"
+        self.headers: dict[str, str] = {}
+        self.cookies: dict[str, str] = {}
+        self.chunks = chunks or []
+        self.close_calls = 0
+
+    async def iter_content(self, chunk_size: int) -> Any:
+        """返回按预置字节块迭代的异步生成器."""
+
+        async def _iterator() -> Any:
+            for chunk in self.chunks:
+                yield chunk
+
+        return _iterator()
 
     def close(self) -> None:
         """记录释放调用."""
@@ -99,11 +129,11 @@ async def test_request_passes_method_url_and_all_kwargs(transport: NiquestsTrans
     assert kwargs["timeout"] == 5.0
 
 
-async def test_release_closes_underlying_response(transport: NiquestsTransport):
-    """测试 release 调用底层响应的 close 且可重复."""
+async def test_internal_release_closes_underlying_response():
+    """测试内部释放函数调用底层响应的 close 且可重复."""
     response = StubRawResponse()
-    await transport.release(response)
-    await transport.release(response)
+    await _release_raw(response)
+    await _release_raw(response)
     assert response.close_calls == 2
 
 
@@ -152,7 +182,61 @@ async def test_close_is_idempotent(transport: NiquestsTransport, stub_client: St
     assert stub_client.close_calls == 1
 
 
-def test_prepared_request_defaults_kwargs_to_empty():
+async def test_open_stream_requests_with_stream_flag_and_yields_chunks(
+    transport: NiquestsTransport, stub_client: StubAsyncClient
+):
+    """测试流式租约以 stream 标志建流并按块产出响应体."""
+    stream_response = StubStreamResponse([b"ab", b"cd"])
+    stub_client._outcomes = [stream_response]
+    request = _prepared(timeout=5.0)
+    async with transport.open_stream(request) as stream:
+        method, url, kwargs = stub_client.request_calls[0]
+        assert method == "POST"
+        assert url == "https://example.com"
+        assert kwargs["stream"] is True
+        assert kwargs["timeout"] == 5.0
+        chunks = [chunk async for chunk in stream.iter_chunks(2)]
+        assert chunks == [b"ab", b"cd"]
+    assert stream_response.close_calls == 1
+    assert transport._capacity._used == 0
+
+
+async def test_open_stream_closes_on_body_error_and_returns_permit(
+    transport: NiquestsTransport, stub_client: StubAsyncClient
+):
+    """测试流读取中途异常时仍关闭底层流并归还许可."""
+
+    class BrokenStreamResponse(StubStreamResponse):
+        """迭代即抛错的流式响应桩."""
+
+        async def iter_content(self, chunk_size: int) -> Any:
+            """返回迭代即抛错的异步生成器."""
+
+            async def _iterator() -> Any:
+                raise RuntimeError("读取失败")
+                yield b""  # pragma: no cover
+
+            return _iterator()
+
+    stub_client._outcomes = [BrokenStreamResponse()]
+    with pytest.raises(RuntimeError, match="读取失败"):
+        async with transport.open_stream(_prepared()) as stream:
+            await anext(stream.iter_chunks(2))
+    assert transport._capacity._used == 0
+
+
+async def test_open_stream_timeout_maps_to_transport_timeout_and_returns_permit(
+    transport: NiquestsTransport, stub_client: StubAsyncClient
+):
+    """测试建流超时映射为 TransportTimeout 且归还许可."""
+    stub_client._outcomes = [Timeout("timed out")]
+    with pytest.raises(TransportTimeout):
+        async with transport.open_stream(_prepared()):
+            pass
+    assert transport._capacity._used == 0
+
+
+async def test_prepared_request_defaults_kwargs_to_empty():
     """测试 PreparedRequest 未提供 kwargs 时默认为空映射."""
     request = PreparedRequest(method="GET", url="https://example.com", kwargs={})
     assert request.kwargs == {}

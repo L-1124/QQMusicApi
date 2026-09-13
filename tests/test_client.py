@@ -1,7 +1,7 @@
 """Client 门面与组合根单元测试 (传输桩驱动, 不发起真实网络)."""
 
 from collections.abc import AsyncIterator
-from typing import Any
+from typing import Any, cast
 
 import pytest
 import pytest_asyncio
@@ -13,7 +13,14 @@ from qqmusic_api.core.request import BaseRequest, CgiRequest, HttpRequest
 from qqmusic_api.core.transport import TransportError, TransportTimeout
 from qqmusic_api.core.versioning import Platform
 from qqmusic_api.models.login import QR, QRCodeLoginEvents, QRLoginType
-from tests.kernel_contract import StubResponse, StubTransport, make_cgi_envelope, make_cgi_sub
+from tests.kernel_contract import (
+    StubResponse,
+    StubStream,
+    StubStreamLease,
+    StubTransport,
+    make_cgi_envelope,
+    make_cgi_sub,
+)
 
 pytestmark = pytest.mark.core
 
@@ -63,7 +70,6 @@ async def test_execute_delegates_to_engine(stub_client: Client):
     result = await stub_client.execute(_cgi_request(stub_client, response_model=DummyModel))
     assert result == DummyModel(value=8)
     assert len(transport.start_calls) == 1
-    assert len(transport.release_calls) == 1
 
 
 async def test_execute_http_request_delegates_to_engine(stub_client: Client):
@@ -116,7 +122,7 @@ async def test_request_await_delegates_to_client_execute(stub_client: Client):
     assert await request == DummyModel(value=3)
 
 
-async def test_wx_long_poll_timeout_maps_to_scan_event(stub_client: Client):
+async def test_wx_long_poll_timeout_maps_to_scan_event():
     """测试微信长轮询超时传输异常解释为扫码中事件."""
 
     class TimeoutTransport(StubTransport):
@@ -126,13 +132,13 @@ async def test_wx_long_poll_timeout_maps_to_scan_event(stub_client: Client):
             """模拟长轮询超时."""
             raise TransportTimeout("timed out")
 
-    stub_client._transport = TimeoutTransport()
+    client = Client(platform=Platform.WEB, transport=TimeoutTransport())
     qrcode = QR(data=b"", qr_type=QRLoginType.WX, mimetype="", identifier="uuid")
-    result = await stub_client.login._check_wx_qr(qrcode)
+    result = await client.login._check_wx_qr(qrcode)
     assert result.event == QRCodeLoginEvents.SCAN
 
 
-async def test_wx_long_poll_transport_error_maps_to_network_error(stub_client: Client):
+async def test_wx_long_poll_transport_error_maps_to_network_error():
     """测试微信长轮询其他传输异常转换为 NetworkError."""
 
     class BrokenTransport(StubTransport):
@@ -142,10 +148,67 @@ async def test_wx_long_poll_transport_error_maps_to_network_error(stub_client: C
             """模拟网络错误."""
             raise TransportError("connection reset")
 
-    stub_client._transport = BrokenTransport()
+    client = Client(platform=Platform.WEB, transport=BrokenTransport())
     qrcode = QR(data=b"", qr_type=QRLoginType.WX, mimetype="", identifier="uuid")
     with pytest.raises(NetworkError):
-        await stub_client.login._check_wx_qr(qrcode)
+        await client.login._check_wx_qr(qrcode)
+
+
+async def test_stream_lease_yields_stream_and_exits(stub_client: Client):
+    """测试 stream 租约进入产出流视图且退出后释放."""
+    transport = cast_transport(stub_client)
+    marker = StubStream([])
+    lease = StubStreamLease(stream=marker)
+    transport.stream_leases.append(lease)
+    async with stub_client.stream(_http_request(stub_client)) as raw_stream:
+        assert raw_stream is marker
+    assert lease.entered
+    assert lease.exited
+    assert len(transport.open_stream_calls) == 1
+
+
+async def test_stream_lease_releases_on_body_error():
+    """测试流读取中途异常时租约仍保证退出."""
+
+    class ExplodingStream(StubStream):
+        """迭代即抛错的流桩."""
+
+        async def iter_chunks(self, chunk_size: int = 65536) -> Any:
+            """迭代首个分块即抛出读取异常."""
+            raise RuntimeError("读取失败")
+            yield b""  # pragma: no cover
+
+    class LeaseTransport(StubTransport):
+        """预置爆炸流租约的传输桩."""
+
+        def __init__(self) -> None:
+            """预置租约队列."""
+            super().__init__()
+            self.stream_leases.append(StubStreamLease(stream=ExplodingStream([])))
+
+    client = Client(platform=Platform.WEB, transport=LeaseTransport())
+    with pytest.raises(RuntimeError, match="读取失败"):
+        async with client.stream(HttpRequest(_client=client, method="GET", url="https://example.com")) as raw_stream:
+            await anext(raw_stream.iter_chunks(2))
+
+
+async def test_stream_rejects_non_streaming_transport():
+    """测试传输实现无流式能力时 stream 抛出 TypeError."""
+
+    class PlainTransport:
+        """仅满足 Transport 协议的传输桩."""
+
+        async def request(self, request: Any) -> Any:
+            """空实现."""
+            raise AssertionError("不应发起请求")
+
+        async def close(self) -> None:
+            """空实现."""
+
+    client = Client(platform=Platform.WEB, transport=cast("Any", PlainTransport()))
+    with pytest.raises(TypeError, match="流式"):
+        async with client.stream(HttpRequest(_client=client, method="GET", url="https://example.com")):
+            pass
 
 
 def cast_transport(client: Client) -> StubTransport:
