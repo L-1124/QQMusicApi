@@ -396,7 +396,7 @@ class CgiExecutor:
         session = None
         try:
             if scope.platform == Platform.ANDROID:
-                session = await self._android_session.ensure(scope.credential)
+                session = await self._android_session.ensure()
 
             device = await self._device_store.get_device()
             qimei = await self._qimei_manager.get_cached() if scope.platform == Platform.ANDROID else None

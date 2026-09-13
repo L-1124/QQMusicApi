@@ -1,15 +1,11 @@
-"""Android 平台会话管理. 按身份隔离缓存会话值并负责刷新.
-
-SessionKey = (设备身份, 凭证序列化值). 会话值不可变, 缓存仅存于
-Client 内存 (LRU, 最多 32 个身份); 刷新使用单一管理器锁, 锁内
-二次检查, 有效命中不等待锁. 刷新失败不发布, 取消不发布半成品.
-不恢复旧 device 文件中的会话, 也不再读写设备共享会话槽.
-"""
+"""Android 设备匿名会话管理. 负责持久化、复用与跨日刷新."""
 
 from __future__ import annotations
 
-import time
+import contextlib
 from dataclasses import dataclass
+from datetime import datetime
+from time import time
 from typing import TYPE_CHECKING, Any
 
 import anyio
@@ -18,15 +14,13 @@ from ..core.exceptions import ApiDataError
 from ..core.response import parse_cgi_item, unwrap_cgi_envelope
 from ..core.transport import PreparedRequest
 from ..core.versioning import Platform, VersionPolicy
+from ..models.request import Credential
 
 if TYPE_CHECKING:
     from ..core.transport import Transport
-    from ..models.request import Credential
     from .device import DeviceManager
     from .qimei import QimeiManager
 
-SESSION_VALID_SECONDS = 86400
-SESSION_CACHE_MAX_IDENTITIES = 32
 SESSION_URL = "https://u.y.qq.com/cgi-bin/musicu.fcg"
 
 
@@ -38,28 +32,26 @@ class AndroidSession:
         uid: 会话 UID (非空字符串).
         sid: 会话 SID (非空字符串).
         vkey: 会话 vkey, 缺失时为 None.
-        expires_at: 单调时钟到期时刻 (秒).
+        saved_at: 本地保存时的 Unix 时间戳.
     """
 
     uid: str
     sid: str
     vkey: str | None
-    expires_at: float
+    saved_at: int
 
-    def is_valid(self, now: float) -> bool:
-        """判断会话在单调时钟 ``now`` 时刻是否仍有效.
-
-        Args:
-            now: 单调时钟当前读数.
+    def saved_today(self) -> bool:
+        """判断会话是否在当前自然日获取或刷新.
 
         Returns:
-            是否有效.
+            是否为当天保存的会话.
         """
-        return now < self.expires_at
+        now = datetime.now().astimezone()
+        return datetime.fromtimestamp(self.saved_at, tz=now.tzinfo).date() == now.date()
 
 
 class AndroidSessionManager:
-    """管理 Android 平台会话: 身份隔离缓存, 有效期与刷新."""
+    """管理单个 Android 设备的匿名会话."""
 
     def __init__(
         self,
@@ -82,17 +74,13 @@ class AndroidSessionManager:
         self._version_policy = version_policy
         self._transport = transport
         self._lock = anyio.Lock()
-        # SessionKey -> AndroidSession, 按最近使用淘汰.
-        self._cache: dict[tuple[str, str], AndroidSession] = {}
+        self._session: AndroidSession | None = None
 
-    async def ensure(self, credential: Credential) -> AndroidSession:
-        """获取 Android 平台会话值, 必要时刷新.
+    async def ensure(self) -> AndroidSession:
+        """获取设备会话, 首次创建或跨自然日时刷新.
 
-        有效缓存命中直接返回; 未命中时经单一刷新锁刷新
-        (锁内二次检查), 全部字段校验通过后一次发布.
-
-        Args:
-            credential: 本次请求使用的凭证.
+        内存和设备文件中的会话均可复用; 刷新使用单一锁并在锁内
+        二次检查. 首次业务请求使用 caller=2, 跨日保活使用 caller=1.
 
         Returns:
             不可变的会话值.
@@ -101,31 +89,37 @@ class AndroidSessionManager:
             HTTPError: 刷新请求状态码异常.
             TransportError: 网络传输异常.
         """
-        device = await self._device_store.get_device()
-        key = (device.open_udid, credential.model_dump_json())
-        now = time.monotonic()
-        session = self._cache.get(key)
-        if session is not None and session.is_valid(now):
-            # 命中即更新最近使用位置.
-            self._cache.pop(key, None)
-            self._cache[key] = session
+        session = await self._get_cached()
+        if session is not None and session.saved_today():
             return session
 
         async with self._lock:
-            now = time.monotonic()
-            session = self._cache.get(key)
-            if session is not None and session.is_valid(now):
-                self._cache.pop(key, None)
-                self._cache[key] = session
+            session = await self._get_cached()
+            if session is not None and session.saved_today():
                 return session
-            return await self._refresh_session(credential, key)
+            return await self._refresh_session(session, caller=1 if session is not None else 2)
 
-    async def _refresh_session(self, credential: Credential, key: tuple[str, str]) -> AndroidSession:
+    async def _get_cached(self) -> AndroidSession | None:
+        """读取内存或设备文件中的会话."""
+        if self._session is not None:
+            return self._session
+        device = await self._device_store.get_device()
+        if not device.session_uid or not device.session_sid or device.session_save_time is None:
+            return None
+        self._session = AndroidSession(
+            uid=device.session_uid,
+            sid=device.session_sid,
+            vkey=device.session_vkey,
+            saved_at=device.session_save_time,
+        )
+        return self._session
+
+    async def _refresh_session(self, stale: AndroidSession | None, *, caller: int) -> AndroidSession:
         """发起 GetSession 请求并发布校验通过的新会话.
 
         Args:
-            credential: 本次请求使用的凭证.
-            key: 会话缓存键.
+            stale: 已有设备会话, 首次请求时为 None.
+            caller: 官方 SessionReq 调用来源.
 
         Returns:
             新的不可变会话值.
@@ -134,14 +128,13 @@ class AndroidSessionManager:
             ApiDataError: 刷新响应缺少会话字段.
         """
         device = await self._device_store.get_device()
-        stale = self._cache.get(key)
         final_comm = self._version_policy.build_comm(
             platform=Platform.ANDROID,
-            credential=credential,
+            credential=Credential(),
             device=device,
             qimei=await self._qimei_manager.get_cached(),
             guid=device.open_udid,
-            session=stale,
+            session=None,
         )
         payload: dict[str, Any] = {
             "comm": final_comm,
@@ -151,7 +144,7 @@ class AndroidSessionManager:
                 "param": {
                     "uid": stale.uid if stale is not None else "",
                     "vkey": 0,
-                    "caller": 0,
+                    "caller": caller,
                 },
             },
         }
@@ -172,17 +165,16 @@ class AndroidSessionManager:
             data = parse_cgi_item(item, disable_parse=True)
             if not isinstance(data, dict) or not isinstance(data.get("session"), dict):
                 raise ApiDataError("Android Session 响应格式异常, 缺少会话字段")
-            session = self._publish(key, data["session"])
+            session = await self._publish(data["session"])
         finally:
             await self._transport.release(response)
 
         return session
 
-    def _publish(self, key: tuple[str, str], session_data: Any) -> AndroidSession:
+    async def _publish(self, session_data: Any) -> AndroidSession:
         """校验会话字段并一次发布到缓存.
 
         Args:
-            key: 会话缓存键.
             session_data: 响应中的 session 字典.
 
         Returns:
@@ -203,15 +195,8 @@ class AndroidSessionManager:
         if vkey is not None and not isinstance(vkey, str):
             vkey = str(vkey)
 
-        session = AndroidSession(
-            uid=uid,
-            sid=sid,
-            vkey=vkey,
-            expires_at=time.monotonic() + SESSION_VALID_SECONDS,
-        )
-        # 先写入缓存再淘汰, 避免 LRU 把刚发布的会话挤出.
-        self._cache.pop(key, None)
-        self._cache[key] = session
-        while len(self._cache) > SESSION_CACHE_MAX_IDENTITIES:
-            self._cache.pop(next(iter(self._cache)))
+        session = AndroidSession(uid=uid, sid=sid, vkey=vkey, saved_at=int(time()))
+        with contextlib.suppress(Exception):
+            await self._device_store.apply_session(uid, sid, vkey)
+        self._session = session
         return session

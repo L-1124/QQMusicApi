@@ -8,8 +8,7 @@ import pytest_asyncio
 
 from qqmusic_api.core.exceptions import ApiDataError, HTTPError
 from qqmusic_api.core.versioning import DEFAULT_VERSION_POLICY
-from qqmusic_api.models.request import Credential
-from qqmusic_api.utils.android_session import SESSION_CACHE_MAX_IDENTITIES, AndroidSession, AndroidSessionManager
+from qqmusic_api.utils.android_session import AndroidSession, AndroidSessionManager
 from qqmusic_api.utils.device import DeviceManager
 from tests.kernel_contract import StubResponse, StubTransport, make_cgi_sub
 
@@ -34,11 +33,6 @@ def _session_response(uid: str = "1", sid: str = "s", vkey: Any = "v") -> StubRe
     return StubResponse({"code": 0, "req_0": make_cgi_sub(data={"session": {"uid": uid, "sid": sid, "vkey": vkey}})})
 
 
-def _credential(credential: Credential | None = None) -> Credential:
-    """构造 Android 会话使用的凭证."""
-    return credential or Credential(musicid=42, musickey="key42", login_type=1)
-
-
 def _make_manager(transport: StubTransport, device_store: DeviceManager) -> AndroidSessionManager:
     """构造注入桩依赖的 AndroidSessionManager."""
     return AndroidSessionManager(
@@ -58,21 +52,21 @@ async def device_store() -> DeviceManager:
 
 
 async def test_refresh_posts_and_publishes_session(device_store: DeviceManager):
-    """测试刷新请求成功后发布不可变会话且不写设备会话槽."""
+    """测试首次请求发布并保存设备会话."""
     transport = StubTransport(starts=[_session_response(uid="1", sid="s", vkey="v")])
     manager = _make_manager(transport, device_store)
-    session = await manager.ensure(_credential())
+    session = await manager.ensure()
     assert isinstance(session, AndroidSession)
     assert session.uid == "1"
     assert session.sid == "s"
     assert session.vkey == "v"
     device = device_store.device
     assert device is not None
-    # 不再写设备共享会话槽.
-    assert device.session_uid is None
-    assert device.session_sid is None
+    assert device.session_uid == "1"
+    assert device.session_sid == "s"
     assert len(transport.start_calls) == 1
     assert transport.start_calls[0].url == "https://u.y.qq.com/cgi-bin/musicu.fcg"
+    assert transport.start_calls[0].kwargs["json"]["req_0"]["param"]["caller"] == 2
     assert len(transport.release_calls) == 1
 
 
@@ -80,21 +74,10 @@ async def test_valid_cache_hit_short_circuits(device_store: DeviceManager):
     """测试有效缓存命中不等待锁也不发起新请求."""
     transport = StubTransport(starts=[_session_response()])
     manager = _make_manager(transport, device_store)
-    first = await manager.ensure(_credential())
-    second = await manager.ensure(_credential())
+    first = await manager.ensure()
+    second = await manager.ensure()
     assert first is second
     assert len(transport.start_calls) == 1
-
-
-async def test_credential_isolates_sessions(device_store: DeviceManager):
-    """测试不同凭证身份各自刷新, 会话不跨身份共享."""
-    transport = StubTransport(starts=[_session_response(uid="a"), _session_response(uid="b")])
-    manager = _make_manager(transport, device_store)
-    first = await manager.ensure(_credential(Credential(musicid=1, musickey="k1")))
-    second = await manager.ensure(_credential(Credential(musicid=2, musickey="k2")))
-    assert first.uid == "a"
-    assert second.uid == "b"
-    assert len(transport.start_calls) == 2
 
 
 async def test_concurrent_ensure_sends_single_request(device_store: DeviceManager):
@@ -103,7 +86,7 @@ async def test_concurrent_ensure_sends_single_request(device_store: DeviceManage
     manager = _make_manager(transport, device_store)
 
     async def run() -> None:
-        await manager.ensure(_credential())
+        await manager.ensure()
 
     async with anyio.create_task_group() as task_group:
         for _ in range(6):
@@ -117,9 +100,9 @@ async def test_failure_not_published(device_store: DeviceManager):
     transport = StubTransport(starts=[StubResponse({}, status_code=500), _session_response()])
     manager = _make_manager(transport, device_store)
     with pytest.raises(HTTPError):
-        await manager.ensure(_credential())
-    assert not manager._cache
-    session = await manager.ensure(_credential())
+        await manager.ensure()
+    assert manager._session is None
+    session = await manager.ensure()
     assert session.uid == "1"
     assert len(transport.start_calls) == 2
 
@@ -129,30 +112,17 @@ async def test_malformed_response_not_published(device_store: DeviceManager):
     transport = StubTransport(starts=[StubResponse({"code": 0, "req_0": make_cgi_sub(data={"session": {}})})])
     manager = _make_manager(transport, device_store)
     with pytest.raises(ApiDataError):
-        await manager.ensure(_credential())
-    assert not manager._cache
+        await manager.ensure()
+    assert manager._session is None
 
 
-async def test_lru_eviction(device_store: DeviceManager):
-    """测试缓存超过上限时按最近使用淘汰最旧身份."""
-    starts = [_session_response(uid=str(i)) for i in range(SESSION_CACHE_MAX_IDENTITIES + 1)]
-    transport = StubTransport(starts=starts)
-    manager = _make_manager(transport, device_store)
-    for i in range(SESSION_CACHE_MAX_IDENTITIES + 1):
-        await manager.ensure(_credential(Credential(musicid=i, musickey=f"k{i}")))
-    assert len(manager._cache) == SESSION_CACHE_MAX_IDENTITIES
-    evicted_key = ("", Credential(musicid=0, musickey="k0").model_dump_json())
-    assert evicted_key not in manager._cache
-
-
-async def test_expired_session_refreshes_again(device_store: DeviceManager):
-    """测试会话过期后重新发起刷新."""
+async def test_previous_day_session_refreshes_again(device_store: DeviceManager):
+    """测试跨自然日后以保活来源刷新会话."""
     transport = StubTransport(starts=[_session_response(uid="1"), _session_response(uid="2", sid="s2")])
     manager = _make_manager(transport, device_store)
-    first = await manager.ensure(_credential())
-    # 强制过期已发布的会话.
-    key = next(iter(manager._cache))
-    manager._cache[key] = AndroidSession(uid=first.uid, sid=first.sid, vkey=first.vkey, expires_at=0.0)
-    second = await manager.ensure(_credential())
+    first = await manager.ensure()
+    manager._session = AndroidSession(uid=first.uid, sid=first.sid, vkey=first.vkey, saved_at=0)
+    second = await manager.ensure()
     assert second.uid == "2"
     assert len(transport.start_calls) == 2
+    assert transport.start_calls[1].kwargs["json"]["req_0"]["param"]["caller"] == 1

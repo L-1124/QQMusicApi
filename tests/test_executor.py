@@ -64,11 +64,11 @@ class StubAndroidSessionManager:
             error: ensure 时抛出的异常.
         """
         self.error = error
-        self.calls: list[Credential] = []
+        self.calls = 0
 
-    async def ensure(self, credential: Credential) -> None:
+    async def ensure(self) -> None:
         """记录调用并在注入异常时抛出."""
-        self.calls.append(credential)
+        self.calls += 1
         if self.error is not None:
             raise self.error
 
@@ -507,7 +507,7 @@ async def test_prepare_batch_web_skips_qimei_and_session(cgi_executor: CgiExecut
     qimei = cast("Any", cgi_executor._qimei_manager)
     await cgi_executor._prepare_batch(_batch([_cgi_request()], _scope(Platform.WEB)))
     assert qimei.calls == 0
-    assert android_session.calls == []
+    assert android_session.calls == 0
 
 
 async def test_prepare_batch_android_ensures_session_and_qimei(cgi_executor: CgiExecutor):
@@ -515,7 +515,7 @@ async def test_prepare_batch_android_ensures_session_and_qimei(cgi_executor: Cgi
     prepared = await cgi_executor._prepare_batch(_batch([_cgi_request()], _scope(Platform.ANDROID)))
     android_session = cast("Any", cgi_executor._android_session)
     qimei = cast("Any", cgi_executor._qimei_manager)
-    assert len(android_session.calls) == 1
+    assert android_session.calls == 1
     assert qimei.calls == 1
     comm = prepared.kwargs["json"]["comm"]
     assert comm["QIMEI"] == "test_q16"
