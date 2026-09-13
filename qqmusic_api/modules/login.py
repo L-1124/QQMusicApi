@@ -287,10 +287,9 @@ class LoginApi(ApiModule):
             with anyio.fail_after(timeout_left):
                 return await operation()
 
-        # 整个 MQTT 流登记为一次 Client 操作: close 取消时生成器收尾并关闭会话.
-        async with self._client._operation():
+        try:
             try:
-                try:
+                async with self._client._operation():
                     await await_before_deadline(lambda: self._connect_mobile_mqtt(session, qrcode.identifier))
                     topic = f"management.qrcode_login/{qrcode.identifier}"
                     await await_before_deadline(
@@ -304,55 +303,60 @@ class LoginApi(ApiModule):
                             },
                         ),
                     )
-                except TimeoutError:
-                    yield QRLoginResult(event=QRCodeLoginEvents.TIMEOUT)
-                    return
-                except ConnectionError as exc:
-                    raise NetworkError(str(exc)) from exc
+            except TimeoutError:
+                yield QRLoginResult(event=QRCodeLoginEvents.TIMEOUT)
+                return
+            except ConnectionError as exc:
+                raise NetworkError(str(exc)) from exc
+            except RuntimeError:
+                return
 
-                yield QRLoginResult(event=QRCodeLoginEvents.SCAN)
+            yield QRLoginResult(event=QRCodeLoginEvents.SCAN)
 
-                try:
-                    async with aclosing(session.messages()) as messages:
-                        while True:
-                            try:
+            try:
+                async with aclosing(session.messages()) as messages:
+                    while True:
+                        try:
+                            async with self._client._operation():
                                 message = await await_before_deadline(lambda: anext(messages))
-                            except StopAsyncIteration:
-                                return
-                            except TimeoutError:
-                                yield QRLoginResult(event=QRCodeLoginEvents.TIMEOUT)
-                                return
+                        except StopAsyncIteration:
+                            return
+                        except TimeoutError:
+                            yield QRLoginResult(event=QRCodeLoginEvents.TIMEOUT)
+                            return
+                        except RuntimeError:
+                            return
 
-                            message_type = message.properties.get("type")
-                            message_payload = message.json
-                            try:
-                                event_item = await await_before_deadline(
-                                    lambda message_type=message_type, message_payload=message_payload: (
-                                        self._handle_mobile_message(
-                                            qrcode.identifier,
-                                            message_type,
-                                            message_payload,
-                                        )
-                                    ),
-                                )
-                            except TimeoutError:
-                                yield QRLoginResult(event=QRCodeLoginEvents.TIMEOUT)
-                                return
-                            if event_item is None:
-                                continue
+                        message_type = message.properties.get("type")
+                        message_payload = message.json
+                        try:
+                            event_item = await await_before_deadline(
+                                lambda message_type=message_type, message_payload=message_payload: (
+                                    self._handle_mobile_message(
+                                        qrcode.identifier,
+                                        message_type,
+                                        message_payload,
+                                    )
+                                ),
+                            )
+                        except TimeoutError:
+                            yield QRLoginResult(event=QRCodeLoginEvents.TIMEOUT)
+                            return
+                        if event_item is None:
+                            continue
 
-                            yield event_item
+                        yield event_item
 
-                            if event_item.event in {
-                                QRCodeLoginEvents.DONE,
-                                QRCodeLoginEvents.REFUSE,
-                                QRCodeLoginEvents.TIMEOUT,
-                            }:
-                                return
-                except ConnectionError as exc:
-                    raise NetworkError(str(exc)) from exc
-            finally:
-                await session.close()
+                        if event_item.event in {
+                            QRCodeLoginEvents.DONE,
+                            QRCodeLoginEvents.REFUSE,
+                            QRCodeLoginEvents.TIMEOUT,
+                        }:
+                            return
+            except ConnectionError as exc:
+                raise NetworkError(str(exc)) from exc
+        finally:
+            await session.close()
 
     async def send_authcode(
         self,
