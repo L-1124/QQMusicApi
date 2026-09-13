@@ -297,6 +297,8 @@ class NiquestsTransport:
             max_concurrency: 共享并发容量上限, 覆盖获取连接到响应就绪.
             session: 外部注入的会话, 仅用于测试; 缺省时内部构建.
         """
+        if max_concurrency <= 0:
+            raise ValueError("max_concurrency 必须大于 0")
         self._client = session or AsyncSession(
             multiplexed=True,
             hooks=AsyncTokenBucketLimiter(rate=rate, capacity=capacity),
@@ -316,6 +318,7 @@ class NiquestsTransport:
         self.cert = cert
         self.verify = verify
         self.hooks = hooks
+        self._max_concurrency = max_concurrency
         self._capacity = _CapacityLimiter(max_concurrency)
         self._closed = False
 
@@ -356,8 +359,8 @@ class NiquestsTransport:
         outcomes: list[BatchOutcome] = [TransportError("未发送")] * len(items)
         collected: list[RawResponse] = []
         try:
-            for start in range(0, len(items), DEFAULT_MAX_CONCURRENCY):
-                chunk = items[start : start + DEFAULT_MAX_CONCURRENCY]
+            for start in range(0, len(items), self._max_concurrency):
+                chunk = items[start : start + self._max_concurrency]
                 chunk_outcomes = await self._submit_chunk(chunk)
                 outcomes[start : start + len(chunk)] = chunk_outcomes
                 collected.extend(response for response in chunk_outcomes if isinstance(response, Response))
@@ -417,7 +420,8 @@ class NiquestsTransport:
             await self._discard([response for _, response in submitted])
             raise
         finally:
-            await self._capacity.release(len(chunk))
+            with anyio.CancelScope(shield=True):
+                await self._capacity.release(len(chunk))
 
         return chunk_outcomes
 

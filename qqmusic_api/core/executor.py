@@ -14,6 +14,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, cast
 
+import anyio
 import orjson as json
 
 from ..algorithms import zzc_sign
@@ -65,6 +66,12 @@ def _to_network_error(exc: TransportError) -> NetworkError:
         公开 NetworkError 实例.
     """
     return NetworkError(str(exc))
+
+
+async def _release_response(transport: Transport, response: Any) -> None:
+    """屏蔽取消并释放一个已接收的响应."""
+    with anyio.CancelScope(shield=True):
+        await transport.release(response)
 
 
 @dataclass(frozen=True)
@@ -179,7 +186,13 @@ class CgiExecutor:
 
         batch = CgiBatch(scope=call.scope, calls=(call,))
         prepared = await self._prepare_batch(batch)
-        outcome = (await self._send([prepared]))[0]
+        outcome = (
+            await send_many(
+                self._transport,
+                [prepared],
+                max_concurrency=self._max_concurrency,
+            )
+        )[0]
         if isinstance(outcome, TransportError):
             raise _to_network_error(outcome) from outcome
 
@@ -189,7 +202,7 @@ class CgiExecutor:
                 raise result
             return result
         finally:
-            await self._transport.release(outcome)
+            await _release_response(self._transport, outcome)
 
     async def execute_many(
         self,
@@ -271,43 +284,31 @@ class CgiExecutor:
             )
             first_error: Exception | None = None
             for (batch, _), outcome in zip(prepared, outcomes, strict=True):
-                try:
-                    if isinstance(outcome, TransportError):
-                        raise _to_network_error(outcome) from outcome
-                    decoded = self._decode_batch(batch, outcome)
-                except Exception as exc:
+                if isinstance(outcome, TransportError):
+                    error = _to_network_error(outcome)
                     if return_exceptions:
                         for call in batch.calls:
-                            results[call.index] = exc
-                        continue
-                    if first_error is None:
-                        first_error = exc
+                            results[call.index] = error
+                    elif first_error is None:
+                        first_error = error
                     continue
-                for position, call in enumerate(batch.calls):
-                    item_outcome = decoded[position]
-                    if isinstance(item_outcome, Exception):
-                        if return_exceptions:
+                try:
+                    decoded = self._decode_batch(batch, outcome)
+                    for position, call in enumerate(batch.calls):
+                        item_outcome = decoded[position]
+                        if isinstance(item_outcome, Exception):
+                            if return_exceptions:
+                                results[call.index] = item_outcome
+                            elif first_error is None:
+                                first_error = item_outcome
+                        else:
                             results[call.index] = item_outcome
-                        elif first_error is None:
-                            first_error = item_outcome
-                    else:
-                        results[call.index] = item_outcome
-                await self._transport.release(outcome)
+                finally:
+                    await _release_response(self._transport, outcome)
             if first_error is not None:
                 raise first_error
 
         return list(results.items())
-
-    async def _send(self, prepared: "Sequence[PreparedRequest]") -> "list[Any]":
-        """经共享批量辅助发送物理请求.
-
-        Args:
-            prepared: 待发送的传输请求序列.
-
-        Returns:
-            逐请求结果列表 (响应或传输异常).
-        """
-        return await send_many(self._transport, prepared, max_concurrency=self._max_concurrency)
 
     @staticmethod
     def _cast_request(call: ScopedCall) -> CgiRequest[Any]:
@@ -317,7 +318,7 @@ class CgiExecutor:
             call: 执行条目.
 
         Returns:
-            CGI 请求描述符副本.
+            CGI 请求描述符.
         """
         request = call.request
         assert isinstance(request, CgiRequest)
@@ -506,7 +507,13 @@ class HttpExecutor:
         """
         operation = operation or OperationScope(self._transport)
         prepared = await self._prepare(call)
-        outcome = (await self._send([prepared]))[0]
+        outcome = (
+            await send_many(
+                self._transport,
+                [prepared],
+                max_concurrency=self._max_concurrency,
+            )
+        )[0]
         if isinstance(outcome, TransportError):
             raise _to_network_error(outcome) from outcome
         return await self._deliver(call, outcome, operation)
@@ -618,17 +625,6 @@ class HttpExecutor:
 
         return PreparedRequest(method=request.method, url=request.url, kwargs=kwargs)
 
-    async def _send(self, prepared: "Sequence[PreparedRequest]") -> "list[Any]":
-        """经共享批量辅助发送物理请求.
-
-        Args:
-            prepared: 待发送的传输请求序列.
-
-        Returns:
-            逐请求结果列表 (响应或传输异常).
-        """
-        return await send_many(self._transport, prepared, max_concurrency=self._max_concurrency)
-
     async def _deliver(self, call: ScopedCall, response: Any, operation: OperationScope) -> Any:
         """交付响应: 原始响应登记移交, 其余解析后立即释放.
 
@@ -652,7 +648,7 @@ class HttpExecutor:
             return self._decode(response, call)
         finally:
             if not delivered:
-                await self._transport.release(response)
+                await _release_response(self._transport, response)
 
     def _decode(self, response: Any, call: ScopedCall) -> Any:
         """按请求描述符的解析选项解析 HTTP 响应.

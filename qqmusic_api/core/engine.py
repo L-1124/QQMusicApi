@@ -13,6 +13,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol, TypeAlias, runtime_checkable
 
@@ -95,9 +96,10 @@ def credential_fingerprint(credential: Credential) -> str:
         credential: 登录凭证.
 
     Returns:
-        键序规范化的 JSON 字符串.
+        完整凭证规范序列化后的 SHA-256 摘要.
     """
-    return json.dumps(credential.model_dump(), option=json.OPT_SORT_KEYS).decode()
+    canonical = json.dumps(credential.model_dump(), option=json.OPT_SORT_KEYS)
+    return hashlib.sha256(canonical).hexdigest()
 
 
 @dataclass(frozen=True)

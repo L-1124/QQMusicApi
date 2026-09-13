@@ -472,16 +472,8 @@ class Client:
         Raises:
             RuntimeError: 客户端已关闭或操作被关闭流程取消.
         """
-        handle = await self._register_operation()
-        try:
-            with anyio.CancelScope() as scope:
-                handle.scope = scope
-                result = await self._engine.execute(request)
-            if handle.cancelled_by_close:
-                raise RuntimeError("操作已被 Client.close 取消")
-            return result
-        finally:
-            await self._operations.unregister(handle)
+        async with self._operation():
+            return await self._engine.execute(request)
 
     @overload
     async def gather(
@@ -555,13 +547,9 @@ class Client:
             ApiDataError: 当内部依赖的结果未能完整回填时抛出 (一般不应发生).
             RuntimeError: 客户端已关闭或操作被关闭流程取消.
         """
-        handle = await self._register_operation()
-        try:
-            with anyio.CancelScope() as scope:
-                handle.scope = scope
-                result = await self._engine.gather(requests, batch_size=batch_size, return_exceptions=return_exceptions)
-            if handle.cancelled_by_close:
-                raise RuntimeError("操作已被 Client.close 取消")
-            return result
-        finally:
-            await self._operations.unregister(handle)
+        async with self._operation():
+            return await self._engine.gather(
+                requests,
+                batch_size=batch_size,
+                return_exceptions=return_exceptions,
+            )
