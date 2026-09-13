@@ -1,4 +1,20 @@
 
+## [[0.7.3](https://github.com/L-1124/QQMusicApi/compare/v0.7.2..v0.7.3)] - 2026-09-13
+
+### Bug 修复
+
+* **(song)** 恢复 get_song_urls 的 mid 数量上限校验 ([c358c77](https://github.com/L-1124/QQMusicApi/commit/c358c77783ef2209a83b734f86a928ba7c91b70b)) by [@L-1124](https://github.com/L-1124)
+
+### 功能更新
+
+* **(singer)** 新增歌手名称透明 PNG 接口及演示 ([3740170](https://github.com/L-1124/QQMusicApi/commit/374017047c39dc987418450b6d513bc216499a69)) by [@Lincb522](https://github.com/Lincb522) in [#302](https://github.com/L-1124/QQMusicApi/pull/302)
+
+### 贡献者
+
+* @L-1124
+* @Lincb522 [#302](https://github.com/L-1124/QQMusicApi/pull/302)
+* @github-actions[bot]
+
 ## [[0.7.2](https://github.com/L-1124/QQMusicApi/compare/v0.7.1..v0.7.2)] - 2026-08-05
 
 ### Bug 修复
