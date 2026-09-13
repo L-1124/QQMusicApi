@@ -8,7 +8,7 @@ import pytest
 import pytest_asyncio
 from pydantic import BaseModel
 
-from qqmusic_api.core.engine import ClientDefaults, RequestScope, ScopedCall, resolve_scope
+from qqmusic_api.core.engine import ClientDefaults, RequestScope, ScopedCall
 from qqmusic_api.core.exceptions import (
     ApiDataError,
     CredentialExpiredError,
@@ -116,9 +116,9 @@ def _http_request(**kwargs: Any) -> HttpRequest[Any]:
 
 def _scope(platform: Platform = Platform.WEB, credential: Credential | None = None) -> RequestScope:
     """构造测试用请求身份快照."""
-    return resolve_scope(
-        _NoopRequest(platform=platform, credential=credential),
-        _DEFAULTS,
+    return RequestScope(
+        credential=credential or _DEFAULTS.credential,
+        platform=platform or _DEFAULTS.platform,
     )
 
 
@@ -133,7 +133,12 @@ class _NoopRequest:
 
 def _make_call(index: int, request: Any, scope: RequestScope | None = None) -> ScopedCall:
     """构造执行条目."""
-    return ScopedCall(index=index, request=request, scope=scope or resolve_scope(request, _DEFAULTS))
+    if scope is None:
+        scope = RequestScope(
+            credential=getattr(request, "credential", None) or _DEFAULTS.credential,
+            platform=getattr(request, "platform", None) or _DEFAULTS.platform,
+        )
+    return ScopedCall(index=index, request=request, scope=scope)
 
 
 def _callsc(arg: Any) -> Any:

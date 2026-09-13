@@ -5,7 +5,7 @@ from typing import Any, cast
 
 import pytest
 
-from qqmusic_api.core.engine import ClientDefaults, RequestEngine, RequestScope, ScopedCall, resolve_scope
+from qqmusic_api.core.engine import ClientDefaults, RequestEngine, RequestScope, ScopedCall
 from qqmusic_api.core.exceptions import ApiDataError, NetworkError
 from qqmusic_api.core.request import CgiRequest, HttpRequest
 from qqmusic_api.core.versioning import DEFAULT_VERSION_POLICY, Platform
@@ -258,29 +258,6 @@ def _make_defaults(platform: Platform = Platform.WEB) -> ClientDefaults:
         platform=platform,
         version_policy=DEFAULT_VERSION_POLICY,
     )
-
-
-def test_resolve_scope_defaults_used_when_request_has_no_override() -> None:
-    """测试请求无覆盖时使用客户端默认凭证与平台."""
-    defaults = _make_defaults()
-    scope = resolve_scope(_StubRequest(), defaults)
-    assert scope.platform == Platform.WEB
-    assert scope.credential.musicid == 1
-
-
-def test_resolve_scope_request_credential_overrides_default() -> None:
-    """测试请求级凭证覆盖默认凭证."""
-    defaults = _make_defaults()
-    override = Credential(musicid=2, musickey="request")
-    scope = resolve_scope(_StubRequest(credential=override), defaults)
-    assert scope.credential.musicid == 2
-
-
-def test_resolve_scope_request_platform_overrides_default() -> None:
-    """测试请求级平台覆盖默认平台."""
-    defaults = _make_defaults(platform=Platform.WEB)
-    scope = resolve_scope(_StubRequest(platform=Platform.ANDROID), defaults)
-    assert scope.platform == Platform.ANDROID
 
 
 def test_request_scope_is_frozen() -> None:

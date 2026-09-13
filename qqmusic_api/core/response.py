@@ -1,4 +1,4 @@
-"""唯一响应解析语义. CGI 信封解包、子项解析与 HTTP 响应解析的唯一实现."""
+"""响应解析. CGI 信封解包, 子项解析与 HTTP 响应解析的全库唯一实现."""
 
 from typing import TYPE_CHECKING, Any, Literal, TypeAlias, TypeVar, overload
 
@@ -44,13 +44,14 @@ def build_result(
 ) -> BaseModel | dict[str, Any]:
     """构建响应对象.
 
+    若提供了 Pydantic 模型则验证并转换, 否则原样返回字典.
+
     Args:
         raw: 原始响应数据.
-        response_model: 期望的响应模型类型, 支持 Pydantic BaseModel;
-            非 BaseModel 类型原样返回.
+        response_model: 期望的响应模型类型.
 
     Returns:
-        构建好的响应模型实例, 或原样返回 (如果无需转换).
+        模型实例或原始字典.
     """
     if response_model is None:
         return raw
@@ -62,22 +63,19 @@ def build_result(
 def unwrap_cgi_envelope(response: "RawResponse", expected_count: int) -> "list[dict[str, Any] | None]":
     """拆解并校验 CGI 批量响应的外层信封.
 
-    只做外层检查: HTTP 状态, 非空内容, 合法 JSON 对象与严格整数
-    外层 code. ``req_i`` 的存在性, 形态与子 code 属于逐项边界 —
-    缺失或非对象的 ``req_i`` 在对应位置返回 None (额外 ``req_i`` 忽略),
-    兄弟子项不受污染.
+    仅校验 HTTP 状态与全局响应结构, 不干涉具体子项数据.
 
     Args:
-        response: 传输层返回的原始响应.
+        response: 原始 HTTP 响应.
         expected_count: 预期的子响应数量.
 
     Returns:
-        按序排列的子响应字典列表; 缺失/畸形子项位置为 None.
+        按序排列的子响应字典列表, 缺失或畸形项置为 None.
 
     Raises:
-        HTTPError: HTTP 状态码非 200.
-        ApiDataError: 响应无内容, JSON 非法/非对象, 或外层 code 非整数.
-        GlobalApiError: 外层 code 非零.
+        HTTPError: HTTP 状态码异常.
+        ApiDataError: 响应格式不合法.
+        GlobalApiError: 全局业务码异常.
     """
     status = response.status_code
     if status != 200:
@@ -107,24 +105,6 @@ def unwrap_cgi_envelope(response: "RawResponse", expected_count: int) -> "list[d
     return items
 
 
-def _resolve_cgi_error(code: int, data: Any) -> CgiApiException | None:
-    """将已确认严格整数的业务码解析为异常实例.
-
-    Args:
-        code: CGI 子响应业务码.
-        data: CGI 子响应 data 字段.
-
-    Returns:
-        对应的异常实例; 成功码 0 返回 None.
-    """
-    if code == 0:
-        return None
-    exc_type = CGI_ERROR_MAP.get(code)
-    if exc_type is not None:
-        return exc_type(code=code, data=data)
-    return CgiApiException(code=code, data=data)
-
-
 def parse_cgi_item(
     raw: dict[str, Any],
     *,
@@ -133,24 +113,23 @@ def parse_cgi_item(
     disable_parse: bool = False,
     response_model: type[BaseModel] | None = None,
 ) -> Any:
-    """解析单个 CGI 子响应.
+    """解析单个 CGI 子响应并处理业务异常.
 
-    解析优先级: 允许码, ``parse_on_allow``, 已知/通用 CGI 错误,
-    ``disable_parse``, Pydantic 模型或原始 ``data``.
+    依据允许码与解析策略, 对子项进行模型转换或异常抛出.
 
     Args:
         raw: CGI 子响应字典.
-        allow_error_codes: 允许的错误码集合, 命中时不抛出异常.
-        parse_on_allow: 命中允许码时是否仍解析 ``data``, 优先于 ``disable_parse``.
-        disable_parse: 是否禁用响应解析, 直接返回内层 ``data``.
+        allow_error_codes: 允许不抛出异常的特定错误码.
+        parse_on_allow: 命中允许码时是否仍尝试模型解析.
+        disable_parse: 是否跳过模型解析直接返回原始数据.
         response_model: 期望的响应模型类型.
 
     Returns:
-        解析后的结果对象.
+        解析后的对象或字典.
 
     Raises:
-        ApiDataError: 子响应 code 非严格整数.
-        CgiApiException: 业务码命中已知或通用 CGI 错误.
+        ApiDataError: 子响应格式异常.
+        CgiApiException: 业务请求失败.
     """
     code = raw.get("code", 0)
     data = raw.get("data", {})
@@ -163,9 +142,11 @@ def parse_cgi_item(
             return build_result(data, response_model)
         return raw
 
-    error = _resolve_cgi_error(code, data)
-    if error is not None:
-        raise error
+    if code != 0:
+        exc_type = CGI_ERROR_MAP.get(code)
+        if exc_type is not None:
+            raise exc_type(code=code, data=data)
+        raise CgiApiException(code=code, data=data)
 
     if disable_parse:
         return data
@@ -178,19 +159,20 @@ def parse_http_response(
     disable_parse: bool = False,
     response_model: type[BaseModel] | None = None,
 ) -> Any:
-    """解析标准 HTTP 响应.
+    """解析标准 HTTP 响应并校验状态.
+
+    支持 JSON 模型转换、文本回退或返回底层传输对象.
 
     Args:
-        response: 传输层返回的原始响应.
-        disable_parse: 是否禁用解析, 直接返回底层响应对象.
+        response: 原始 HTTP 响应.
+        disable_parse: 是否跳过解析直接返回原始对象.
         response_model: 期望的响应模型类型.
 
     Returns:
-        解析后的结果: 底层响应对象, 模型实例, JSON 载荷,
-        或 JSON 不可解码时的非空文本/字节回退.
+        模型实例、JSON 字典、文本或底层响应对象.
 
     Raises:
-        HTTPError: 响应状态码异常.
+        HTTPError: HTTP 状态码异常.
     """
     try:
         response.raise_for_status()
@@ -209,6 +191,4 @@ def parse_http_response(
             return text
         return response.content
 
-    if response_model is not None:
-        return response_model.model_validate(parsed)
-    return parsed
+    return build_result(parsed, response_model)
