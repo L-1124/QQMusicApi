@@ -238,7 +238,7 @@ async def test_gather_missing_result_guard_raises_api_data_error():
 
 
 # ---------------------------------------------------------------------------
-# 身份解析 (原 runtime 语义: 默认共享副本, 覆盖单独解析, 凭证深复制)
+# 身份解析 (默认共享不可变凭证, 覆盖单独解析)
 # ---------------------------------------------------------------------------
 
 
@@ -281,14 +281,6 @@ def test_resolve_scope_request_platform_overrides_default() -> None:
     defaults = _make_defaults(platform=Platform.WEB)
     scope = resolve_scope(_StubRequest(platform=Platform.ANDROID), defaults)
     assert scope.platform == Platform.ANDROID
-
-
-def test_resolve_scope_credential_is_deep_copy() -> None:
-    """测试解析出的凭证是深复制, 与来源不是同一对象."""
-    defaults = _make_defaults()
-    scope = resolve_scope(_StubRequest(), defaults)
-    assert scope.credential == defaults.credential
-    assert scope.credential is not defaults.credential
 
 
 def test_request_scope_is_frozen() -> None:

@@ -6,7 +6,7 @@
 (``OperationScope``) 都定义在这里.
 
 身份约定: 操作入口在首个等待前确定本次凭证与平台 — 默认身份的
-请求复用同一份凭证副本, 显式覆盖身份的请求单独解析 (深复制);
+请求复用同一个不可变凭证, 显式覆盖身份的请求单独解析;
 请求描述符 **原样传递**, 不做整体复制. 调用者约定: 请求可以重复
 执行, 但一次执行完成前不要修改它的参数; 文件和流由调用者管理.
 """
@@ -57,7 +57,7 @@ class RequestScope:
     """单次请求执行期间确定的身份快照.
 
     Attributes:
-        credential: 本次请求使用的凭证 (默认凭证的深复制).
+        credential: 本次请求捕获的不可变凭证.
         platform: 本次请求使用的平台.
     """
 
@@ -68,9 +68,10 @@ class RequestScope:
 def resolve_scope(request: Any, defaults: ClientDefaults) -> RequestScope:
     """将请求级覆盖与客户端默认值解析为本次请求的身份.
 
-    凭证使用深复制, 保证并发执行期间修改客户端默认凭证
-    不会影响正在执行的请求. 平台覆盖取自请求的可选 ``platform``
-    字段, 请求未声明时使用客户端默认平台.
+    凭证是字段均为不可变标量的冻结模型, 因此直接捕获对象引用;
+    并发期间重新绑定客户端默认凭证不会影响正在执行的请求.
+    平台覆盖取自请求的可选 ``platform`` 字段, 请求未声明时使用
+    客户端默认平台.
 
     Args:
         request: 请求描述符.
@@ -81,7 +82,7 @@ def resolve_scope(request: Any, defaults: ClientDefaults) -> RequestScope:
     """
     source_credential = getattr(request, "credential", None) or defaults.credential
     return RequestScope(
-        credential=source_credential.model_copy(deep=True),
+        credential=source_credential,
         platform=getattr(request, "platform", None) or defaults.platform,
     )
 
@@ -225,7 +226,7 @@ class RequestEngine:
     """统一请求调度引擎.
 
     在操作入口首个等待之前同步确定全部执行条目的身份 (默认身份
-    共享同一份凭证副本, 显式覆盖单独解析), 随后按请求类型将执行
+    共享同一个不可变凭证, 显式覆盖单独解析), 随后按请求类型将执行
     条目分派给对应执行器, 并将结果按原始顺序回填. 每个操作持有
     ``OperationScope``: 成功返回前同步移交待交付 raw 的所有权,
     失败或取消时释放全部未交付 raw.
@@ -255,7 +256,7 @@ class RequestEngine:
     def _resolve_calls(self, requests: Sequence[BaseRequest[Any]]) -> list[ScopedCall]:
         """同步确定全部执行条目的身份: 无网络 I/O, 失败早于任何请求.
 
-        默认身份的请求复用同一份凭证副本; 声明了请求级凭证或平台
+        默认身份的请求复用同一个不可变凭证; 声明了请求级凭证或平台
         覆盖的请求单独解析.
 
         Args:
@@ -268,7 +269,7 @@ class RequestEngine:
             TypeError: 存在不支持的请求类型.
         """
         default_scope = RequestScope(
-            credential=self._defaults.credential.model_copy(deep=True),
+            credential=self._defaults.credential,
             platform=self._defaults.platform,
         )
         calls: list[ScopedCall] = []
