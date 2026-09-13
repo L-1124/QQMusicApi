@@ -47,60 +47,12 @@ if TYPE_CHECKING:
 
 
 @dataclass(eq=False)
-class OperationHandle:
-    """客户端操作登记: 可取消作用域, 完成事件与关闭取消标志."""
+class _Operation:
+    """客户端正在执行的操作."""
 
     scope: Any = None
     done: anyio.Event = field(default_factory=anyio.Event)
     cancelled_by_close: bool = False
-
-
-class OperationRegistry:
-    """客户端在途操作登记表.
-
-    Client.close 取消全部已登记操作并等待其清理完成;
-    操作自身不得等待正在取消自己的关闭流程.
-    """
-
-    def __init__(self) -> None:
-        """初始化空登记表."""
-        self._handles: set[OperationHandle] = set()
-        self._lock = anyio.Lock()
-
-    async def register(self) -> OperationHandle:
-        """登记一个新操作.
-
-        Returns:
-            操作句柄; 作用域在操作实际进入时设置.
-        """
-        handle = OperationHandle()
-        async with self._lock:
-            self._handles.add(handle)
-        return handle
-
-    async def unregister(self, handle: OperationHandle) -> None:
-        """注销已完成操作并唤醒等待者.
-
-        Args:
-            handle: 待注销的操作句柄.
-        """
-        async with self._lock:
-            self._handles.discard(handle)
-        handle.done.set()
-
-    def cancel_all(self) -> list[OperationHandle]:
-        """取消全部已登记操作.
-
-        Returns:
-            被取消的句柄列表 (含调用者完成事件, 供关闭流程等待).
-        """
-        cancelled: list[OperationHandle] = []
-        for handle in tuple(self._handles):
-            handle.cancelled_by_close = True
-            if handle.scope is not None:
-                handle.scope.cancel()
-            cancelled.append(handle)
-        return cancelled
 
 
 class Client:
@@ -193,7 +145,7 @@ class Client:
         )
         self._close_state: Literal["open", "closing", "closed"] = "open"
         self._close_lock = anyio.Lock()
-        self._operations = OperationRegistry()
+        self._operations: set[_Operation] = set()
         self._qimei_manager = QimeiManager(
             device_store=self._device_store,
             app_version=self._defaults.version_policy.get_qimei_app_version(),
@@ -408,11 +360,13 @@ class Client:
         if self._close_state != "open":
             raise RuntimeError("Client 已关闭或正在关闭, 不能发起新操作")
 
-    async def _register_operation(self):
+    async def _register_operation(self) -> _Operation:
         """在关闭锁内检查状态并登记操作."""
         async with self._close_lock:
             self._ensure_open()
-            return await self._operations.register()
+            operation = _Operation()
+            self._operations.add(operation)
+            return operation
 
     @asynccontextmanager
     async def _operation(self) -> AsyncIterator[None]:
@@ -424,15 +378,16 @@ class Client:
         Raises:
             RuntimeError: 操作被 Client.close 取消, 或客户端已关闭.
         """
-        handle = await self._register_operation()
+        operation = await self._register_operation()
         try:
             with anyio.CancelScope() as scope:
-                handle.scope = scope
+                operation.scope = scope
                 yield
-            if handle.cancelled_by_close:
+            if operation.cancelled_by_close:
                 raise RuntimeError("操作已被 Client.close 取消")
         finally:
-            await self._operations.unregister(handle)
+            self._operations.discard(operation)
+            operation.done.set()
 
     async def close(self):
         """关闭客户端并释放全部网络资源.
@@ -450,11 +405,15 @@ class Client:
                 return
             self._close_state = "closing"
 
-            handles = self._operations.cancel_all()
+            operations = tuple(self._operations)
+            for operation in operations:
+                operation.cancelled_by_close = True
+                if operation.scope is not None:
+                    operation.scope.cancel()
             with anyio.CancelScope(shield=True):
                 with anyio.move_on_after(CLOSE_CLEANUP_BUDGET_SECONDS):
-                    for handle in handles:
-                        await handle.done.wait()
+                    for operation in operations:
+                        await operation.done.wait()
 
                 try:
                     await self._transport.close()

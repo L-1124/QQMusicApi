@@ -193,8 +193,10 @@ class CgiExecutor:
                 max_concurrency=self._max_concurrency,
             )
         )[0]
-        if isinstance(outcome, TransportError):
-            raise _to_network_error(outcome) from outcome
+        if isinstance(outcome, Exception):
+            if isinstance(outcome, TransportError):
+                raise _to_network_error(outcome) from outcome
+            raise outcome
 
         try:
             result = self._decode_batch(batch, outcome)[0]
@@ -284,8 +286,8 @@ class CgiExecutor:
             )
             first_error: Exception | None = None
             for (batch, _), outcome in zip(prepared, outcomes, strict=True):
-                if isinstance(outcome, TransportError):
-                    error = _to_network_error(outcome)
+                if isinstance(outcome, Exception):
+                    error = _to_network_error(outcome) if isinstance(outcome, TransportError) else outcome
                     if return_exceptions:
                         for call in batch.calls:
                             results[call.index] = error
@@ -514,8 +516,10 @@ class HttpExecutor:
                 max_concurrency=self._max_concurrency,
             )
         )[0]
-        if isinstance(outcome, TransportError):
-            raise _to_network_error(outcome) from outcome
+        if isinstance(outcome, Exception):
+            if isinstance(outcome, TransportError):
+                raise _to_network_error(outcome) from outcome
+            raise outcome
         return await self._deliver(call, outcome, operation)
 
     async def execute_many(
@@ -562,8 +566,10 @@ class HttpExecutor:
             first_error: Exception | None = None
             for (call, _), outcome in zip(prepared_calls, outcomes, strict=True):
                 try:
-                    if isinstance(outcome, TransportError):
-                        raise _to_network_error(outcome) from outcome
+                    if isinstance(outcome, Exception):
+                        if isinstance(outcome, TransportError):
+                            raise _to_network_error(outcome) from outcome
+                        raise outcome
                     results[call.index] = await self._deliver(call, outcome, operation)
                 except Exception as exc:  # noqa: PERF203
                     if return_exceptions:

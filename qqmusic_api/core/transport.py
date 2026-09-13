@@ -6,7 +6,7 @@
 或明确移交所有权.
 
 批量模型: ``request_many`` 按 **物理请求** 归属结果与异常 — 返回与输入
-顺序一致的结果列表, 元素为 ``RawResponse`` 或 ``TransportError``, 不因
+顺序一致的结果列表, 元素为 ``RawResponse`` 或逐请求异常, 不因
 单个物理请求失败而丢弃其他请求的结果.
 """
 
@@ -39,8 +39,8 @@ HttpRawResponse = Response
 
 DEFAULT_MAX_CONCURRENCY = 20
 
-BatchOutcome: TypeAlias = "RawResponse | TransportError"
-"""单个物理请求的批量结果: 响应或归属到该请求的传输异常."""
+BatchOutcome: TypeAlias = "RawResponse | Exception"
+"""单个物理请求的批量结果: 响应或归属到该请求的异常."""
 
 
 class TransportError(Exception):
@@ -66,7 +66,6 @@ class PreparedRequest:
     kwargs: Mapping[str, Any] = field(default_factory=dict)
 
 
-@runtime_checkable
 class RawResponse(Protocol):
     """传输层返回的最小响应协议."""
 
@@ -247,10 +246,8 @@ async def _send_many_fallback(
             position, request = entry
             try:
                 outcomes[position] = await transport.request(request)
-            except TransportError as exc:
-                outcomes[position] = exc
             except Exception as exc:
-                outcomes[position] = TransportError(str(exc))
+                outcomes[position] = exc
 
     async with anyio.create_task_group() as task_group:
         for _ in range(min(max_concurrency, len(requests)) or 1):
@@ -336,7 +333,7 @@ class NiquestsTransport:
             TransportError: 其他网络异常.
         """
         outcome = (await self.request_many([request]))[0]
-        if isinstance(outcome, TransportError):
+        if isinstance(outcome, Exception):
             raise outcome
         return outcome
 
@@ -403,8 +400,7 @@ class NiquestsTransport:
                 except (Timeout, RequestException) as exc:  # noqa: PERF203
                     chunk_outcomes[position] = _map_transport_exception(exc)
                 except Exception as exc:
-                    # 取消等 BaseException 不包装, 直接传播.
-                    chunk_outcomes[position] = TransportError(str(exc))
+                    chunk_outcomes[position] = exc
 
             lazy_pairs = [(position, response) for position, response in submitted if getattr(response, "lazy", False)]
             if lazy_pairs:
@@ -413,8 +409,7 @@ class NiquestsTransport:
                 except (Timeout, RequestException) as exc:
                     await self._fail_unresolved(chunk_outcomes, lazy_pairs, _map_transport_exception(exc))
                 except Exception as exc:
-                    # 取消等 BaseException 不包装, 直接传播.
-                    await self._fail_unresolved(chunk_outcomes, lazy_pairs, TransportError(str(exc)))
+                    await self._fail_unresolved(chunk_outcomes, lazy_pairs, exc)
         except BaseException:
             # 外层取消等异常: 尽力释放本分块已收集的响应后继续传播.
             await self._discard([response for _, response in submitted])
@@ -429,7 +424,7 @@ class NiquestsTransport:
     async def _fail_unresolved(
         chunk_outcomes: "list[BatchOutcome]",
         lazy_pairs: "list[tuple[int, Response]]",
-        error: TransportError,
+        error: Exception,
     ) -> None:
         """将集中解析失败归属到仍未就绪的响应, 并尽力释放它们.
 

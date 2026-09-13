@@ -15,11 +15,11 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Protocol, TypeAlias, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, TypeAlias
 
 import anyio
 import orjson as json
-from typing_extensions import sentinel
+from typing_extensions import Self
 
 from .exceptions import ApiDataError
 from .request import BaseRequest
@@ -35,7 +35,7 @@ IndexedRequest: TypeAlias = "Sequence[ScopedCall]"
 
 RAW_RELEASE_BUDGET_SECONDS = 5.0
 
-MISSING = sentinel("MISSING")
+MISSING = object()
 
 
 @dataclass
@@ -161,6 +161,17 @@ class OperationScope:
         self._transport = transport
         self._pending: list[Any] = []
 
+    async def __aenter__(self) -> Self:
+        """进入操作资源作用域."""
+        return self
+
+    async def __aexit__(self, exc_type, exc_value, traceback) -> None:
+        """成功时移交响应, 失败时释放尚未交付的响应."""
+        if exc_type is None:
+            self._pending.clear()
+        else:
+            await self.release_pending()
+
     def track(self, response: Any) -> None:
         """登记一个待交付的原始响应.
 
@@ -168,10 +179,6 @@ class OperationScope:
             response: 已生成但尚未交付的响应.
         """
         self._pending.append(response)
-
-    def handoff_all(self) -> None:
-        """操作成功返回前移交全部登记响应的所有权给调用者."""
-        self._pending.clear()
 
     async def release_pending(self) -> None:
         """释放全部未交付响应. 屏蔽外层取消, 单次预算 5 秒."""
@@ -184,7 +191,6 @@ class OperationScope:
                     await self._transport.release(response)
 
 
-@runtime_checkable
 class CgiExecuting(Protocol):
     """CGI 执行器的结构化窄接口."""
 
@@ -203,7 +209,6 @@ class CgiExecuting(Protocol):
         ...
 
 
-@runtime_checkable
 class HttpExecuting(Protocol):
     """HTTP 执行器的结构化窄接口."""
 
@@ -295,20 +300,13 @@ class RequestEngine:
         Raises:
             TypeError: 请求类型不受支持.
         """
-        operation = OperationScope(self._transport)
-        try:
+        async with OperationScope(self._transport) as operation:
             calls = self._resolve_calls([request])
             cgi_calls, http_calls = partition_calls(calls)
             call = (cgi_calls or http_calls)[0]
             if cgi_calls:
-                result = await self._cgi.execute_one(call)
-            else:
-                result = await self._http.execute_one(call, operation=operation)
-        except BaseException:
-            await operation.release_pending()
-            raise
-        operation.handoff_all()
-        return result
+                return await self._cgi.execute_one(call)
+            return await self._http.execute_one(call, operation=operation)
 
     async def gather(
         self,
@@ -340,8 +338,7 @@ class RequestEngine:
         if not requests:
             return []
 
-        operation = OperationScope(self._transport)
-        try:
+        async with OperationScope(self._transport) as operation:
             calls = self._resolve_calls(requests)
             cgi_calls, http_calls = partition_calls(calls)
             results: list[Any] = [MISSING] * len(calls)
@@ -367,14 +364,9 @@ class RequestEngine:
                     task_group.start_soon(_run_cgi)
                 if http_calls:
                     task_group.start_soon(_run_http)
-        except BaseException:
-            await operation.release_pending()
-            raise
 
-        missing = [index for index, result in enumerate(results) if result is MISSING]
-        if missing:
-            await operation.release_pending()
-            raise ApiDataError(f"缺少以下索引结果: {missing}")
+            missing = [index for index, result in enumerate(results) if result is MISSING]
+            if missing:
+                raise ApiDataError(f"缺少以下索引结果: {missing}")
 
-        operation.handoff_all()
-        return results
+            return results

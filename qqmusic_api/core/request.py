@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from abc import ABC
 from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING, Any, ClassVar, Generic, TypedDict, TypeVar
+from typing import TYPE_CHECKING, Any, Generic, TypedDict, TypeVar
 
 from pydantic import BaseModel
 from typing_extensions import Self
@@ -53,7 +52,7 @@ __all__ = [
 
 
 @dataclass(kw_only=True)
-class BaseRequest(ABC, Generic[ResultT]):
+class BaseRequest(Generic[ResultT]):
     """请求描述符基类.
 
     该基类封装了由客户端执行请求时所需的元数据与行为契约.
@@ -63,8 +62,6 @@ class BaseRequest(ABC, Generic[ResultT]):
         response_model: 期望的响应模型类型, 支持 Pydantic BaseModel.
         disable_parse: 是否禁用响应解析, 直接返回原始响应数据.
     """
-
-    _protocol: ClassVar[str] = "cgi"
 
     _client: Client
     response_model: type[BaseModel] | None = None
@@ -109,8 +106,6 @@ class CgiRequest(BaseRequest[CgiRequestResultT]):
         sign: 指示该请求是否需要签名处理.
     """
 
-    _protocol = "CGI"
-
     module: str
     method: str
     param: dict[str, Any]
@@ -152,8 +147,6 @@ class HttpRequest(BaseRequest[HttpRequestResultT]):
         kwargs: 透传给底层 HTTP 客户端的其它可选关键字参数字典.
         credential: 可选的凭证对象, 优先于客户端的全局凭证.
     """
-
-    _protocol = "HTTP"
 
     method: HttpMethodType
     url: str
