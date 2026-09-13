@@ -15,7 +15,7 @@
   -> BaseRequest 描述符
   -> await request
   -> Client.execute(request)
-  -> Engine 确定请求身份 (凭证副本与平台 scope)
+  -> Engine 确定请求身份 (不可变凭证与平台 scope)
   -> CgiExecutor / HttpExecutor 准备物理请求
   -> Transport.request(prepared) 发送并释放响应
   -> core/response.py 统一解析
