@@ -13,8 +13,8 @@ from ..utils.common import hash33
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
+    from ..utils.android_session import AndroidSession
     from ..utils.device import Device
-    from .android_session import AndroidSession
 
 
 class Platform(str, Enum):

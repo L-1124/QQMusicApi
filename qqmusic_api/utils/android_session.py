@@ -1,6 +1,6 @@
 """Android 平台会话管理. 按身份隔离缓存会话值并负责刷新.
 
-SessionKey = (设备身份, 凭证指纹). 会话值不可变, 缓存仅存于
+SessionKey = (设备身份, 凭证序列化值). 会话值不可变, 缓存仅存于
 Client 内存 (LRU, 最多 32 个身份); 刷新使用单一管理器锁, 锁内
 二次检查, 有效命中不等待锁. 刷新失败不发布, 取消不发布半成品.
 不恢复旧 device 文件中的会话, 也不再读写设备共享会话槽.
@@ -14,16 +14,16 @@ from typing import TYPE_CHECKING, Any
 
 import anyio
 
-from .engine import RequestScope, credential_fingerprint
-from .exceptions import ApiDataError
-from .response import parse_cgi_item, unwrap_cgi_envelope
-from .transport import PreparedRequest
-from .versioning import Platform, VersionPolicy
+from ..core.exceptions import ApiDataError
+from ..core.response import parse_cgi_item, unwrap_cgi_envelope
+from ..core.transport import PreparedRequest
+from ..core.versioning import Platform, VersionPolicy
 
 if TYPE_CHECKING:
-    from ..utils.device import DeviceManager
-    from ..utils.qimei import QimeiManager
-    from .transport import Transport
+    from ..core.transport import Transport
+    from ..models.request import Credential
+    from .device import DeviceManager
+    from .qimei import QimeiManager
 
 SESSION_VALID_SECONDS = 86400
 SESSION_CACHE_MAX_IDENTITIES = 32
@@ -85,27 +85,24 @@ class AndroidSessionManager:
         # SessionKey -> AndroidSession, 按最近使用淘汰.
         self._cache: dict[tuple[str, str], AndroidSession] = {}
 
-    async def ensure(self, scope: RequestScope) -> AndroidSession:
+    async def ensure(self, credential: Credential) -> AndroidSession:
         """获取 Android 平台会话值, 必要时刷新.
 
         有效缓存命中直接返回; 未命中时经单一刷新锁刷新
         (锁内二次检查), 全部字段校验通过后一次发布.
 
         Args:
-            scope: 本次请求冻结的运行时快照.
+            credential: 本次请求使用的凭证.
 
         Returns:
             不可变的会话值.
 
         Raises:
-            ApiDataError: 非 Android 平台调用.
             HTTPError: 刷新请求状态码异常.
             TransportError: 网络传输异常.
         """
-        if scope.platform != Platform.ANDROID:
-            raise ApiDataError("Android 会话仅适用于 ANDROID 平台")
         device = await self._device_store.get_device()
-        key = (device.open_udid, credential_fingerprint(scope.credential))
+        key = (device.open_udid, credential.model_dump_json())
         now = time.monotonic()
         session = self._cache.get(key)
         if session is not None and session.is_valid(now):
@@ -121,13 +118,13 @@ class AndroidSessionManager:
                 self._cache.pop(key, None)
                 self._cache[key] = session
                 return session
-            return await self._refresh_session(scope, key)
+            return await self._refresh_session(credential, key)
 
-    async def _refresh_session(self, scope: RequestScope, key: tuple[str, str]) -> AndroidSession:
+    async def _refresh_session(self, credential: Credential, key: tuple[str, str]) -> AndroidSession:
         """发起 GetSession 请求并发布校验通过的新会话.
 
         Args:
-            scope: 本次请求冻结的运行时快照.
+            credential: 本次请求使用的凭证.
             key: 会话缓存键.
 
         Returns:
@@ -140,7 +137,7 @@ class AndroidSessionManager:
         stale = self._cache.get(key)
         final_comm = self._version_policy.build_comm(
             platform=Platform.ANDROID,
-            credential=scope.credential,
+            credential=credential,
             device=device,
             qimei=await self._qimei_manager.get_cached(),
             guid=device.open_udid,

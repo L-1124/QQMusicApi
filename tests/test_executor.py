@@ -64,11 +64,11 @@ class StubAndroidSessionManager:
             error: ensure 时抛出的异常.
         """
         self.error = error
-        self.calls: list[RequestScope] = []
+        self.calls: list[Credential] = []
 
-    async def ensure(self, scope: RequestScope) -> None:
+    async def ensure(self, credential: Credential) -> None:
         """记录调用并在注入异常时抛出."""
-        self.calls.append(scope)
+        self.calls.append(credential)
         if self.error is not None:
             raise self.error
 

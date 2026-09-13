@@ -18,10 +18,10 @@ import anyio
 import orjson as json
 
 from ..algorithms import zzc_sign
+from ..utils.android_session import AndroidSessionManager
 from ..utils.common import bool_to_int
 from ..utils.device import DeviceManager
 from ..utils.qimei import QimeiManager
-from .android_session import AndroidSessionManager
 from .engine import OperationScope, RequestScope, ScopedCall, credential_fingerprint
 from .exceptions import ApiDataError, CredentialInvalidError, NetworkError
 from .request import CgiRequest, HttpRequest
@@ -396,7 +396,7 @@ class CgiExecutor:
         session = None
         try:
             if scope.platform == Platform.ANDROID:
-                session = await self._android_session.ensure(scope)
+                session = await self._android_session.ensure(scope.credential)
 
             device = await self._device_store.get_device()
             qimei = await self._qimei_manager.get_cached() if scope.platform == Platform.ANDROID else None
