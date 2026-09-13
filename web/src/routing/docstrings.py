@@ -44,20 +44,20 @@ def load_method_docs(method: Callable[..., Any]) -> MethodDocs:
             text_sections.append(str(section.value).strip())
         elif section.kind is DocstringSectionKind.admonition and isinstance(section.value, DocstringAdmonition):
             annotation = str(section.value.annotation or "note")
-            description = str(section.value.description).strip()
+            description = section.value.description.strip()
             text_sections.append(f"{annotation.title()}: {description}")
         elif section.kind is DocstringSectionKind.parameters:
             for parameter in section.value:
                 if isinstance(parameter, DocstringParameter):
-                    params[parameter.name] = str(parameter.description).strip()
+                    params[parameter.name] = parameter.description.strip()
         elif section.kind is DocstringSectionKind.returns:
             return_items = [item for item in section.value if isinstance(item, DocstringReturn)]
             if return_items:
-                returns = "\n".join(str(item.description).strip() for item in return_items).strip() or None
+                returns = "\n".join(item.description.strip() for item in return_items).strip() or None
         elif section.kind is DocstringSectionKind.raises:
             for item in section.value:
                 if isinstance(item, DocstringRaise):
-                    raises[str(item.annotation)] = str(item.description).strip()
+                    raises[str(item.annotation)] = item.description.strip()
     summary, description = _split_text_sections(text_sections)
     return MethodDocs(summary=summary, description=description, params=params, returns=returns, raises=raises)
 
@@ -71,9 +71,7 @@ def load_class_field_docs(cls: type) -> dict[str, str]:
     for section in parsed:
         if section.kind is DocstringSectionKind.attributes:
             return {
-                attr.name: str(attr.description).strip()
-                for attr in section.value
-                if isinstance(attr, DocstringAttribute)
+                attr.name: attr.description.strip() for attr in section.value if isinstance(attr, DocstringAttribute)
             }
     return {}
 
@@ -149,13 +147,13 @@ def clean_schema_description(docstring: str) -> str:
             items: list[str] = []
             for attr in section.value:
                 if isinstance(attr, DocstringAttribute):
-                    desc = str(attr.description).strip()
+                    desc = attr.description.strip()
                     items.append(f"- **{attr.name}**: {desc}")
             if items:
                 parts.append("\n".join(items))
         elif section.kind is DocstringSectionKind.admonition and isinstance(section.value, DocstringAdmonition):
             annotation = str(section.value.annotation or "note")
-            description = str(section.value.description).strip()
+            description = section.value.description.strip()
             parts.append(f"**{annotation.title()}**: {description}")
     return "\n\n".join(part for part in parts if part).strip()
 

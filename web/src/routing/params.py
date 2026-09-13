@@ -47,7 +47,7 @@ def iter_enum_members(target_type: type[EnumT]) -> list[EnumT]:
 
 def int_enum_schema(enum_type: type[IntEnum]) -> dict[str, Any]:
     """返回 IntEnum 的整数 JSON Schema."""
-    return {"type": "integer", "enum": [int(member.value) for member in iter_enum_members(enum_type)]}
+    return {"type": "integer", "enum": [member.value for member in iter_enum_members(enum_type)]}
 
 
 def parse_int_enum(value: Any, enum_type: type[IntEnumT]) -> IntEnumT:
@@ -220,7 +220,7 @@ def build_param_model(
                 default = default.name.casefold()
         elif source is not ParamSource.PATH and raw_enum_type is not None and issubclass(raw_enum_type, IntEnum):
             if default is not ... and isinstance(default, IntEnum):
-                default = int(default.value)
+                default = default.value
 
         if raw_enum_type is not None and param.enum_mapping is None and source is not ParamSource.PATH:
             member_desc = enum_member_description(raw_enum_type)
