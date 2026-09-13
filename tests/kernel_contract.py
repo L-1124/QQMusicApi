@@ -14,7 +14,6 @@ import niquests
 
 __all__ = [
     "StubResponse",
-    "StubSession",
     "StubTransport",
     "make_cgi_envelope",
     "make_cgi_sub",
@@ -61,47 +60,6 @@ class StubResponse:
         """按预置标记抛出 HTTP 状态异常."""
         if self._http_error:
             raise niquests.HTTPError(f"HTTP {self.status_code}")
-
-
-class StubSession:
-    """记录 post/request 调用并按队列返回预置响应的旧会话桩."""
-
-    def __init__(self, posts: list[Any] | None = None, requests: list[Any] | None = None) -> None:
-        """以预置的 CGI 与 HTTP 响应/异常队列构造会话桩."""
-        self.post_calls: list[tuple[str, dict[str, Any]]] = []
-        self.request_calls: list[tuple[str, str, dict[str, Any]]] = []
-        self.gather_calls: list[tuple[Any, ...]] = []
-        self.close_calls = 0
-        self._posts = list(posts or [])
-        self._requests = list(requests or [])
-
-    async def post(self, url: str, **kwargs: Any) -> StubResponse:
-        """记录 CGI 调用并返回或抛出下一个预置项."""
-        self.post_calls.append((url, kwargs))
-        if not self._posts:
-            raise AssertionError(f"CGI 会话桩队列耗尽, 意外网络调用: {url}")
-        item = self._posts.pop(0)
-        if isinstance(item, Exception):
-            raise item
-        return item
-
-    async def request(self, method: str, url: str, **kwargs: Any) -> StubResponse:
-        """记录 HTTP 调用并返回或抛出下一个预置项."""
-        self.request_calls.append((method, url, kwargs))
-        if not self._requests:
-            raise AssertionError(f"HTTP 会话桩队列耗尽, 意外网络调用: {method} {url}")
-        item = self._requests.pop(0)
-        if isinstance(item, Exception):
-            raise item
-        return item
-
-    async def gather(self, *responses: Any) -> None:
-        """记录收集调用, 测试桩中不做额外处理."""
-        self.gather_calls.append(responses)
-
-    async def close(self) -> None:
-        """记录关闭调用."""
-        self.close_calls += 1
 
 
 class StubTransport:
