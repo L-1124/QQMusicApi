@@ -90,7 +90,6 @@ class Device:
     qimei_save_time: int | None = None
     session_uid: str | None = None
     session_sid: str | None = None
-    session_vkey: str | None = None
     session_save_time: int | None = None
     open_udid: str = field(default_factory=lambda: uuid4().hex)
 
@@ -197,17 +196,15 @@ class DeviceManager:
         device.qimei_save_time = int(time.time())
         await self.save_device()
 
-    async def apply_session(self, uid: str, sid: str, vkey: str | None) -> None:
+    async def apply_session(self, uid: str, sid: str) -> None:
         """应用 Android 匿名会话并立即保存.
 
         Args:
             uid: 设备会话 UID.
             sid: 设备会话 SID.
-            vkey: 服务端下发的会话 vkey.
         """
         device = await self.get_device()
         device.session_uid = uid
         device.session_sid = sid
-        device.session_vkey = vkey
         device.session_save_time = int(time.time())
         await self.save_device()

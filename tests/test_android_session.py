@@ -53,13 +53,12 @@ async def device_store() -> DeviceManager:
 
 async def test_refresh_posts_and_publishes_session(device_store: DeviceManager):
     """测试首次请求发布并保存设备会话."""
-    transport = StubTransport(starts=[_session_response(uid="1", sid="s", vkey="v")])
+    transport = StubTransport(starts=[_session_response(uid="1", sid="s")])
     manager = _make_manager(transport, device_store)
     session = await manager.ensure()
     assert isinstance(session, AndroidSession)
     assert session.uid == "1"
     assert session.sid == "s"
-    assert session.vkey == "v"
     device = device_store.device
     assert device is not None
     assert device.session_uid == "1"
@@ -121,7 +120,7 @@ async def test_previous_day_session_refreshes_again(device_store: DeviceManager)
     transport = StubTransport(starts=[_session_response(uid="1"), _session_response(uid="2", sid="s2")])
     manager = _make_manager(transport, device_store)
     first = await manager.ensure()
-    manager._session = AndroidSession(uid=first.uid, sid=first.sid, vkey=first.vkey, saved_at=0)
+    manager._session = AndroidSession(uid=first.uid, sid=first.sid, saved_at=0)
     second = await manager.ensure()
     assert second.uid == "2"
     assert len(transport.start_calls) == 2

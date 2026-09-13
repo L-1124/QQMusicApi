@@ -26,13 +26,11 @@ class AndroidSession:
     Attributes:
         uid: 会话 UID (非空字符串).
         sid: 会话 SID (非空字符串).
-        vkey: 会话 vkey, 缺失时为 None.
         saved_at: 本地保存时的 Unix 时间戳.
     """
 
     uid: str
     sid: str
-    vkey: str | None
     saved_at: int
 
     def saved_today(self) -> bool:
@@ -104,7 +102,6 @@ class AndroidSessionManager:
         self._session = AndroidSession(
             uid=device.session_uid,
             sid=device.session_sid,
-            vkey=device.session_vkey,
             saved_at=device.session_save_time,
         )
         return self._session
@@ -186,12 +183,9 @@ class AndroidSessionManager:
             raise ApiDataError("Android Session 响应缺少有效的 uid")
         if not isinstance(sid, str) or not sid:
             raise ApiDataError("Android Session 响应缺少有效的 sid")
-        vkey = session_data.get("vkey")
-        if vkey is not None and not isinstance(vkey, str):
-            vkey = str(vkey)
 
-        session = AndroidSession(uid=uid, sid=sid, vkey=vkey, saved_at=int(time()))
+        session = AndroidSession(uid=uid, sid=sid, saved_at=int(time()))
         with contextlib.suppress(Exception):
-            await self._device_store.apply_session(uid, sid, vkey)
+            await self._device_store.apply_session(uid, sid)
         self._session = session
         return session
