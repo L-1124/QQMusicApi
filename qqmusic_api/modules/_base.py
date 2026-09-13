@@ -1,11 +1,20 @@
 """API 模块基类."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any, Literal, overload
 
+from niquests.typing import (
+    AsyncBodyType,
+    BodyType,
+    CookiesType,
+    HeadersType,
+    HttpMethodType,
+    QueryParameterType,
+)
 from typing_extensions import Unpack
 
+if TYPE_CHECKING:
+    from ..core.client import Client
+from ..core.pagination import PagerStrategy
 from ..core.request import (
     CgiRequest,
     CgiRequestOptions,
@@ -14,28 +23,15 @@ from ..core.request import (
     PaginatedCgiRequest,
     ResponseModel,
 )
-
-if TYPE_CHECKING:
-    from niquests.typing import (
-        AsyncBodyType,
-        BodyType,
-        CookiesType,
-        HeadersType,
-        HttpMethodType,
-        QueryParameterType,
-    )
-
-    from ..core.client import Client
-    from ..core.pagination import PagerStrategy
-    from ..core.transport import HttpRawResponse
-    from ..core.versioning import Platform
-    from ..models.request import Credential
+from ..core.transport import HttpRawResponse
+from ..core.versioning import Platform
+from ..models.request import Credential
 
 
 class ApiModule:
     """API 模块基类."""
 
-    def __init__(self, client: Client) -> None:
+    def __init__(self, client: "Client") -> None:
         self._client = client
 
     def _build_version_params(self, platform: Platform | None = None) -> dict[str, int]:

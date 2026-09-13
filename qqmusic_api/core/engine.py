@@ -10,28 +10,22 @@
 执行, 但一次执行完成前不要修改它的参数; 文件和流由调用者管理.
 """
 
-from __future__ import annotations
-
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Protocol, TypeAlias
+from typing import Any, Protocol, TypeAlias
 
 import anyio
-from typing_extensions import Self
+from typing_extensions import Self, sentinel
 
+from ..models.request import Credential
 from .exceptions import ApiDataError
 from .request import BaseRequest
-from .transport import _release_responses
-
-if TYPE_CHECKING:
-    from collections.abc import Sequence
-
-    from ..models.request import Credential
-    from .transport import Transport
-    from .versioning import Platform, VersionPolicy
+from .transport import Transport, _release_responses
+from .versioning import Platform, VersionPolicy
 
 IndexedRequest: TypeAlias = "Sequence[ScopedCall]"
 
-MISSING = object()
+MISSING = sentinel("MISSING")
 
 
 @dataclass

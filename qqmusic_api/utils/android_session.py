@@ -1,25 +1,20 @@
 """Android 设备匿名会话管理. 负责持久化、复用与跨日刷新."""
 
-from __future__ import annotations
-
 import contextlib
 from dataclasses import dataclass
 from datetime import datetime
 from time import time
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import anyio
 
 from ..core.exceptions import ApiDataError
 from ..core.response import parse_cgi_item, unwrap_cgi_envelope
-from ..core.transport import PreparedRequest
+from ..core.transport import PreparedRequest, Transport
 from ..core.versioning import Platform, VersionPolicy
 from ..models.request import Credential
-
-if TYPE_CHECKING:
-    from ..core.transport import Transport
-    from .device import DeviceManager
-    from .qimei import QimeiManager
+from .device import DeviceManager
+from .qimei import QimeiManager
 
 SESSION_URL = "https://u.y.qq.com/cgi-bin/musicu.fcg"
 

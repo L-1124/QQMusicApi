@@ -1,34 +1,21 @@
 """API 客户端组合根与公开门面. 组装请求内核并委托执行."""
 
-from __future__ import annotations
-
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from functools import cached_property
 from typing import TYPE_CHECKING, Any, Literal, cast, overload
 
 import anyio
+from niquests import PreparedRequest
+from niquests.models import Response
+from niquests.typing import AsyncHookType, ProxyType, TLSClientCertType, TLSVerifyType
 from typing_extensions import Self
 
 from ..models.request import Credential
 from ..utils.android_session import AndroidSessionManager
-from ..utils.device import DeviceManager
-from ..utils.qimei import QimeiManager
-from .engine import ClientDefaults, RequestEngine
-from .exceptions import NetworkError
-from .executor import CgiExecutor, HttpExecutor
-from .transport import DEFAULT_MAX_CONCURRENCY, NiquestsTransport, Transport
-from .versioning import DEFAULT_VERSION_POLICY, Platform
-
-CLOSE_CLEANUP_BUDGET_SECONDS = 5.0
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
-
-    from niquests import PreparedRequest
-    from niquests.models import Response
-    from niquests.typing import AsyncHookType, ProxyType, TLSClientCertType, TLSVerifyType
-
     from ..modules.album import AlbumApi
     from ..modules.comment import CommentApi
     from ..modules.helper import HelperApi
@@ -43,7 +30,16 @@ if TYPE_CHECKING:
     from ..modules.songlist import SonglistApi
     from ..modules.top import TopApi
     from ..modules.user import UserApi
-    from .request import BaseRequest, ResultT
+from ..utils.device import DeviceManager
+from ..utils.qimei import QimeiManager
+from .engine import ClientDefaults, RequestEngine
+from .exceptions import NetworkError
+from .executor import CgiExecutor, HttpExecutor
+from .request import BaseRequest, ResultT
+from .transport import DEFAULT_MAX_CONCURRENCY, NiquestsTransport, Transport
+from .versioning import DEFAULT_VERSION_POLICY, Platform
+
+CLOSE_CLEANUP_BUDGET_SECONDS = 5.0
 
 
 @dataclass(eq=False)
@@ -248,98 +244,98 @@ class Client:
         self._niquests.hooks = value
 
     @cached_property
-    def helper(self) -> HelperApi:
+    def helper(self) -> "HelperApi":
         """辅助模块."""
         from ..modules.helper import HelperApi
 
         return HelperApi(self)
 
     @cached_property
-    def comment(self) -> CommentApi:
+    def comment(self) -> "CommentApi":
         """评论模块."""
         from ..modules.comment import CommentApi
 
         return CommentApi(self)
 
     @cached_property
-    def private_message(self) -> PrivateMessageApi:
+    def private_message(self) -> "PrivateMessageApi":
         """私信模块."""
         from ..modules.private_message import PrivateMessageApi
 
         return PrivateMessageApi(self)
 
     @cached_property
-    def recommend(self) -> RecommendApi:
+    def recommend(self) -> "RecommendApi":
         """推荐模块."""
         from ..modules.recommend import RecommendApi
 
         return RecommendApi(self)
 
     @cached_property
-    def top(self) -> TopApi:
+    def top(self) -> "TopApi":
         """排行榜模块."""
         from ..modules.top import TopApi
 
         return TopApi(self)
 
     @cached_property
-    def album(self) -> AlbumApi:
+    def album(self) -> "AlbumApi":
         """专辑模块."""
         from ..modules.album import AlbumApi
 
         return AlbumApi(self)
 
     @cached_property
-    def mv(self) -> MvApi:
+    def mv(self) -> "MvApi":
         """MV 模块."""
         from ..modules.mv import MvApi
 
         return MvApi(self)
 
     @cached_property
-    def login(self) -> LoginApi:
+    def login(self) -> "LoginApi":
         """登录模块."""
         from ..modules.login import LoginApi
 
         return LoginApi(self)
 
     @cached_property
-    def search(self) -> SearchApi:
+    def search(self) -> "SearchApi":
         """搜索模块."""
         from ..modules.search import SearchApi
 
         return SearchApi(self)
 
     @cached_property
-    def lyric(self) -> LyricApi:
+    def lyric(self) -> "LyricApi":
         """歌词模块."""
         from ..modules.lyric import LyricApi
 
         return LyricApi(self)
 
     @cached_property
-    def singer(self) -> SingerApi:
+    def singer(self) -> "SingerApi":
         """歌手模块."""
         from ..modules.singer import SingerApi
 
         return SingerApi(self)
 
     @cached_property
-    def song(self) -> SongApi:
+    def song(self) -> "SongApi":
         """歌曲模块."""
         from ..modules.song import SongApi
 
         return SongApi(self)
 
     @cached_property
-    def songlist(self) -> SonglistApi:
+    def songlist(self) -> "SonglistApi":
         """歌单模块."""
         from ..modules.songlist import SonglistApi
 
         return SonglistApi(self)
 
     @cached_property
-    def user(self) -> UserApi:
+    def user(self) -> "UserApi":
         """用户模块."""
         from ..modules.user import UserApi
 

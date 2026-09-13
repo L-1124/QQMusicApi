@@ -1,7 +1,5 @@
 """请求版本策略中心."""
 
-from __future__ import annotations
-
 from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import Enum
@@ -9,12 +7,10 @@ from typing import TYPE_CHECKING, Any
 
 from ..models.request import CommonParams, Credential
 from ..utils.common import hash33
+from ..utils.device import Device
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
-
     from ..utils.android_session import AndroidSession
-    from ..utils.device import Device
 
 
 class Platform(str, Enum):
@@ -69,10 +65,10 @@ class VersionPolicy:
         self,
         platform: Platform,
         credential: Credential,
-        device: Device,
+        device: "Device",
         qimei: Mapping[str, str] | None,
         guid: str,
-        session: AndroidSession | None = None,
+        session: "AndroidSession | None" = None,
     ) -> dict[str, Any]:
         """构建统一 comm 参数.
 

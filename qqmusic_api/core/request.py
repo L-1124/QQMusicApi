@@ -1,37 +1,33 @@
 """请求描述符与分页请求容器. 只描述请求内容, 不构造参数或解析响应."""
 
-from __future__ import annotations
-
+from collections.abc import Callable, Generator, Iterable
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any, Generic, TypedDict, TypeVar
 
+from niquests.typing import (
+    AsyncBodyType,
+    AsyncHttpAuthenticationType,
+    BodyType,
+    CookiesType,
+    HeadersType,
+    HttpAuthenticationType,
+    HttpMethodType,
+    MultiPartFilesAltType,
+    MultiPartFilesType,
+    QueryParameterType,
+    TimeoutType,
+)
 from pydantic import BaseModel
 from typing_extensions import Self
 
+from ..models.request import Credential
 from .pagination import ItemPaginatedMixin, ItemT_co, PaginatedMixin
 from .response import AllowErrorCodes, ResponseModel
 from .transport import HttpRawResponse
+from .versioning import Platform
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Generator, Iterable
-
-    from niquests.typing import (
-        AsyncBodyType,
-        AsyncHttpAuthenticationType,
-        BodyType,
-        CookiesType,
-        HeadersType,
-        HttpAuthenticationType,
-        HttpMethodType,
-        MultiPartFilesAltType,
-        MultiPartFilesType,
-        QueryParameterType,
-        TimeoutType,
-    )
-
-    from ..models.request import Credential
     from .client import Client
-    from .versioning import Platform
 
 ResultT = TypeVar("ResultT")
 CgiRequestResultT = TypeVar("CgiRequestResultT", bound=BaseModel | dict[str, Any])
@@ -63,7 +59,7 @@ class BaseRequest(Generic[ResultT]):
         disable_parse: 是否禁用响应解析, 直接返回原始响应数据.
     """
 
-    _client: Client
+    _client: "Client"
     response_model: type[BaseModel] | None = None
     disable_parse: bool = False
 
@@ -177,7 +173,7 @@ class PaginatedCgiRequest(CgiRequest[CgiRequestResultT], PaginatedMixin[CgiReque
 
     def with_extractor(
         self, items_extractor: Callable[[CgiRequestResultT], Iterable[NewItemT]]
-    ) -> ItemPaginatedCgiRequest[CgiRequestResultT, NewItemT]:
+    ) -> "ItemPaginatedCgiRequest[CgiRequestResultT, NewItemT]":
         """将当前分页请求转换为能够跨页提取数据项的请求.
 
         Args:
