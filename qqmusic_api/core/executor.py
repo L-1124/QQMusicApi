@@ -21,7 +21,7 @@ from ..utils.android_session import AndroidSessionManager
 from ..utils.common import bool_to_int
 from ..utils.device import DeviceManager
 from ..utils.qimei import QimeiManager
-from .engine import OperationScope, RequestScope, ScopedCall, credential_fingerprint
+from .engine import OperationScope, RequestScope, ScopedCall
 from .exceptions import ApiDataError, CredentialInvalidError, NetworkError
 from .request import CgiRequest, HttpRequest
 from .response import parse_cgi_item, parse_http_response, unwrap_cgi_envelope
@@ -72,13 +72,13 @@ def _to_network_error(exc: TransportError) -> NetworkError:
 class CgiBatchKey:
     """CGI 批量合并的分组键.
 
-    仅包含影响线上公共参数的字段: 快照平台, 完整凭证指纹, 规范化的
+    仅包含影响线上公共参数的字段: 快照平台, 完整凭证, 规范化的
     comm (None 与空 dict 一致), override_comm 与 sign. ``preserve_bool``
     ``require_login`` 与解析选项不进入键.
     """
 
     platform: Platform
-    fingerprint: str
+    credential: "Credential"
     comm: str | None
     override_comm: bool
     sign: bool
@@ -97,7 +97,7 @@ class CgiBatchKey:
         canonical_comm = _canonical_json(request.comm) if request.comm else None
         return cls(
             platform=call.scope.platform,
-            fingerprint=credential_fingerprint(call.scope.credential),
+            credential=call.scope.credential,
             comm=canonical_comm,
             override_comm=request.override_comm,
             sign=request.sign,

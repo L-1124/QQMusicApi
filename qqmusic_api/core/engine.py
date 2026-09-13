@@ -2,8 +2,7 @@
 
 本模块同时是请求身份的唯一权威: 默认状态 (``ClientDefaults``)、
 请求身份快照 (``RequestScope``)、身份解析 (:func:`resolve_scope`)、
-凭证指纹 (:func:`credential_fingerprint`) 与待交付 raw 的登记
-(``OperationScope``) 都定义在这里.
+待交付 raw 的登记 (``OperationScope``) 都定义在这里.
 
 身份约定: 操作入口在首个等待前确定本次凭证与平台 — 默认身份的
 请求复用同一个不可变凭证, 显式覆盖身份的请求单独解析;
@@ -13,12 +12,10 @@
 
 from __future__ import annotations
 
-import hashlib
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol, TypeAlias
 
 import anyio
-import orjson as json
 from typing_extensions import Self
 
 from .exceptions import ApiDataError
@@ -85,21 +82,6 @@ def resolve_scope(request: Any, defaults: ClientDefaults) -> RequestScope:
         credential=source_credential,
         platform=getattr(request, "platform", None) or defaults.platform,
     )
-
-
-def credential_fingerprint(credential: Credential) -> str:
-    """计算完整凭证的规范序列化指纹 (全库唯一实现).
-
-    指纹用于 CGI 分组与 Android 会话缓存键; 不输出到日志, 不持久化.
-
-    Args:
-        credential: 登录凭证.
-
-    Returns:
-        完整凭证规范序列化后的 SHA-256 摘要.
-    """
-    canonical = json.dumps(credential.model_dump(), option=json.OPT_SORT_KEYS)
-    return hashlib.sha256(canonical).hexdigest()
 
 
 @dataclass(frozen=True)

@@ -588,8 +588,8 @@ async def test_prepare_batch_does_not_mutate_user_param(cgi_executor: CgiExecuto
 # ---------------------------------------------------------------------------
 
 
-def test_batch_key_credential_fingerprint_distinguishes_extra_fields():
-    """测试凭证指纹覆盖全部字段而非仅 musicid/musickey."""
+def test_batch_key_distinguishes_complete_credentials():
+    """测试分组键比较完整凭证而非仅 musicid/musickey."""
     base = _call(_cgi_request(), _scope(credential=Credential(musicid=1, musickey="key", refresh_token="a")))
     other = _call(_cgi_request(), _scope(credential=Credential(musicid=1, musickey="key", refresh_token="b")))
     assert CgiBatchKey.from_call(base) != CgiBatchKey.from_call(other)
@@ -599,7 +599,7 @@ def test_batch_key_equal_for_same_credential():
     """测试相同凭证生成相同分组键."""
     cred = Credential(musicid=2, musickey="k")
     first = _call(_cgi_request(), _scope(credential=cred))
-    second = _call(_cgi_request(), _scope(credential=cred.model_copy(deep=True)))
+    second = _call(_cgi_request(), _scope(credential=Credential(musicid=2, musickey="k")))
     assert CgiBatchKey.from_call(first) == CgiBatchKey.from_call(second)
 
 
