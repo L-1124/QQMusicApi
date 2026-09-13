@@ -7,18 +7,16 @@ import pytest
 import pytest_asyncio
 
 from qqmusic_api import Client, NetworkError
-from qqmusic_api.core.mqtt import (
+from qqmusic_api.core.versioning import Platform
+from qqmusic_api.models.login import QRCodeLoginEvents, QRLoginType
+from qqmusic_api.utils.mqtt import (
     MqttConfig,
     MqttMessage,
     MqttRedirectError,
     MqttSession,
-    MqttSessionFactory,
     PahoMqttSession,
-    PahoMqttSessionFactory,
     PropertyId,
 )
-from qqmusic_api.core.versioning import Platform
-from qqmusic_api.models.login import QRCodeLoginEvents, QRLoginType
 
 pytestmark = pytest.mark.core
 
@@ -80,18 +78,14 @@ class StubMqttSession:
         self.close_calls += 1
 
 
-class StubMqttSessionFactory:
-    """返回预置会话的 MQTT 工厂桩."""
+def make_stub_mqtt_builder(session: StubMqttSession, created: list[MqttConfig]):
+    """返回记录配置并返回预置会话的构造可调用对象."""
 
-    def __init__(self, session: StubMqttSession) -> None:
-        """以预置会话构造工厂桩."""
-        self.session = session
-        self.created_configs: list[MqttConfig] = []
+    def build(config: MqttConfig) -> StubMqttSession:
+        created.append(config)
+        return session
 
-    def create(self, config: MqttConfig) -> StubMqttSession:
-        """记录配置并返回预置会话."""
-        self.created_configs.append(config)
-        return self.session
+    return build
 
 
 def _qr() -> Any:
@@ -101,11 +95,11 @@ def _qr() -> Any:
     return QR(data=b"", qr_type=QRLoginType.MOBILE, mimetype="", identifier="qrid")
 
 
-def _login(client: Client, factory: StubMqttSessionFactory) -> Any:
-    """构造注入桩工厂的登录模块."""
+def _login(client: Client, builder: Any) -> Any:
+    """构造注入会话构造可调用对象的登录模块."""
     from qqmusic_api.modules.login import LoginApi
 
-    return LoginApi(client, mqtt_factory=factory)
+    return LoginApi(client, mqtt_session_builder=builder)
 
 
 def test_paho_session_satisfies_protocol():
@@ -116,12 +110,10 @@ def test_paho_session_satisfies_protocol():
     assert isinstance(session, MqttSession)
 
 
-def test_paho_factory_satisfies_protocol_and_creates_session():
-    """测试 Paho 工厂满足协议并按配置创建会话."""
-    factory = PahoMqttSessionFactory()
-    assert isinstance(factory, MqttSessionFactory)
+def test_paho_session_class_builds_sessions():
+    """测试 Paho 会话类可直接作为构造可调用对象使用."""
     config = MqttConfig(client_id="cid", host="h", port=443)
-    session = factory.create(config)
+    session = PahoMqttSession(config)
     assert isinstance(session, PahoMqttSession)
     assert session.client_id == "cid"
     assert session.host == "h"
@@ -146,14 +138,14 @@ def test_mqtt_redirect_error_carries_address():
 async def test_login_uses_factory_and_subscribes_topic(stub_client: Client):
     """测试手机二维码流通过工厂获取会话并订阅预期主题."""
     session = StubMqttSession()
-    factory = StubMqttSessionFactory(session)
-    login = _login(stub_client, factory)
+    created: list[MqttConfig] = []
+    login = _login(stub_client, make_stub_mqtt_builder(session, created))
 
     events = [item async for item in login.checking_mobile_qrcode(_qr())]
 
-    assert len(factory.created_configs) == 1
-    assert factory.created_configs[0].client_id
-    assert factory.created_configs[0].host == "mu.y.qq.com"
+    assert len(created) == 1
+    assert created[0].client_id
+    assert created[0].host == "mu.y.qq.com"
     assert len(session.connect_calls) == 1
     assert len(session.subscribe_calls) == 1
     assert session.subscribe_calls[0][0] == "management.qrcode_login/qrid"
@@ -167,8 +159,8 @@ async def test_login_uses_factory_and_subscribes_topic(stub_client: Client):
 async def test_login_connect_failure_normalized_to_network_error(stub_client: Client):
     """测试建连失败归一化为 NetworkError 并保证会话关闭."""
     session = StubMqttSession(connect_error=ConnectionError("handshake failed"))
-    factory = StubMqttSessionFactory(session)
-    login = _login(stub_client, factory)
+    created: list[MqttConfig] = []
+    login = _login(stub_client, make_stub_mqtt_builder(session, created))
 
     with pytest.raises(NetworkError, match="handshake failed"):
         _ = [item async for item in login.checking_mobile_qrcode(_qr())]
@@ -180,8 +172,8 @@ async def test_login_deadline_timeout_yields_timeout_event(stub_client: Client):
     import anyio
 
     session = StubMqttSession()
-    factory = StubMqttSessionFactory(session)
-    login = _login(stub_client, factory)
+    created: list[MqttConfig] = []
+    login = _login(stub_client, make_stub_mqtt_builder(session, created))
 
     events = [item async for item in login.checking_mobile_qrcode(_qr(), deadline=anyio.current_time() - 1)]
     assert [item.event for item in events] == [QRCodeLoginEvents.TIMEOUT]
@@ -206,8 +198,8 @@ async def test_login_messages_close_session_after_terminal_event(stub_client: Cl
         properties={"type": "cookies"},
     )
     session = StubMqttSession(messages=[message])
-    factory = StubMqttSessionFactory(session)
-    login = _login(stub_client, factory)
+    created: list[MqttConfig] = []
+    login = _login(stub_client, make_stub_mqtt_builder(session, created))
 
     events = [item async for item in login.checking_mobile_qrcode(_qr())]
     assert [item.event for item in events] == [QRCodeLoginEvents.SCAN, QRCodeLoginEvents.DONE]

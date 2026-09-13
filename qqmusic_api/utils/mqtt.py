@@ -119,15 +119,6 @@ class MqttSession(Protocol):
         ...
 
 
-@runtime_checkable
-class MqttSessionFactory(Protocol):
-    """MQTT 会话工厂协议."""
-
-    def create(self, config: MqttConfig) -> MqttSession:
-        """按配置创建新的 MQTT 会话."""
-        ...
-
-
 @dataclass(slots=True)
 class _PendingSuback:
     """订阅确认等待记录."""
@@ -659,18 +650,3 @@ class PahoMqttSession:
 
         if self._message_error is not None:
             raise self._message_error
-
-
-class PahoMqttSessionFactory:
-    """创建 Paho MQTT 会话的默认工厂."""
-
-    def create(self, config: MqttConfig) -> PahoMqttSession:
-        """按配置创建新的 MQTT 会话.
-
-        Args:
-            config: MQTT 会话连接配置.
-
-        Returns:
-            新的 Paho MQTT 会话实例.
-        """
-        return PahoMqttSession(config)

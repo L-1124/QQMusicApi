@@ -23,7 +23,6 @@ from ..core import (
     NetworkError,
     Platform,
 )
-from ..core.mqtt import MqttConfig, MqttSessionFactory, PahoMqttSessionFactory, PropertyId
 from ..core.transport import PreparedRequest, TransportError, TransportTimeout
 from ..models.login import (
     QR,
@@ -36,6 +35,7 @@ from ..models.login import (
 )
 from ..models.request import Credential
 from ..utils import hash33
+from ..utils.mqtt import MqttConfig, MqttSession, PahoMqttSession, PropertyId
 from ._base import ApiModule
 
 if TYPE_CHECKING:
@@ -54,15 +54,17 @@ _ERROR_CODE = 1000, 104401, 104400, 20261, 20271, 20272, 20274, 20277, 20278, 20
 class LoginApi(ApiModule):
     """登录相关的 API."""
 
-    def __init__(self, client: "Client", *, mqtt_factory: MqttSessionFactory | None = None) -> None:
+    def __init__(
+        self, client: "Client", *, mqtt_session_builder: Callable[[MqttConfig], MqttSession] | None = None
+    ) -> None:
         """初始化登录模块.
 
         Args:
             client: 客户端实例.
-            mqtt_factory: MQTT 会话工厂, 缺省时使用 Paho 实现.
+            mqtt_session_builder: MQTT 会话构造可调用对象, 缺省时使用 Paho 实现.
         """
         super().__init__(client)
-        self._mqtt_factory = mqtt_factory or PahoMqttSessionFactory()
+        self._mqtt_session_builder = mqtt_session_builder or PahoMqttSession
 
     def _validate_result(self, resp: dict[str, Any]) -> dict[str, Any]:
         code = resp.get("code", 0)
@@ -259,7 +261,7 @@ class LoginApi(ApiModule):
             NetworkError: MQTT 建连、订阅或消息监听过程中发生网络错误.
         """
         client_id = f"{int(time() * 1000)}{random.randint(1000, 9999)}"
-        session = self._mqtt_factory.create(
+        session = self._mqtt_session_builder(
             MqttConfig(
                 client_id=client_id,
                 host="mu.y.qq.com",
