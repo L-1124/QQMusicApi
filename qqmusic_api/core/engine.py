@@ -23,6 +23,7 @@ from typing_extensions import Self
 
 from .exceptions import ApiDataError
 from .request import BaseRequest
+from .transport import _release_responses
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -32,8 +33,6 @@ if TYPE_CHECKING:
     from .versioning import Platform, VersionPolicy
 
 IndexedRequest: TypeAlias = "Sequence[ScopedCall]"
-
-RAW_RELEASE_BUDGET_SECONDS = 5.0
 
 MISSING = object()
 
@@ -113,7 +112,7 @@ class ScopedCall:
     """
 
     index: int
-    request: Any
+    request: BaseRequest[Any]
     scope: RequestScope
 
 
@@ -183,12 +182,7 @@ class OperationScope:
     async def release_pending(self) -> None:
         """释放全部未交付响应. 屏蔽外层取消, 单次预算 5 秒."""
         pending, self._pending = self._pending, []
-        if not pending:
-            return
-        with anyio.CancelScope(shield=True):
-            with anyio.move_on_after(RAW_RELEASE_BUDGET_SECONDS):
-                for response in pending:
-                    await self._transport.release(response)
+        await _release_responses(self._transport, pending)
 
 
 class CgiExecuting(Protocol):

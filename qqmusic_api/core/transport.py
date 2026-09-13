@@ -38,6 +38,7 @@ HttpRawResponse = Response
 """底层 HTTP 响应的公开类型别名. 供请求描述符在 ``disable_parse`` 场景标注结果类型."""
 
 DEFAULT_MAX_CONCURRENCY = 20
+RELEASE_BUDGET_SECONDS = 5.0
 
 BatchOutcome: TypeAlias = "RawResponse | Exception"
 """单个物理请求的批量结果: 响应或归属到该请求的异常."""
@@ -193,6 +194,15 @@ async def _release_raw(response: RawResponse) -> None:
         await result
 
 
+async def _release_responses(transport: Transport, responses: Sequence[RawResponse]) -> None:
+    """在有限预算内尽力释放全部响应."""
+    with anyio.CancelScope(shield=True):
+        with anyio.move_on_after(RELEASE_BUDGET_SECONDS):
+            for response in responses:
+                with contextlib.suppress(Exception):
+                    await transport.release(response)
+
+
 async def send_many(
     transport: Transport,
     requests: "Sequence[PreparedRequest]",
@@ -234,6 +244,7 @@ async def _send_many_fallback(
         与输入顺序一致的逐请求结果列表.
     """
     outcomes: list[BatchOutcome] = [TransportError("未发送")] * len(requests)
+    completed: list[RawResponse] = []
     pending = iter(list(enumerate(requests)))
     pending_lock = anyio.Lock()
 
@@ -245,13 +256,19 @@ async def _send_many_fallback(
                 return
             position, request = entry
             try:
-                outcomes[position] = await transport.request(request)
+                response = await transport.request(request)
+                outcomes[position] = response
+                completed.append(response)
             except Exception as exc:
                 outcomes[position] = exc
 
-    async with anyio.create_task_group() as task_group:
-        for _ in range(min(max_concurrency, len(requests)) or 1):
-            task_group.start_soon(_worker)
+    try:
+        async with anyio.create_task_group() as task_group:
+            for _ in range(min(max_concurrency, len(requests)) or 1):
+                task_group.start_soon(_worker)
+    except BaseException:
+        await _release_responses(transport, completed)
+        raise
 
     return outcomes
 
@@ -318,6 +335,7 @@ class NiquestsTransport:
         self._max_concurrency = max_concurrency
         self._capacity = _CapacityLimiter(max_concurrency)
         self._closed = False
+        self._close_lock = anyio.Lock()
 
     async def request(self, request: PreparedRequest) -> RawResponse:
         """执行单个物理请求并返回响应.
@@ -420,8 +438,8 @@ class NiquestsTransport:
 
         return chunk_outcomes
 
-    @staticmethod
     async def _fail_unresolved(
+        self,
         chunk_outcomes: "list[BatchOutcome]",
         lazy_pairs: "list[tuple[int, Response]]",
         error: Exception,
@@ -433,19 +451,14 @@ class NiquestsTransport:
             lazy_pairs: 集中解析前仍处于 lazy 状态的 (位置, 响应) 对.
             error: 集中解析抛出的传输异常.
         """
-        for position, _response in lazy_pairs:
+        unresolved = [(position, response) for position, response in lazy_pairs if response.lazy]
+        for position, _response in unresolved:
             chunk_outcomes[position] = error
-        with anyio.CancelScope(shield=True):
-            for _position, response in lazy_pairs:
-                with contextlib.suppress(Exception):
-                    await _release_raw(response)
+        await _release_responses(self, [response for _position, response in unresolved])
 
     async def _discard(self, responses: Sequence[RawResponse]) -> None:
         """尽力释放一批响应 (屏蔽取消)."""
-        with anyio.CancelScope(shield=True):
-            for response in responses:
-                with contextlib.suppress(Exception):
-                    await _release_raw(response)
+        await _release_responses(self, responses)
 
     async def release(self, response: RawResponse) -> None:
         """释放响应占用的连接或流资源. 幂等, 允许重复释放.
@@ -457,7 +470,8 @@ class NiquestsTransport:
 
     async def close(self) -> None:
         """关闭底层会话. 重复调用为空操作."""
-        if self._closed:
-            return
-        self._closed = True
-        await self._client.close()
+        async with self._close_lock:
+            if self._closed:
+                return
+            await self._client.close()
+            self._closed = True

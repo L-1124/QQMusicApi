@@ -14,7 +14,6 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, cast
 
-import anyio
 import orjson as json
 
 from ..algorithms import zzc_sign
@@ -31,6 +30,7 @@ from .transport import (
     PreparedRequest,
     Transport,
     TransportError,
+    _release_responses,
     send_many,
 )
 from .versioning import Platform, VersionPolicy
@@ -68,12 +68,6 @@ def _to_network_error(exc: TransportError) -> NetworkError:
     return NetworkError(str(exc))
 
 
-async def _release_response(transport: Transport, response: Any) -> None:
-    """屏蔽取消并释放一个已接收的响应."""
-    with anyio.CancelScope(shield=True):
-        await transport.release(response)
-
-
 @dataclass(frozen=True)
 class CgiBatchKey:
     """CGI 批量合并的分组键.
@@ -99,13 +93,14 @@ class CgiBatchKey:
         Returns:
             可比较的分组键实例.
         """
-        canonical_comm = _canonical_json(call.request.comm) if call.request.comm else None
+        request = cast("CgiRequest[Any]", call.request)
+        canonical_comm = _canonical_json(request.comm) if request.comm else None
         return cls(
             platform=call.scope.platform,
             fingerprint=credential_fingerprint(call.scope.credential),
             comm=canonical_comm,
-            override_comm=call.request.override_comm,
-            sign=call.request.sign,
+            override_comm=request.override_comm,
+            sign=request.sign,
         )
 
 
@@ -204,7 +199,7 @@ class CgiExecutor:
                 raise result
             return result
         finally:
-            await _release_response(self._transport, outcome)
+            await _release_responses(self._transport, [outcome])
 
     async def execute_many(
         self,
@@ -306,7 +301,7 @@ class CgiExecutor:
                         else:
                             results[call.index] = item_outcome
                 finally:
-                    await _release_response(self._transport, outcome)
+                    await _release_responses(self._transport, [outcome])
             if first_error is not None:
                 raise first_error
 
@@ -594,7 +589,7 @@ class HttpExecutor:
         Returns:
             准备完成的传输请求.
         """
-        request: HttpRequest[Any] = call.request
+        request = cast("HttpRequest[Any]", call.request)
         scope = call.scope
 
         kwargs: dict[str, Any] = {}
@@ -654,7 +649,7 @@ class HttpExecutor:
             return self._decode(response, call)
         finally:
             if not delivered:
-                await _release_response(self._transport, response)
+                await _release_responses(self._transport, [response])
 
     def _decode(self, response: Any, call: ScopedCall) -> Any:
         """按请求描述符的解析选项解析 HTTP 响应.
