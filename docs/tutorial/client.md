@@ -167,15 +167,14 @@ client = Client(device_path="device.json")
 
 `Client.credential` 更改时设备信息保持不变。
 
-## 请求快照与身份
+## 请求身份
 
-每次请求执行 (单次 `execute`/`await` 或一次 `gather`) 在真正发起网络请求 **之前** 会冻结一份执行快照：
+每次请求执行 (单次 `execute`/`await` 或一次 `gather`) 会在真正发起网络请求之前确定本次身份：
 
 * 客户端默认凭证被深复制，本次操作使用快照身份；
-* 请求描述符中的 `param`、`comm`、`headers`、`cookies` 等可变容器被复制；
 * 请求级覆盖 (`credential`/`platform`) 在快照时解析。
 
-因此，操作开始后修改 `Client.credential` 或原请求描述符只影响 **后续** 操作，不会影响正在执行中的请求。同一 `gather` 中所有默认身份项共享同一份快照，不受内部并发顺序影响。
+因此，操作开始后修改 `Client.credential` 只影响后续操作。同一 `gather` 中所有默认身份项共享同一份身份，不受内部并发顺序影响。请求描述符原样参与执行，在一次执行完成前不应修改其参数。
 
 !!! note "文件与流"
 
@@ -184,7 +183,7 @@ client = Client(device_path="device.json")
 ## 并发与批大小
 
 * `batch_size` 只限制 **一个 CGI 信封内的子请求数**（合批的上限），不代表并发数；
-* `max_concurrency`（构造参数，默认 20）限制共享的物理并发容量与内部 worker 数量，CGI、HTTP、QIMEI、Android Session 共用该上限；
+* `max_concurrency`（构造参数，默认 20）限制共享的物理并发容量；CGI、HTTP、QIMEI、Android Session 共用该上限；
 * HTTP 请求从不合并，每个请求独立执行、独立释放。
 
 ## 资源释放与关闭

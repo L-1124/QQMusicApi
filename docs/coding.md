@@ -15,7 +15,7 @@
   -> BaseRequest 描述符
   -> await request
   -> Client.execute(request)
-  -> Engine 冻结执行快照 (凭证深复制, 描述符副本, scope)
+  -> Engine 确定请求身份 (凭证副本与平台 scope)
   -> CgiExecutor / HttpExecutor 准备物理请求
   -> Transport.request(prepared) 发送并释放响应
   -> core/response.py 统一解析
@@ -29,7 +29,7 @@
   -> self._build_cgi(...)
   -> BaseRequest 描述符列表
     -> Client.gather(requests)
-    -> Engine 冻结全部执行条目并按协议分区
+    -> Engine 确定全部执行条目的身份并按协议分区
     -> CGI 条目按快照身份 (平台, 凭证指纹, comm, 签名) 自动分组
     -> 每组按 batch_size 拆分为批量请求
     -> 全部物理批次经 send_many 一次批量发送 (多路复用: 先提交 lazy 请求, 再集中 gather)
