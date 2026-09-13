@@ -122,6 +122,11 @@ class DeviceManager:
 
         device_data = json.loads(await anyio_path.read_text())
         device_data["version"] = OSVersion(**device_data["version"])
+
+        # 兼容旧版本配置文件, 丢弃已废弃的会话字段
+        for key in ("session_uid", "session_sid", "session_vkey", "session_save_time"):
+            device_data.pop(key, None)
+
         return Device(**device_data)
 
     @staticmethod
