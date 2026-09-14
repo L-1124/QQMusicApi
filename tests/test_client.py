@@ -8,7 +8,7 @@ import pytest_asyncio
 from pydantic import BaseModel
 
 from qqmusic_api import Client, Credential
-from qqmusic_api.core.exceptions import NetworkError
+from qqmusic_api.core.exceptions import NetworkError, TimeoutNetworkError
 from qqmusic_api.core.request import BaseRequest, CgiRequest, HttpRequest
 from qqmusic_api.core.transport import TransportError, TransportTimeout
 from qqmusic_api.core.versioning import Platform
@@ -175,7 +175,7 @@ async def test_stream_lease_releases_on_body_error():
 
         async def iter_chunks(self, chunk_size: int = 65536) -> Any:
             """迭代首个分块即抛出读取异常."""
-            raise RuntimeError("读取失败")
+            raise TransportTimeout("读取超时")
             yield b""  # pragma: no cover
 
     class LeaseTransport(StubTransport):
@@ -186,10 +186,13 @@ async def test_stream_lease_releases_on_body_error():
             super().__init__()
             self.stream_leases.append(StubStreamLease(stream=ExplodingStream([])))
 
-    client = Client(platform=Platform.WEB, transport=LeaseTransport())
-    with pytest.raises(RuntimeError, match="读取失败"):
+    transport = LeaseTransport()
+    lease = transport.stream_leases[0]
+    client = Client(platform=Platform.WEB, transport=transport)
+    with pytest.raises(TimeoutNetworkError, match="读取超时"):
         async with client.stream(HttpRequest(_client=client, method="GET", url="https://example.com")) as raw_stream:
             await anext(raw_stream.iter_chunks(2))
+    assert lease.exited
 
 
 async def test_stream_rejects_non_streaming_transport():

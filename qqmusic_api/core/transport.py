@@ -252,9 +252,12 @@ async def send_many(
     ``request_many``; 其余实现以有限并发 worker 回退. 结果按物理
     请求归属, 异常不跨请求扩散.
     """
-    if isinstance(transport, MultiplexTransport):
-        return await transport.request_many(requests, return_exceptions=return_exceptions)
-    return await _send_many_fallback(transport, requests, max_concurrency, return_exceptions=return_exceptions)
+    try:
+        if isinstance(transport, MultiplexTransport):
+            return await transport.request_many(requests, return_exceptions=return_exceptions)
+        return await _send_many_fallback(transport, requests, max_concurrency, return_exceptions=return_exceptions)
+    except TransportError as exc:
+        raise to_network_error(exc) from exc
 
 
 async def _send_many_fallback(
@@ -268,8 +271,10 @@ async def _send_many_fallback(
     outcomes: list[BatchOutcome] = [TransportError("未发送")] * len(requests)
     pending = iter(list(enumerate(requests)))
     pending_lock = anyio.Lock()
+    first_error: Exception | None = None
 
     async def _worker(task_group: anyio.abc.TaskGroup) -> None:
+        nonlocal first_error
         while True:
             async with pending_lock:
                 entry = next(pending, None)
@@ -281,12 +286,16 @@ async def _send_many_fallback(
             except Exception as exc:
                 outcomes[position] = exc
                 if not return_exceptions:
+                    if first_error is None:
+                        first_error = exc
                     task_group.cancel_scope.cancel()
 
     async with anyio.create_task_group() as task_group:
         for _ in range(min(max_concurrency, len(requests)) or 1):
             task_group.start_soon(_worker, task_group)
 
+    if first_error is not None:
+        raise first_error
     return outcomes
 
 
@@ -518,10 +527,13 @@ class _NiquestsStream:
 
     async def iter_chunks(self, chunk_size: int = STREAM_CHUNK_SIZE) -> AsyncIterator[bytes]:
         """按块异步迭代响应体."""
-        # niquests 对异步模式 iter_content 的返回类型标注不完整, 实际为可等待对象.
-        iterator = await cast("Any", self._response).iter_content(chunk_size)
-        async for chunk in iterator:
-            yield chunk
+        try:
+            # niquests 对异步模式 iter_content 的返回类型标注不完整, 实际为可等待对象.
+            iterator = await cast("Any", self._response).iter_content(chunk_size)
+            async for chunk in iterator:
+                yield chunk
+        except (Timeout, RequestException) as exc:
+            raise _map_transport_exception(exc) from exc
 
     async def aclose(self) -> None:
         """提前关闭底层流. 作用域退出时自动调用, 重复调用无害."""

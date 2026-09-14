@@ -7,12 +7,14 @@ import pytest
 import pytest_asyncio
 from niquests.exceptions import RequestException, Timeout
 
+from qqmusic_api.core.exceptions import TimeoutNetworkError
 from qqmusic_api.core.transport import (
     NiquestsTransport,
     PreparedRequest,
     TransportError,
     TransportTimeout,
     _release_raw,
+    send_many,
 )
 
 pytestmark = pytest.mark.core
@@ -163,6 +165,43 @@ async def test_request_network_error_mapped_to_transport_error(
     assert not isinstance(exc_info.value, TransportTimeout)
 
 
+async def test_send_many_maps_multiplex_fail_fast_timeout(transport: NiquestsTransport, stub_client: StubAsyncClient):
+    """测试多路传输快速失败超时转换为公开异常."""
+    stub_client._outcomes = [Timeout("真实超时")]
+    with pytest.raises(TimeoutNetworkError, match="真实超时"):
+        await send_many(transport, [_prepared()], max_concurrency=1, return_exceptions=False)
+
+
+async def test_send_many_fallback_fail_fast_preserves_real_error():
+    """测试回退传输快速失败不会用未发送占位符掩盖根因."""
+
+    class FailingTransport:
+        """让一个请求阻塞并令另一个请求失败的普通传输桩."""
+
+        def __init__(self) -> None:
+            """初始化请求同步事件."""
+            self.started = anyio.Event()
+
+        async def request(self, request: PreparedRequest) -> StubRawResponse:
+            """按 URL 阻塞或抛出真实超时."""
+            if request.url.endswith("slow"):
+                self.started.set()
+                await anyio.sleep_forever()
+            await self.started.wait()
+            raise TransportTimeout("真实超时")
+
+        async def close(self) -> None:
+            """关闭为空操作."""
+
+    transport = FailingTransport()
+    requests = [
+        PreparedRequest(method="GET", url="https://example.com/slow"),
+        PreparedRequest(method="GET", url="https://example.com/fail"),
+    ]
+    with anyio.fail_after(1), pytest.raises(TimeoutNetworkError, match="真实超时"):
+        await send_many(cast("Any", transport), requests, max_concurrency=2, return_exceptions=False)
+
+
 async def test_dynamic_proxy_and_tls_updates(transport: NiquestsTransport, stub_client: StubAsyncClient):
     """测试代理/证书/verify/hooks 更新后在后续 request 中生效."""
     stub_client._outcomes = [StubRawResponse(), StubRawResponse()]
@@ -236,6 +275,30 @@ async def test_open_stream_closes_on_body_error_and_returns_permit(
 
     stub_client._outcomes = [BrokenStreamResponse()]
     with pytest.raises(RuntimeError, match="读取失败"):
+        async with transport.open_stream(_prepared()) as stream:
+            await anext(stream.iter_chunks(2))
+    assert transport._capacity._used == 0
+
+
+async def test_open_stream_maps_body_timeout_and_returns_permit(
+    transport: NiquestsTransport, stub_client: StubAsyncClient
+):
+    """测试流读取超时转换为传输超时且归还许可."""
+
+    class TimeoutStreamResponse(StubStreamResponse):
+        """迭代时抛出 niquests 超时的响应桩."""
+
+        async def iter_content(self, chunk_size: int) -> Any:
+            """返回迭代即超时的异步生成器."""
+
+            async def _iterator() -> Any:
+                raise Timeout("读取超时")
+                yield b""  # pragma: no cover
+
+            return _iterator()
+
+    stub_client._outcomes = [TimeoutStreamResponse()]
+    with pytest.raises(TransportTimeout, match="读取超时"):
         async with transport.open_stream(_prepared()) as stream:
             await anext(stream.iter_chunks(2))
     assert transport._capacity._used == 0
