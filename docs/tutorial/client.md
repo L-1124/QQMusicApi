@@ -157,7 +157,7 @@ asyncio.run(main())
 
 ## 设备信息
 
-可通过 `device_path` 参数指定设备信息文件的路径进行持久化存储：
+可通过 `device_path` 参数指定设备指纹文件的路径，保存设备型号、系统版本、标识符和 QIMEI 等信息：
 
 ```python
 client = Client(device_path="device.json")
@@ -165,7 +165,7 @@ client = Client(device_path="device.json")
 
 不传 `device_path` 则仅在内存维护设备状态，重启后丢失。
 
-`Client.credential` 更改时设备信息保持不变。
+`Client.credential` 更改时设备信息保持不变。Android 匿名会话在当前客户端内获取、复用和跨日刷新。
 
 ## 请求身份
 
@@ -189,10 +189,25 @@ client = Client(device_path="device.json")
 
 ## 资源释放与关闭
 
-* 常规响应在解析完成后立即释放连接。HTTP 请求设置 `disable_parse=True` 时仍检查 HTTP 状态，4xx/5xx 响应抛出 `HTTPError` 并释放；成功交付的原始响应由调用者负责关闭。**缓冲响应**可在关闭后读取已缓冲内容，**流式响应**（`stream=True`）应在关闭前读取，`Client.close()` 之后不保证未读流可用。
-* CGI 请求的 `disable_parse=True` 仅跳过模型转换，仍检查 HTTP 状态与业务错误码，返回子响应的 `data`，不返回原始 HTTP 响应。
+* 常规请求在交付前完成响应体缓冲并归还连接，返回的数据可直接使用。
+* HTTP 请求描述符设置 `raw=True` 时返回 `RawPayload`，包含状态码、最终 URL、响应头、Cookie 和完整响应体。该载荷无需关闭，客户端关闭后仍可读取；4xx/5xx 响应抛出 `HTTPError`。
+* CGI 请求的 `disable_parse=True` 跳过模型转换，返回子响应的 `data`；业务错误码仍按请求的允许码策略处理。
 * `close()` 进入关闭流程后：拒绝新操作（抛 `RuntimeError`）、取消并等待在途操作清理，然后关闭网络资源；重复 `close()` 为幂等空操作，关闭失败可重试。
-* 客户端关闭后调用 `execute()` / `gather()` 会抛出 `RuntimeError`。
+* 客户端关闭后调用 `execute()` / `gather()` 或进入新的 `stream()` 上下文会抛出 `RuntimeError`。
+
+## 流式读取
+
+对于 HTTP 请求描述符 `request`，使用 `Client.stream()` 分块读取响应体：
+
+```python
+async with client.stream(request) as response:
+    print(response.status_code)
+    print(response.headers)
+    async for chunk in response.iter_chunks():
+        ...  # 消费当前字节块
+```
+
+进入上下文后可读取状态码与响应头。流占用一个并发许可，退出上下文时自动关闭并归还许可，包括读取失败或取消的情况。响应体应在上下文内消费。
 
 ## 传输配置
 
@@ -212,4 +227,4 @@ async with Client(transport=transport, max_concurrency=20) as client:
     result = await client.search.quick_search("周杰伦")
 ```
 
-也可以通过 `transport` 注入实现 `request()`、`release()` 和 `close()` 的自定义传输。传输实例由 `Client` 管理，并在 `Client.close()` 时关闭。
+也可以通过 `transport` 注入实现 `request()` 和 `close()` 的自定义传输。`request()` 应在返回前完整缓冲响应体并归还连接；提供 `open_stream()` 异步上下文管理器可支持流式读取。传输实例由 `Client` 管理，并在 `Client.close()` 时关闭。

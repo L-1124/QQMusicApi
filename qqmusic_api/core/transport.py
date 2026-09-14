@@ -438,16 +438,20 @@ class NiquestsTransport:
                     cert=self.cert,
                     verify=self.verify,
                 )
+                if response.lazy:
+                    await self._client.gather(response)
             except (Timeout, RequestException) as exc:
                 raise _map_transport_exception(exc) from exc
             yield _NiquestsStream(response)
         finally:
-            if response is not None:
+            try:
+                if response is not None:
+                    with anyio.CancelScope(shield=True):
+                        with anyio.move_on_after(RELEASE_BUDGET_SECONDS):
+                            await _release_raw(response)
+            finally:
                 with anyio.CancelScope(shield=True):
-                    with anyio.move_on_after(RELEASE_BUDGET_SECONDS):
-                        await _release_raw(response)
-            with anyio.CancelScope(shield=True):
-                await self._capacity.release(1)
+                    await self._capacity.release(1)
 
     async def close(self) -> None:
         """关闭底层会话. 重复调用为空操作."""

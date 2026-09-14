@@ -2,6 +2,7 @@
 
 from typing import Any, cast
 
+import anyio
 import pytest
 import pytest_asyncio
 from niquests.exceptions import RequestException, Timeout
@@ -44,6 +45,13 @@ class StubAsyncClient:
         """记录关闭调用."""
         self.close_calls += 1
 
+    async def gather(self, *responses: Any) -> None:
+        """完成预置的延迟流式响应头接收."""
+        for response in responses:
+            response.lazy = False
+            response.status_code = 200
+            response.headers = {"Content-Type": "application/octet-stream"}
+
 
 class StubRawResponse:
     """满足 RawResponse 协议的最小响应桩."""
@@ -76,7 +84,8 @@ class StubStreamResponse:
 
     def __init__(self, chunks: list[bytes] | None = None) -> None:
         """以预置字节块构造流式响应桩."""
-        self.status_code = 200
+        self.lazy = False
+        self.status_code: int | None = 200
         self.url = "https://example.com/"
         self.headers: dict[str, str] = {}
         self.cookies: dict[str, str] = {}
@@ -182,14 +191,21 @@ async def test_close_is_idempotent(transport: NiquestsTransport, stub_client: St
     assert stub_client.close_calls == 1
 
 
+@pytest.mark.parametrize("lazy", [False, True])
 async def test_open_stream_requests_with_stream_flag_and_yields_chunks(
-    transport: NiquestsTransport, stub_client: StubAsyncClient
+    transport: NiquestsTransport, stub_client: StubAsyncClient, *, lazy: bool
 ):
     """测试流式租约以 stream 标志建流并按块产出响应体."""
     stream_response = StubStreamResponse([b"ab", b"cd"])
+    stream_response.lazy = lazy
+    if lazy:
+        stream_response.status_code = None
     stub_client._outcomes = [stream_response]
     request = _prepared(timeout=5.0)
     async with transport.open_stream(request) as stream:
+        assert stream.status_code == 200
+        if lazy:
+            assert stream.headers["Content-Type"] == "application/octet-stream"
         method, url, kwargs = stub_client.request_calls[0]
         assert method == "POST"
         assert url == "https://example.com"
@@ -234,6 +250,48 @@ async def test_open_stream_timeout_maps_to_transport_timeout_and_returns_permit(
         async with transport.open_stream(_prepared()):
             pass
     assert transport._capacity._used == 0
+
+
+async def test_open_stream_close_failure_returns_permit(stub_client: StubAsyncClient):
+    """测试关闭流失败后后续请求仍可获得全部并发容量."""
+
+    class BrokenCloseResponse(StubStreamResponse):
+        """关闭时抛出异常的流式响应桩."""
+
+        def close(self) -> None:
+            """模拟底层流关闭失败."""
+            raise RuntimeError("关闭失败")
+
+    transport = NiquestsTransport(session=cast("Any", stub_client), max_concurrency=1)
+    next_response = StubRawResponse()
+    stub_client._outcomes = [BrokenCloseResponse(), next_response]
+    with pytest.raises(RuntimeError, match="关闭失败"):
+        async with transport.open_stream(_prepared()):
+            pass
+    with anyio.fail_after(1):
+        assert await transport.request(_prepared()) is next_response
+
+
+async def test_open_stream_gather_failure_cleans_up():
+    """测试等待响应头超时后关闭流并恢复并发容量."""
+
+    class TimeoutClient(StubAsyncClient):
+        """延迟响应头超时的会话桩."""
+
+        async def gather(self, *responses: Any) -> None:
+            """模拟响应头接收超时."""
+            raise Timeout("headers timed out")
+
+    response = StubStreamResponse()
+    response.lazy = True
+    next_response = StubRawResponse()
+    transport = NiquestsTransport(session=cast("Any", TimeoutClient([response, next_response])), max_concurrency=1)
+    with pytest.raises(TransportTimeout, match="headers timed out"):
+        async with transport.open_stream(_prepared()):
+            pytest.fail("响应头未就绪时不应交付流")
+    assert response.close_calls == 1
+    with anyio.fail_after(1):
+        assert await transport.request(_prepared()) is next_response
 
 
 async def test_prepared_request_defaults_kwargs_to_empty():
