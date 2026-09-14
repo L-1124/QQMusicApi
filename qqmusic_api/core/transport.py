@@ -345,7 +345,12 @@ class NiquestsTransport:
             raise outcome
         return outcome
 
-    async def request_many(self, requests: Sequence[PreparedRequest]) -> "list[BatchOutcome]":
+    async def request_many(
+        self,
+        requests: "Sequence[PreparedRequest]",
+        *,
+        return_exceptions: bool = True,
+    ) -> "list[BatchOutcome]":
         """分块提交请求并集中解析响应."""
         items = list(requests)
         outcomes: list[BatchOutcome] = [TransportError("未发送")] * len(items)
@@ -353,7 +358,7 @@ class NiquestsTransport:
         try:
             for start in range(0, len(items), self._max_concurrency):
                 chunk = items[start : start + self._max_concurrency]
-                chunk_outcomes = await self._submit_chunk(chunk)
+                chunk_outcomes = await self._submit_chunk(chunk, return_exceptions=return_exceptions)
                 outcomes[start : start + len(chunk)] = chunk_outcomes
                 collected.extend(response for response in chunk_outcomes if isinstance(response, Response))
         except BaseException:
@@ -362,7 +367,12 @@ class NiquestsTransport:
             raise
         return outcomes
 
-    async def _submit_chunk(self, chunk: Sequence[PreparedRequest]) -> "list[BatchOutcome]":
+    async def _submit_chunk(
+        self,
+        chunk: "Sequence[PreparedRequest]",
+        *,
+        return_exceptions: bool = True,
+    ) -> "list[BatchOutcome]":
         """提交分块并集中解析."""
         chunk_outcomes: list[BatchOutcome] = [TransportError("未发送")] * len(chunk)
         submitted: list[tuple[int, Response]] = []
@@ -383,18 +393,28 @@ class NiquestsTransport:
                     submitted.append((position, response))
                     chunk_outcomes[position] = response
                 except (Timeout, RequestException) as exc:  # noqa: PERF203
-                    chunk_outcomes[position] = _map_transport_exception(exc)
+                    error = _map_transport_exception(exc)
+                    chunk_outcomes[position] = error
+                    if not return_exceptions:
+                        raise error from exc
                 except Exception as exc:
                     chunk_outcomes[position] = exc
+                    if not return_exceptions:
+                        raise
 
             lazy_pairs = [(position, response) for position, response in submitted if getattr(response, "lazy", False)]
             if lazy_pairs:
                 try:
                     await self._client.gather(*[response for _, response in lazy_pairs])
                 except (Timeout, RequestException) as exc:
-                    await self._fail_unresolved(chunk_outcomes, lazy_pairs, _map_transport_exception(exc))
+                    error = _map_transport_exception(exc)
+                    await self._fail_unresolved(chunk_outcomes, lazy_pairs, error)
+                    if not return_exceptions:
+                        raise error from exc
                 except Exception as exc:
                     await self._fail_unresolved(chunk_outcomes, lazy_pairs, exc)
+                    if not return_exceptions:
+                        raise
         except BaseException:
             # 外层取消等异常: 尽力释放本分块已收集的响应后继续传播.
             await _release_responses([response for _, response in submitted])
