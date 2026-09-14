@@ -330,7 +330,7 @@ class Client:
             TypeError: 请求类型不支持流式, 或传输实现无流式能力.
             RuntimeError: 客户端已关闭或操作被关闭流程取消.
         """
-        async with self._operation(), await self._engine.open_stream(request) as raw_stream:
+        async with self._operation(), self._engine.open_stream(request) as raw_stream:
             yield raw_stream
 
     @overload

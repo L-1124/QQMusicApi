@@ -1,7 +1,7 @@
 """统一请求调度引擎."""
 
-from collections.abc import Sequence
-from contextlib import AbstractAsyncContextManager
+from collections.abc import AsyncGenerator, Sequence
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import Any, Protocol, TypeAlias
 
@@ -149,7 +149,8 @@ class RequestEngine:
             return await self._http.execute(call)
         raise TypeError(f"不支持的请求类型: {type(call.request)}")
 
-    async def open_stream(self, request: BaseRequest[Any]) -> AbstractAsyncContextManager[RawStream]:
+    @asynccontextmanager
+    async def open_stream(self, request: BaseRequest[Any]) -> AsyncGenerator[RawStream, None]:
         """准备流式响应租约.
 
         流式响应持有底层连接, 仅能在返回的作用域内消费.
@@ -162,8 +163,11 @@ class RequestEngine:
 
         Raises:
             TypeError: 请求类型不支持流式, 或传输实现无流式能力.
+            NetworkError: 建流期间发生网络错误.
+            TimeoutNetworkError: 建流超时.
         """
         from .request import HttpRequest
+        from .transport import TransportError, to_network_error
 
         call = self._resolve_calls([request])[0]
         if not isinstance(call.request, HttpRequest):
@@ -172,7 +176,12 @@ class RequestEngine:
         transport = self._transport
         if not isinstance(transport, StreamingTransport):
             raise TypeError("当前传输实现不支持流式读取")
-        return transport.open_stream(prepared)
+
+        try:
+            async with transport.open_stream(prepared) as stream:
+                yield stream
+        except TransportError as exc:
+            raise to_network_error(exc) from exc
 
     async def gather(
         self,

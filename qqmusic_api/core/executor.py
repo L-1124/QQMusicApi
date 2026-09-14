@@ -164,6 +164,7 @@ class CgiExecutor:
                 self._transport,
                 [item for _, item in prepared],
                 max_concurrency=self._max_concurrency,
+                return_exceptions=return_exceptions,
             )
             first_error: Exception | None = None
             for (batch, _), outcome in zip(prepared, outcomes, strict=True):
@@ -325,6 +326,7 @@ class HttpExecutor:
                 self._transport,
                 [item for _, item in prepared_calls],
                 max_concurrency=self._max_concurrency,
+                return_exceptions=return_exceptions,
             )
             first_error: Exception | None = None
             for (call, _), outcome in zip(prepared_calls, outcomes, strict=True):

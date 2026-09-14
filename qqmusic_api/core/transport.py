@@ -178,7 +178,9 @@ class StreamingTransport(Protocol):
 class MultiplexTransport(Protocol):
     """支持先提交多个请求、再集中解析响应的传输扩展."""
 
-    async def request_many(self, requests: Sequence[PreparedRequest]) -> "list[BatchOutcome]":
+    async def request_many(
+        self, requests: "Sequence[PreparedRequest]", *, return_exceptions: bool = True
+    ) -> "list[BatchOutcome]":
         """批量提交请求并按输入顺序返回逐请求结果 (响应或异常)."""
         ...
 
@@ -242,6 +244,7 @@ async def send_many(
     requests: "Sequence[PreparedRequest]",
     *,
     max_concurrency: int,
+    return_exceptions: bool = True,
 ) -> "list[BatchOutcome]":
     """批量发送辅助函数, 两个执行器共用的唯一批量入口.
 
@@ -250,21 +253,23 @@ async def send_many(
     请求归属, 异常不跨请求扩散.
     """
     if isinstance(transport, MultiplexTransport):
-        return await transport.request_many(requests)
-    return await _send_many_fallback(transport, requests, max_concurrency)
+        return await transport.request_many(requests, return_exceptions=return_exceptions)
+    return await _send_many_fallback(transport, requests, max_concurrency, return_exceptions=return_exceptions)
 
 
 async def _send_many_fallback(
     transport: Transport,
     requests: "Sequence[PreparedRequest]",
     max_concurrency: int,
+    *,
+    return_exceptions: bool = True,
 ) -> "list[BatchOutcome]":
     """无批量能力传输的有限并发 worker 回退."""
     outcomes: list[BatchOutcome] = [TransportError("未发送")] * len(requests)
     pending = iter(list(enumerate(requests)))
     pending_lock = anyio.Lock()
 
-    async def _worker() -> None:
+    async def _worker(task_group: anyio.abc.TaskGroup) -> None:
         while True:
             async with pending_lock:
                 entry = next(pending, None)
@@ -275,10 +280,12 @@ async def _send_many_fallback(
                 outcomes[position] = await transport.request(request)
             except Exception as exc:
                 outcomes[position] = exc
+                if not return_exceptions:
+                    task_group.cancel_scope.cancel()
 
     async with anyio.create_task_group() as task_group:
         for _ in range(min(max_concurrency, len(requests)) or 1):
-            task_group.start_soon(_worker)
+            task_group.start_soon(_worker, task_group)
 
     return outcomes
 
