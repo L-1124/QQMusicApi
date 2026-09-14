@@ -20,6 +20,26 @@ def test_device_cache_store_derived_path():
     assert derived_custom.path == anyio.Path("my_device.cache.json")
 
 
+def test_device_factory_is_deterministic_and_coherent():
+    """测试设备工厂按档案和种子生成稳定且关联一致的身份."""
+    first = Device.create("xiaomi", seed=42)
+    second = Device.create("xiaomi", seed=42)
+
+    assert first == second
+    assert first.brand == "Xiaomi"
+    assert first.device in first.fingerprint
+    assert first.version.release in first.fingerprint
+    assert len(first.android_id) == 16
+    assert len(first.imei) == 15
+    assert first.open_udid != first.open_udid2
+
+
+def test_device_factory_rejects_unknown_profile():
+    """测试设备工厂拒绝未知档案名称."""
+    with pytest.raises(ValueError, match="未知设备档案"):
+        Device.create("unknown")
+
+
 async def test_device_cache_store_persistence_and_reload(tmp_path: Path):
     """测试设备缓存存储正常写入磁盘并重新加载."""
     cache_path = tmp_path / "test.cache.json"

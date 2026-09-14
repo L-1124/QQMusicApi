@@ -6,22 +6,27 @@ import hashlib
 import random
 import string
 import time
-from dataclasses import dataclass, field, fields
+from dataclasses import dataclass, field, fields, replace
 from pathlib import Path
+from random import Random
 from typing import Any, ClassVar
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import anyio
 import orjson as json
 
 
-def random_imei() -> str:
+def random_imei(rng: Random | None = None) -> str:
     """生成满足标准 Luhn 校验的随机 IMEI 号码.
+
+    Args:
+        rng: 可选随机数生成器, 用于生成可复现设备.
 
     Returns:
         str: 随机生成的 IMEI 号码.
     """
-    digits = [random.randint(0, 9) for _ in range(14)]
+    generator = rng or Random()
+    digits = [generator.randint(0, 9) for _ in range(14)]
     sum_ = 0
     for idx, digit in enumerate(digits):
         checksum_digit = digit
@@ -45,7 +50,100 @@ class OSVersion:
     sdk: int = 29
 
 
-# TODO: 支持设备信息随机化生成,并优化生成
+@dataclass(frozen=True, slots=True)
+class _DeviceProfile:
+    """描述一组内部一致的 Android 设备属性."""
+
+    display: str
+    product: str
+    device: str
+    board: str
+    model: str
+    fingerprint: str
+    proc_version: str
+    brand: str
+    manufacturer: str
+    host: str
+    version: OSVersion
+    vendor_name: str
+    vendor_os_name: str
+
+
+_DEVICE_PROFILES = {
+    "vivo": _DeviceProfile(
+        display="",
+        product="PD2408",
+        device="PD2408",
+        board="sun",
+        model="V2408A",
+        fingerprint="vivo/PD2408/PD2408:15/AP3A.240905.015.A2/compiler250423182036:user/release-keys",
+        proc_version="",
+        brand="vivo",
+        manufacturer="vivo",
+        host="",
+        version=OSVersion(incremental="compiler250423182036", release="15", codename="REL", sdk=35),
+        vendor_name="OriginOS",
+        vendor_os_name="OriginOS 5.0",
+    ),
+    "xiaomi": _DeviceProfile(
+        display="OS3.0.260511.1.WOCCNXM.STABLE-OS31",
+        product="dada",
+        device="dada",
+        board="sun",
+        model="24129PN74C",
+        fingerprint=("Xiaomi/dada/dada:16/BP2A.250605.031.A3/OS3.0.260511.1.WOCCNXM.STABLE-OS31:user/release-keys"),
+        proc_version="",
+        brand="Xiaomi",
+        manufacturer="Xiaomi",
+        host="",
+        version=OSVersion(
+            incremental="OS3.0.260511.1.WOCCNXM.STABLE-OS31",
+            release="16",
+            codename="REL",
+            sdk=36,
+        ),
+        vendor_name="Xiaomi",
+        vendor_os_name="HyperOS 3.0",
+    ),
+    "oppo": _DeviceProfile(
+        display="V.1ab312a_1-2a261",
+        product="PKB110",
+        device="OP5A3DL1",
+        board="mt6991",
+        model="PKB110",
+        fingerprint="OPPO/PKB110/OP5A3DL1:15/AP3A.240617.008/V.1ab312a_1-2a261:user/release-keys",
+        proc_version="",
+        brand="OPPO",
+        manufacturer="OPPO",
+        host="",
+        version=OSVersion(incremental="V.1ab312a_1-2a261", release="15", codename="REL", sdk=35),
+        vendor_name="ColorOS",
+        vendor_os_name="ColorOS 15",
+    ),
+    "samsung": _DeviceProfile(
+        display="AP3A.240905.015.A2.S9380ZCU5AYHA",
+        product="pa3qzcx",
+        device="pa3q",
+        board="",
+        model="SM-S9380",
+        fingerprint="",
+        proc_version="",
+        brand="samsung",
+        manufacturer="samsung",
+        host="",
+        version=OSVersion(incremental="S9380ZCU5AYHA", release="15", codename="REL", sdk=35),
+        vendor_name="One UI",
+        vendor_os_name="One UI 7.0",
+    ),
+}
+
+
+def _random_mac(rng: Random) -> str:
+    """生成本地管理的单播 MAC 地址."""
+    octets = [0x02, *(rng.getrandbits(8) for _ in range(5))]
+    return ":".join(f"{octet:02X}" for octet in octets)
+
+
 @dataclass
 class Device:
     """纯粹的虚拟硬件设备信息 (不含动态会话与凭据)."""
@@ -88,6 +186,57 @@ class Device:
     vendor_os_name: str = "qmapi"
     open_udid: str = field(default_factory=lambda: uuid4().hex)
     open_udid2: str = field(default_factory=lambda: uuid4().hex)
+    manufacturer: str = "Xiaomi"
+    host: str = "se.infra"
+
+    @classmethod
+    def create(cls, profile: str | None = None, *, seed: int | str | None = None) -> "Device":
+        """根据一致的设备档案创建虚拟 Android 设备.
+
+        Args:
+            profile: 设备档案名称 (vivo, xiaomi, oppo, samsung).
+                省略时随机选择一个档案.
+            seed: 可选随机种子, 相同档案和种子生成相同设备身份.
+
+        Returns:
+            新生成的设备信息.
+
+        Raises:
+            ValueError: 指定了未知设备档案时.
+        """
+        rng = Random(seed)
+        if profile is None:
+            selected = rng.choice(tuple(_DEVICE_PROFILES.values()))
+        else:
+            try:
+                selected = _DEVICE_PROFILES[profile.lower()]
+            except KeyError as exc:
+                choices = ", ".join(_DEVICE_PROFILES)
+                raise ValueError(f"未知设备档案: {profile}. 可选值: {choices}") from exc
+
+        return cls(
+            display=selected.display,
+            product=selected.product,
+            device=selected.device,
+            board=selected.board,
+            model=selected.model,
+            fingerprint=selected.fingerprint,
+            boot_id=str(UUID(int=rng.getrandbits(128), version=4)),
+            proc_version=selected.proc_version,
+            imei=random_imei(rng),
+            brand=selected.brand,
+            version=replace(selected.version),
+            mac_address=_random_mac(rng),
+            wifi_bssid=_random_mac(rng),
+            imsi_md5=list(rng.randbytes(16)),
+            android_id=f"{rng.getrandbits(64):016x}",
+            vendor_name=selected.vendor_name,
+            vendor_os_name=selected.vendor_os_name,
+            open_udid=UUID(int=rng.getrandbits(128), version=4).hex,
+            open_udid2=UUID(int=rng.getrandbits(128), version=4).hex,
+            manufacturer=selected.manufacturer,
+            host=selected.host,
+        )
 
 
 class DeviceCacheStore:
@@ -237,7 +386,7 @@ class DeviceManager:
         """
         anyio_path = anyio.Path(path)
         if not await anyio_path.exists():
-            return Device()
+            return Device.create()
 
         raw_data: dict[str, Any] = json.loads(await anyio_path.read_text())
 
@@ -298,11 +447,11 @@ class DeviceManager:
             return self.device
 
         if self._device_path is None:
-            self.device = Device()
+            self.device = Device.create()
             return self.device
 
         if not await self._device_path.exists():
-            self.device = Device()
+            self.device = Device.create()
             await self._save_device(self.device, self._device_path)
             return self.device
 

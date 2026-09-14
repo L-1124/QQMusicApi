@@ -12,8 +12,13 @@ import qqmusic_api.utils.qimei as qimei_module
 from qqmusic_api.core.exceptions import HTTPError
 from qqmusic_api.core.transport import TransportTimeout
 from qqmusic_api.core.versioning import VersionProfile
-from qqmusic_api.utils.device import DeviceManager
-from qqmusic_api.utils.qimei import QimeiManager
+from qqmusic_api.utils.device import Device, DeviceManager
+from qqmusic_api.utils.qimei import (
+    QimeiManager,
+    calc_device_oo,
+    calc_device_oz,
+    random_payload_by_device,
+)
 from tests.kernel_contract import StubResponse, StubTransport
 
 pytestmark = pytest.mark.core
@@ -171,3 +176,50 @@ async def test_request_uses_prepared_post(device_store: DeviceManager):
     assert request.url == "https://api.tencentmusic.com/tme/trpc/proxy"
     assert "sign" in request.kwargs["headers"]
     assert "qimeiParams" in request.kwargs["json"]
+
+
+async def test_payload_uses_coherent_device_profile(device_store: DeviceManager):
+    """测试 QIMEI 载荷从设备档案读取主板、厂商与构建主机."""
+    device = await device_store.get_device()
+    payload = random_payload_by_device(device, "20.8.0.8", "5.1.2.22")
+    reserved = json.loads(payload["reserved"])
+
+    assert reserved["bod"] == device.board
+    assert reserved["manufact"] == device.manufacturer
+    assert reserved["host"] == device.host
+    assert reserved["oz"] == calc_device_oz(device.android_id)
+    assert reserved["oo"] == calc_device_oo(device.model)
+    assert payload["networkType"] == "wifi"
+    assert payload["targetSdkVersion"] == "30"
+
+
+def test_payload_reports_harmony_device():
+    """测试 HarmonyOS 标记随设备系统信息变化."""
+    device = Device.create("xiaomi", seed=42)
+    device.vendor_os_name = "HarmonyOS 4.2"
+    payload = random_payload_by_device(device, "20.8.0.8", "5.1.2.22")
+    assert json.loads(payload["reserved"])["harmony"] == "1"
+
+
+@pytest.mark.parametrize(
+    ("android_id", "expected"),
+    [
+        ("47801b8a67701e41", "NNz6NWlsWoBxTgFbAfWWkqu9Uwu+ha3Zhq6++d6gMR4="),
+        ("2ec21f188e1ba6b3", "UhYmelwouA+V2nPWbOvLTgN2/m8jwGB+yUB5v9tysQg="),
+    ],
+)
+def test_calc_device_oz_known_values(android_id: str, expected: str):
+    """测试 oz 计算结果与已知样本一致."""
+    assert calc_device_oz(android_id) == expected
+
+
+@pytest.mark.parametrize(
+    ("model", "expected"),
+    [
+        ("V2408A", "AB3Bkaa2vuN47x/MquvfUw=="),
+        ("PCRT00", "Xecjt+9S1+f8Pz2VLSxgpw=="),
+    ],
+)
+def test_calc_device_oo_known_values(model: str, expected: str):
+    """测试 oo 计算结果与已知样本一致."""
+    assert calc_device_oo(model) == expected

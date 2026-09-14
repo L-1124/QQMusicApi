@@ -34,6 +34,8 @@ APP_KEY = "0AND0HD6FE4HY80F"
 CHANNEL_ID = "10003505"
 PACKAGE_ID = "com.tencent.qqmusic"
 HEX_CHARS = "0123456789abcdef"
+DEVICE_TOKEN_KEY = b"lvcwmSYVr2Axv1gn"
+DEVICE_TOKEN_IV = b"Zs0ntDqG2jyhKN0c"
 
 
 class QimeiResult(TypedDict):
@@ -160,20 +162,47 @@ def rsa_encrypt(content: bytes) -> bytes:
     return key.encrypt(content, padding.PKCS1v15())
 
 
-def aes_encrypt(key: bytes, content: bytes) -> bytes:
+def aes_encrypt(key: bytes, content: bytes, iv: bytes | None = None) -> bytes:
     """AES-CBC 加密数据.
 
     Args:
         key: AES 密钥.
         content: 待加密原文.
+        iv: 可选初始化向量, 省略时使用密钥作为初始化向量.
 
     Returns:
         bytes: 加密后的字节流.
     """
-    cipher = Cipher(algorithms.AES(key), modes.CBC(key))
+    cipher = Cipher(algorithms.AES(key), modes.CBC(iv or key))
     padding_size = 16 - len(content) % 16
     encryptor = cipher.encryptor()
     return encryptor.update(content + (padding_size * chr(padding_size)).encode()) + encryptor.finalize()
+
+
+def calc_device_oz(android_id: str) -> str:
+    """根据 Android ID 计算设备安全字段 oz.
+
+    Args:
+        android_id: 当前设备的 Android ID.
+
+    Returns:
+        Base64 编码的设备安全字段.
+    """
+    encrypted = aes_encrypt(DEVICE_TOKEN_KEY, android_id.encode(), DEVICE_TOKEN_IV)
+    return base64.b64encode(encrypted).decode()
+
+
+def calc_device_oo(model: str) -> str:
+    """根据设备型号计算设备安全字段 oo.
+
+    Args:
+        model: 当前设备型号.
+
+    Returns:
+        Base64 编码的设备安全字段.
+    """
+    encrypted = aes_encrypt(DEVICE_TOKEN_KEY, model.encode(), DEVICE_TOKEN_IV)
+    return base64.b64encode(encrypted).decode()
 
 
 def random_beacon_id() -> str:
@@ -213,20 +242,20 @@ def random_payload_by_device(device: Device, version: str, sdk_version: str) -> 
     """
     fixed_rand = random.randint(0, 14400)
     reserved = {
-        "harmony": "0",
+        "harmony": "1" if device.vendor_os_name.lower().startswith("harmonyos") else "0",
         "clone": "0",
         "containe": "",
-        "oz": "UhYmelwouA+V2nPWbOvLTgN2/m8jwGB+yUB5v9tysQg=",
-        "oo": "Xecjt+9S1+f8Pz2VLSxgpw==",
+        "oz": calc_device_oz(device.android_id),
+        "oo": calc_device_oo(device.model),
         "kelong": "0",
         "uptimes": (datetime.now(timezone.utc) - timedelta(seconds=fixed_rand)).strftime("%Y-%m-%d %H:%M:%S"),
         "multiUser": "0",
-        "bod": device.brand,
+        "bod": device.board,
         "dv": device.device,
         "firstLevel": "",
-        "manufact": device.brand,
+        "manufact": device.manufacturer or device.brand,
         "name": device.model,
-        "host": "se.infra",
+        "host": device.host,
         "kernel": device.proc_version,
     }
     return {
@@ -242,13 +271,13 @@ def random_payload_by_device(device: Device, version: str, sdk_version: str) -> 
         "imsi": "",
         "mac": "",
         "model": device.model,
-        "networkType": "unknown",
+        "networkType": "wifi",
         "oaid": "",
         "osVersion": f"Android {device.version.release},level {device.version.sdk}",
         "qimei": "",
         "qimei36": "",
         "sdkVersion": sdk_version,
-        "targetSdkVersion": "33",
+        "targetSdkVersion": "30",
         "audit": "",
         "userId": "{}",
         "packageId": PACKAGE_ID,
