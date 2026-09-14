@@ -2,7 +2,6 @@
 
 from typing import TYPE_CHECKING, Any, Literal, overload
 
-import niquests
 from niquests.typing import (
     AsyncBodyType,
     BodyType,
@@ -13,6 +12,8 @@ from niquests.typing import (
 )
 from typing_extensions import Unpack
 
+if TYPE_CHECKING:
+    from ..core.client import Client
 from ..core.pagination import PagerStrategy
 from ..core.request import (
     CgiRequest,
@@ -22,11 +23,9 @@ from ..core.request import (
     PaginatedCgiRequest,
     ResponseModel,
 )
+from ..core.response import RawPayload
 from ..core.versioning import Platform
 from ..models.request import Credential
-
-if TYPE_CHECKING:
-    from ..core.client import Client
 
 
 class ApiModule:
@@ -34,11 +33,11 @@ class ApiModule:
 
     def __init__(self, client: "Client") -> None:
         self._client = client
-        self._session = client._session
 
     def _build_version_params(self, platform: Platform | None = None) -> dict[str, int]:
         """构建查询接口使用的版本参数."""
-        profile = self._client._context.version_policy.get_profile(platform or self._client._context.platform)
+        defaults = self._client._defaults
+        profile = defaults.version_policy.get_profile(platform or defaults.platform)
         return {"ct": profile.ct, "cv": profile.cv}
 
     @overload
@@ -161,9 +160,9 @@ class ApiModule:
         credential: Credential | None = None,
         *,
         response_model: type[ResponseModel] | None = None,
-        disable_parse: Literal[True],
+        raw: Literal[True],
         **options: Unpack[HttpRequestOptions],
-    ) -> HttpRequest[niquests.Response]: ...
+    ) -> HttpRequest[RawPayload]: ...
 
     @overload
     def _build_http(
@@ -178,7 +177,7 @@ class ApiModule:
         credential: Credential | None = None,
         *,
         response_model: type[ResponseModel],
-        disable_parse: bool = False,
+        raw: bool = False,
         **options: Unpack[HttpRequestOptions],
     ) -> HttpRequest[ResponseModel]: ...
 
@@ -195,7 +194,7 @@ class ApiModule:
         credential: Credential | None = None,
         *,
         response_model: None = None,
-        disable_parse: bool = False,
+        raw: bool = False,
         **options: Unpack[HttpRequestOptions],
     ) -> HttpRequest[dict[str, Any]]: ...
 
@@ -211,7 +210,7 @@ class ApiModule:
         credential: Credential | None = None,
         *,
         response_model: type[ResponseModel] | None = None,
-        disable_parse: bool = False,
+        raw: bool = False,
         **options: Unpack[HttpRequestOptions],
     ) -> HttpRequest[Any]:
         """构建可 await 的标准 HTTP 请求描述符."""
@@ -221,7 +220,7 @@ class ApiModule:
             url=url,
             params=params,
             response_model=response_model,
-            disable_parse=disable_parse,
+            raw=raw,
             headers=headers,
             cookies=cookies,
             json=json,

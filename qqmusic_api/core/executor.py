@@ -1,0 +1,397 @@
+"""请求执行器."""
+
+from collections import defaultdict
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, cast
+
+import orjson as json
+
+from ..algorithms import zzc_sign
+from ..utils.android_session import AndroidSessionManager
+from ..utils.common import bool_to_int
+from ..utils.device import DeviceManager
+from ..utils.qimei import QimeiManager
+from .engine import RequestScope, ScopedCall
+from .exceptions import ApiDataError, CredentialInvalidError
+from .response import ensure_http_success, parse_cgi_item, parse_http_response, snapshot_payload, unwrap_cgi_envelope
+from .transport import (
+    DEFAULT_MAX_CONCURRENCY,
+    PreparedRequest,
+    Transport,
+    TransportError,
+    send_many,
+    to_network_error,
+)
+from .versioning import Platform, VersionPolicy
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from ..models.request import Credential
+    from .request import CgiRequest, HttpRequest
+
+MUSICU_URL = "https://u.y.qq.com/cgi-bin/musicu.fcg"
+MUSICS_URL = "https://u.y.qq.com/cgi-bin/musics.fcg"
+
+
+@dataclass(frozen=True)
+class CgiBatchKey:
+    """CGI 批量合并的分组键."""
+
+    platform: Platform
+    credential: "Credential"
+    comm: str | None
+    override_comm: bool
+    sign: bool
+
+    @classmethod
+    def from_call(cls, call: ScopedCall) -> "CgiBatchKey":
+        """从执行条目计算分组键."""
+        request = cast("CgiRequest[Any]", call.request)
+        canonical_comm = json.dumps(request.comm, option=json.OPT_SORT_KEYS).decode() if request.comm else None
+        return cls(
+            platform=call.scope.platform,
+            credential=call.scope.credential,
+            comm=canonical_comm,
+            override_comm=request.override_comm,
+            sign=request.sign,
+        )
+
+
+@dataclass(frozen=True)
+class CgiBatch:
+    """同组 CGI 请求批次 (由 CgiExecutor 独占构造).
+
+    Attributes:
+        scope: 批次共享的请求身份.
+        calls: 批次内的执行条目 (线上环境已保证一致).
+    """
+
+    scope: RequestScope
+    calls: tuple[ScopedCall, ...]
+
+
+class CgiExecutor:
+    """CGI 请求执行器."""
+
+    def __init__(
+        self,
+        *,
+        android_session: AndroidSessionManager,
+        device_store: DeviceManager,
+        qimei_manager: QimeiManager,
+        version_policy: VersionPolicy,
+        transport: Transport,
+        max_concurrency: int = DEFAULT_MAX_CONCURRENCY,
+    ) -> None:
+        """初始化 CGI 执行器."""
+        self._android_session = android_session
+        self._device_store = device_store
+        self._qimei_manager = qimei_manager
+        self._version_policy = version_policy
+        self._transport = transport
+        self._max_concurrency = max_concurrency
+
+    async def execute(self, call: ScopedCall) -> Any:
+        """执行单个 CGI 请求条目并返回解析结果."""
+        [(_, result)] = await self.execute_many(
+            [call],
+            batch_size=1,
+        )
+        return result
+
+    async def execute_many(
+        self,
+        calls: "Sequence[ScopedCall]",
+        *,
+        batch_size: int,
+        return_exceptions: bool = False,
+    ) -> "list[tuple[int, Any]]":
+        """执行索引化的 CGI 请求条目集合.
+
+        逐项执行 ``require_login`` 校验后按身份分组并按 ``batch_size``
+        切块; 全部批次一次性经 ``send_many`` 批量发送. 错误作用范围:
+        批次级网络错误映射到该信封内的全部子项, 单个子项错误只影响
+        对应位置; ``return_exceptions=False`` 时以首个观察到的异常
+        抛出, 取消类 ``BaseException`` 始终直接传播.
+        """
+        results: dict[int, Any] = {}
+        groups: defaultdict[CgiBatchKey, list[ScopedCall]] = defaultdict(list)
+        for call in calls:
+            request = cast("CgiRequest[Any]", call.request)
+            try:
+                key = CgiBatchKey.from_call(call)
+            except Exception as exc:
+                if return_exceptions:
+                    results[call.index] = exc
+                    continue
+                raise
+            if request.require_login and not bool(call.scope.credential.musicid and call.scope.credential.musickey):
+                exc = CredentialInvalidError("请求需要登录, 未提供有效的登录凭证")
+                if return_exceptions:
+                    results[call.index] = exc
+                    continue
+                raise exc
+            groups[key].append(call)
+
+        if not groups:
+            return list(results.items())
+
+        batches: list[CgiBatch] = []
+        for group in groups.values():
+            for start in range(0, len(group), batch_size):
+                chunk = group[start : start + batch_size]
+                batches.append(CgiBatch(scope=chunk[0].scope, calls=tuple(chunk)))
+
+        prepared: list[tuple[CgiBatch, PreparedRequest]] = []
+        for batch in batches:
+            try:
+                prepared.append((batch, await self._prepare_batch(batch)))
+            except TransportError as exc:  # noqa: PERF203
+                error = to_network_error(exc)
+                if not return_exceptions:
+                    raise error from exc
+                for call in batch.calls:
+                    results[call.index] = error
+            except Exception as exc:
+                if not return_exceptions:
+                    raise
+                for call in batch.calls:
+                    results[call.index] = exc
+
+        if prepared:
+            outcomes = await send_many(
+                self._transport,
+                [item for _, item in prepared],
+                max_concurrency=self._max_concurrency,
+                return_exceptions=return_exceptions,
+            )
+            first_error: Exception | None = None
+            for (batch, _), outcome in zip(prepared, outcomes, strict=True):
+                if isinstance(outcome, Exception):
+                    error = to_network_error(outcome) if isinstance(outcome, TransportError) else outcome
+                    if return_exceptions:
+                        for call in batch.calls:
+                            results[call.index] = error
+                    elif first_error is None:
+                        first_error = error
+                    continue
+                decoded = self._decode_batch(batch, outcome)
+                for position, call in enumerate(batch.calls):
+                    item_outcome = decoded[position]
+                    if isinstance(item_outcome, Exception):
+                        if return_exceptions:
+                            results[call.index] = item_outcome
+                        elif first_error is None:
+                            first_error = item_outcome
+                    else:
+                        results[call.index] = item_outcome
+            if first_error is not None:
+                raise first_error
+
+        return list(results.items())
+
+    def _decode_batch(self, batch: CgiBatch, response: Any) -> "list[Any]":
+        """解析整个批次: 信封解包与逐项解析.
+
+        单个子项错误只影响对应位置, 兄弟项继续解析. 返回逐项结果,
+        元素为解析结果或异常.
+        """
+        try:
+            items = unwrap_cgi_envelope(response, expected_count=len(batch.calls))
+        except Exception as exc:
+            return [exc] * len(batch.calls)
+        out: list[Any] = []
+        for position, call in enumerate(batch.calls):
+            item = items[position]
+            if item is None:
+                out.append(ApiDataError(f"CGI 响应格式异常, 缺少或畸形子响应 req_{position}"))
+                continue
+            try:
+                request = cast("CgiRequest[Any]", call.request)
+                out.append(
+                    parse_cgi_item(
+                        item,
+                        allow_error_codes=request.allow_error_codes,
+                        parse_on_allow=request.parse_on_allow,
+                        disable_parse=request.disable_parse,
+                        response_model=request.response_model,
+                    )
+                )
+            except Exception as exc:
+                out.append(exc)
+        return out
+
+    async def _prepare_batch(self, batch: CgiBatch) -> PreparedRequest:
+        """组装批次传输请求.
+
+        ANDROID 平台先确保会话并获取 QIMEI; 用户 comm 覆盖优先,
+        ``override_comm`` 表示完全替换; 签名批次切换 URL 并附加时间戳.
+        准备阶段的 QIMEI/Android Session 网络失败转换为 NetworkError.
+        """
+        if not batch.calls:
+            raise ValueError("CGI 批次不能为空")
+
+        scope = batch.scope
+        base = cast("CgiRequest[Any]", batch.calls[0].request)
+
+        session = None
+        try:
+            if scope.platform == Platform.ANDROID:
+                session = await self._android_session.ensure()
+
+            device = await self._device_store.get_device()
+            qimei = await self._qimei_manager.get_cached() if scope.platform == Platform.ANDROID else None
+        except TransportError as exc:
+            raise to_network_error(exc) from exc
+        if base.override_comm:
+            final_comm = dict(base.comm or {})
+        else:
+            final_comm = self._version_policy.build_comm(
+                platform=scope.platform,
+                credential=scope.credential,
+                device=device,
+                qimei=qimei,
+                guid=device.open_udid,
+                session=session,
+            )
+            if base.comm:
+                final_comm.update(base.comm)
+
+        user_agent = self._version_policy.get_user_agent(scope.platform, device)
+
+        payload: dict[str, Any] = {"comm": final_comm}
+        for idx, call in enumerate(batch.calls):
+            request = cast("CgiRequest[Any]", call.request)
+            payload[f"req_{idx}"] = {
+                "module": request.module,
+                "method": request.method,
+                "param": request.param if request.preserve_bool else bool_to_int(request.param),
+            }
+
+        params: dict[str, str] = {}
+        if base.sign:
+            import time
+
+            params["_"] = str(int(time.time() * 1000))
+            params["sign"] = zzc_sign(json.dumps(payload))
+
+        url = MUSICS_URL if base.sign else MUSICU_URL
+        return PreparedRequest(
+            method="POST",
+            url=url,
+            kwargs={"json": payload, "params": params, "headers": {"User-Agent": user_agent}},
+        )
+
+
+class HttpExecutor:
+    """HTTP 请求执行器. 请求不合并, 经共享批量辅助并发执行."""
+
+    def __init__(
+        self,
+        *,
+        device_store: DeviceManager,
+        version_policy: VersionPolicy,
+        transport: Transport,
+        max_concurrency: int = DEFAULT_MAX_CONCURRENCY,
+    ) -> None:
+        """初始化 HTTP 执行器."""
+        self._device_store = device_store
+        self._version_policy = version_policy
+        self._transport = transport
+        self._max_concurrency = max_concurrency
+
+    async def execute(self, call: ScopedCall) -> Any:
+        """执行单个 HTTP 请求并返回解析结果."""
+        [(_, result)] = await self.execute_many([call])
+        return result
+
+    async def execute_many(
+        self, calls: "Sequence[ScopedCall]", *, return_exceptions: bool = False
+    ) -> "list[tuple[int, Any]]":
+        """并发执行 HTTP 请求集合."""
+        results: dict[int, Any] = {}
+        prepared_calls: list[tuple[ScopedCall, PreparedRequest]] = []
+        for call in calls:
+            try:
+                prepared_calls.append((call, await self.prepare(call)))
+            except Exception as exc:  # noqa: PERF203
+                if return_exceptions:
+                    results[call.index] = exc
+                else:
+                    raise
+
+        if prepared_calls:
+            outcomes = await send_many(
+                self._transport,
+                [item for _, item in prepared_calls],
+                max_concurrency=self._max_concurrency,
+                return_exceptions=return_exceptions,
+            )
+            first_error: Exception | None = None
+            for (call, _), outcome in zip(prepared_calls, outcomes, strict=True):
+                try:
+                    if isinstance(outcome, Exception):
+                        if isinstance(outcome, TransportError):
+                            raise to_network_error(outcome) from outcome
+                        raise outcome
+                    results[call.index] = await self._deliver(call, outcome)
+                except Exception as exc:  # noqa: PERF203
+                    if return_exceptions:
+                        results[call.index] = exc
+                    elif first_error is None:
+                        first_error = exc
+            if first_error is not None:
+                raise first_error
+
+        return list(results.items())
+
+    async def prepare(self, call: ScopedCall) -> PreparedRequest:
+        """组装 HTTP 传输请求."""
+        request = cast("HttpRequest[Any]", call.request)
+        scope = call.scope
+
+        kwargs: dict[str, Any] = {}
+        if request.params is not None:
+            kwargs["params"] = request.params
+        if request.headers is not None:
+            kwargs["headers"] = dict(request.headers)
+        if request.json is not None:
+            kwargs["json"] = request.json
+        if request.data is not None:
+            kwargs["data"] = request.data
+        if request.kwargs is not None:
+            options = cast("dict[str, Any]", request.kwargs)
+            if "stream" in options:
+                raise ValueError("流式读取请使用 Client.stream(); 请求描述符不支持 stream 选项")
+            kwargs.update(options)
+
+        cookies: dict[str, str] = {}
+        credential = scope.credential
+        if credential.musicid:
+            uin = credential.str_musicid or str(credential.musicid)
+            cookies["uin"] = uin
+            cookies["qqmusic_uin"] = uin
+        if credential.musickey:
+            cookies["qm_keyst"] = credential.musickey
+            cookies["qqmusic_key"] = credential.musickey
+        if request.cookies:
+            cookies.update(cast("dict[str, str]", request.cookies))
+        if cookies:
+            kwargs["cookies"] = cookies
+
+        headers: dict[str, Any] = kwargs.get("headers") or {}
+        if not any(name.lower() == "user-agent" for name in headers):
+            device = await self._device_store.get_device()
+            headers["User-Agent"] = self._version_policy.get_user_agent(Platform.WEB, device)
+            kwargs["headers"] = headers
+
+        return PreparedRequest(method=request.method, url=request.url, kwargs=kwargs)
+
+    async def _deliver(self, call: ScopedCall, response: Any) -> Any:
+        """交付响应: 原始载荷快照或解析结果, 二者均为无资源语义的值."""
+        request = cast("HttpRequest[Any]", call.request)
+        if request.raw:
+            ensure_http_success(response)
+            return snapshot_payload(response)
+        return parse_http_response(response, response_model=request.response_model)

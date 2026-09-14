@@ -5,9 +5,8 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import anyio
-import niquests
 
-from ..core.exceptions import LoginError
+from ..core.exceptions import LoginError, NetworkError
 from ..models.login import QR, PhoneAuthCodeResult, QRCodeLoginEvents, QRLoginResult, QRLoginStream, QRLoginType
 from ..models.request import Credential
 
@@ -165,7 +164,7 @@ class QRCodeLoginSession:
                 except (TimeoutError, anyio.EndOfStream):
                     yield QRLoginResult(event=QRCodeLoginEvents.TIMEOUT)
                     return
-                except niquests.RequestException:
+                except NetworkError:
                     backoff = min(interval_config.error_interval, (2**error_retries) * interval_config.default)
                     if not await sleep_before_deadline(deadline, backoff):
                         yield QRLoginResult(event=QRCodeLoginEvents.TIMEOUT)

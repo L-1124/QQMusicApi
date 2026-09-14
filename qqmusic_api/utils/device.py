@@ -90,7 +90,6 @@ class Device:
     qimei_save_time: int | None = None
     session_uid: str | None = None
     session_sid: str | None = None
-    session_vkey: str | None = None
     session_save_time: int | None = None
     open_udid: str = field(default_factory=lambda: uuid4().hex)
 
@@ -123,6 +122,11 @@ class DeviceManager:
 
         device_data = json.loads(await anyio_path.read_text())
         device_data["version"] = OSVersion(**device_data["version"])
+
+        # 兼容旧版本配置文件, 丢弃已废弃的会话字段
+        for key in ("session_uid", "session_sid", "session_vkey", "session_save_time"):
+            device_data.pop(key, None)
+
         return Device(**device_data)
 
     @staticmethod
@@ -140,10 +144,8 @@ class DeviceManager:
             return
 
         anyio_path = anyio.Path(path)
-        device_dict = {
-            **device.__dict__,
-            "version": device.version.__dict__,
-        }
+        device_dict = device.__dict__.copy()
+        device_dict["version"] = device.version.__dict__
         await anyio_path.write_bytes(json.dumps(device_dict))
 
     @staticmethod
@@ -197,4 +199,17 @@ class DeviceManager:
         device.qimei = q16
         device.qimei36 = q36
         device.qimei_save_time = int(time.time())
+        await self.save_device()
+
+    async def apply_session(self, uid: str, sid: str) -> None:
+        """应用 Android 匿名会话并立即保存.
+
+        Args:
+            uid: 设备会话 UID.
+            sid: 设备会话 SID.
+        """
+        device = await self.get_device()
+        device.session_uid = uid
+        device.session_sid = sid
+        device.session_save_time = int(time.time())
         await self.save_device()

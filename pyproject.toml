@@ -39,7 +39,7 @@ dependencies = [
   "orjson>=3.10.15",
   "paho-mqtt>=2.1.0",
   "pydantic>=2.13.3",
-  "typing-extensions>=4.12.2",
+  "typing-extensions>=4.16.0",
 ]
 dynamic = ["version"]
 

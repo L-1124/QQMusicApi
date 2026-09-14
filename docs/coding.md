@@ -15,9 +15,10 @@
   -> BaseRequest 描述符
   -> await request
   -> Client.execute(request)
-  -> ApiContext 注入环境与凭证
-  -> Session.post(...) / Session.request(...)
-  -> Request._parse_response(...)
+  -> Engine 确定请求身份 (不可变凭证与平台 scope)
+  -> CgiExecutor / HttpExecutor 准备物理请求
+  -> Transport.request(prepared) 发送并释放响应
+  -> core/response.py 统一解析
   -> 返回原始 dict 或 Pydantic 模型
 ```
 
@@ -28,15 +29,15 @@
   -> self._build_cgi(...)
   -> BaseRequest 描述符列表
     -> Client.gather(requests)
-    -> 按协议、平台、公共参数和凭证配置键自动分组
+    -> Engine 确定全部执行条目的身份并按协议分区
+    -> CGI 条目按快照身份 (平台, 完整凭证, comm, 签名) 自动分组
     -> 每组按 batch_size 拆分为批量请求
-    -> 依次发起合并的多参 CGI 请求（req_0, req_1...）
-    -> 使用客户端内部的 Session 并发执行这些任务（self._session.gather）
-    -> 统一解包解析每个响应项
+    -> 全部物理批次经 send_many 一次批量发送 (多路复用: 先提交 lazy 请求, 再集中 gather)
+    -> 统一解包解析每个响应项, 逐项归属错误
     -> 按输入顺序返回结果列表
 ```
 
-`gather` 的分组边界由 `BaseRequest._group_key` 决定。只有协议类型、显式平台、公共参数和凭证相同的请求才会安全地合并到同一个批量请求中。
+`gather` 的分组边界由执行器按 **快照身份** 计算 (生效平台, 完整凭证, 规范化公共参数, 覆盖模式与签名)。只有这些线上环境完全一致的请求才会安全地合并到同一个批量请求中。
 
 ## 编写新的 API
 
@@ -123,13 +124,13 @@ async def quick_search(self, keyword: str) -> dict[str, Any]:
 
 `_build_http` 用于构建标准 HTTP 请求描述符，自动装配凭证 Cookies 和平台 User-Agent：
 
-| 参数            | 类型                   |                                                                              说明 |
-|-----------------|------------------------|----------------------------------------------------------------------------------:|
-| `method`        | `str`                  |                                                   HTTP 方法，如 `"GET"`、`"POST"` |
-| `url`           | `str`                  |                                                                          请求地址 |
-| `credential`    | `Credential` 或 `None` |                                            覆盖本次请求的凭证，默认使用客户端凭证 |
-| `disable_parse` | `bool`                 |                      为 True 时不解析 JSON，直接返回原始 `niquests.Response` 对象 |
-| `**kwargs`      |                        | 透传给底层 `niquests` 的参数（`params`、`json`、`data`、`headers`、`cookies` 等） |
+| 参数           | 类型                     |                                                                                说明 |
+| -------------- | ------------------------ | ----------------------------------------------------------------------------------: |
+| `method`       | `str`                    |                                                     HTTP 方法，如 `"GET"`、`"POST"` |
+| `url`          | `str`                    |                                                                            请求地址 |
+| `credential`   | `Credential` 或 `None`   |                                              覆盖本次请求的凭证，默认使用客户端凭证 |
+| `raw`          | `bool`                   |                  校验 HTTP 状态并返回原始载荷快照（`RawPayload`，值语义，无需释放） |
+| `**kwargs`     |                          |   透传给底层 `niquests` 的参数（`params`、`json`、`data`、`headers`、`cookies` 等） |
 
 !!! note
 
@@ -147,8 +148,8 @@ req = self._build_http("POST", "https://example.com/api", json={"key": "value"})
 # 覆盖凭证
 req = self._build_http("GET", "https://example.com/api", credential=my_credential)
 
-# 返回原始 Response 而非解析 JSON
-req = self._build_http("GET", "https://example.com/api", disable_parse=True)
+# 返回原始载荷快照而非解析 JSON
+req = self._build_http("GET", "https://example.com/api", raw=True)
 ```
 
 ## 响应模型

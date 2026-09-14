@@ -3,7 +3,7 @@
 import asyncio
 import logging
 import weakref
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from anyio.to_thread import run_sync
@@ -27,7 +27,7 @@ class KeyedLock:
         self._finalizers: dict[int, object] = {}
 
     @asynccontextmanager
-    async def __call__(self, key: int) -> AsyncIterator[asyncio.Lock]:
+    async def __call__(self, key: int) -> AsyncGenerator[asyncio.Lock, None]:
         """获取指定 key 的独立锁, 支持上下文管理."""
         async with self._guard:
             if key not in self._locks:

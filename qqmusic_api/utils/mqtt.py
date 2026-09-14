@@ -316,8 +316,8 @@ class Client:
         """处理下行消息."""
         msg = MqttMessage(
             topic=message.topic,
-            payload=bytes(message.payload),
-            qos=int(message.qos),
+            payload=message.payload,
+            qos=message.qos,
             properties=self._decode_user_properties(getattr(message, "properties", None)),
         )
         self._dispatch_to_async(self._send_message_nowait, msg)

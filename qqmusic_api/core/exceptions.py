@@ -20,6 +20,7 @@ __all__ = [
     "NetworkError",
     "RatelimitedError",
     "SignatureRequiredError",
+    "TimeoutNetworkError",
 ]
 
 
@@ -41,6 +42,13 @@ class CredentialInvalidError(BaseApiException):
 
 class NetworkError(BaseApiException):
     """网络异常, 如断网或连接超时."""
+
+
+class TimeoutNetworkError(NetworkError):
+    """网络请求在约定时限内未完成而超时.
+
+    语义上与一般网络故障可区分, 供长轮询等场景按超时解释业务事件.
+    """
 
 
 class HTTPError(BaseApiException):
