@@ -8,6 +8,7 @@ from qqmusic_api.models.singer import (
     SingerDetailResponse,
     SingerIndexPageResponse,
     SingerMvListResponse,
+    SingerNameSpecialDisplayResponse,
     SingerSongListResponse,
     SingerTypeListResponse,
 )
@@ -53,6 +54,14 @@ ROUTES: tuple[WebRoute, ...] = (
         cache=PUBLIC_300,
     ),
     R("singer", "get_info", "/singer/{mid}/info", HomepageHeaderResponse, params=MID, cache=PUBLIC_300),
+    R(
+        "singer",
+        "get_name_special_display",
+        "/singer/{mid}/name-special-display",
+        SingerNameSpecialDisplayResponse,
+        params=MID,
+        cache=PUBLIC_600,
+    ),
     R(
         "singer",
         "get_mv_list",

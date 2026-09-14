@@ -248,6 +248,31 @@ class HomepageTabDetailResponse(Response):
     )
 
 
+class SingerNameSpecialDisplayResponse(Response):
+    """歌手名称特殊展示信息.
+
+    Attributes:
+        display_type: 展示类型, 2 表示名称图片, 0 表示无特殊展示.
+        pic_file: 透明 PNG 地址, 无名称图片时为空字符串.
+        signature_name_overlap_ratio: 上游返回的签名与名称重叠比例.
+        name: 歌手名称.
+    """
+
+    display_type: int = Field(
+        default=0,
+        json_schema_extra={"jsonpath": "$.Info.Singer.SingerNameSpecialDisplay.DisplayType"},
+    )
+    pic_file: str = Field(
+        default="",
+        json_schema_extra={"jsonpath": "$.Info.Singer.SingerNameSpecialDisplay.PicFile"},
+    )
+    signature_name_overlap_ratio: float = Field(
+        default=0.0,
+        json_schema_extra={"jsonpath": "$.Info.Singer.SingerNameSpecialDisplay.SignatureNameOverlapRatio"},
+    )
+    name: str = Field(default="", json_schema_extra={"jsonpath": "$.Info.Singer.Name"})
+
+
 class HomepageHeaderResponse(Response):
     """歌手主页头部响应.
 

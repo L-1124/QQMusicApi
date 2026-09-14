@@ -17,6 +17,7 @@ from ..models.singer import (
     SingerDetailResponse,
     SingerIndexPageResponse,
     SingerMvListResponse,
+    SingerNameSpecialDisplayResponse,
     SingerSongListResponse,
     SingerTypeListResponse,
 )
@@ -206,6 +207,24 @@ class SingerApi(ApiModule):
             param={"SingerMid": mid},
             response_model=HomepageHeaderResponse,
             platform=Platform.ANDROID,
+        )
+
+    def get_name_special_display(self, mid: str):
+        """获取歌手名称透明 PNG 展示信息.
+
+        返回歌手名称、展示类型、图片地址和重叠比例.
+        无名称图片时, 返回 display_type=0 和空 pic_file.
+
+        Args:
+            mid: 歌手 MID.
+        """
+        return self._build_cgi(
+            module="music.UnifiedHomepage.UnifiedHomepageSrv",
+            method="GetHomepageHeader",
+            param={"SingerMid": mid},
+            response_model=SingerNameSpecialDisplayResponse,
+            platform=Platform.ANDROID,
+            comm={"cv": 20_080_000, "v": 20_080_000},
         )
 
     def get_tab_detail(

@@ -23,7 +23,7 @@ from .core.exceptions import (
 from .core.versioning import Platform
 from .models.request import Credential
 
-__version__ = "0.7.2"
+__version__ = "0.7.3"
 
 __all__ = [
     "ApiDataError",
