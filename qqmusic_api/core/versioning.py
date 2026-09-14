@@ -3,7 +3,8 @@
 from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import Enum
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
+from xml.sax.saxutils import escape
 
 from ..models.request import CommonParams, Credential
 from ..utils.common import hash33
@@ -69,7 +70,7 @@ class VersionPolicy:
         qimei: Mapping[str, str] | None,
         guid: str,
         session: "AndroidSession | None" = None,
-    ) -> dict[str, Any]:
+    ) -> dict[str, str]:
         """构建统一 comm 参数.
 
         Args:
@@ -82,7 +83,7 @@ class VersionPolicy:
                 显式注入而非读取设备共享会话槽.
 
         Returns:
-            构建后的 comm 参数字典.
+            值均已转换为字符串的 comm 参数字典.
         """
         profile = self.get_profile(platform)
         if platform == Platform.ANDROID:
@@ -97,19 +98,15 @@ class VersionPolicy:
                 authst=credential.musickey or None,
                 tmeAppID="qqmusic",
                 tmeLoginType=credential.login_type or None,
-                QIMEI=qimei["q16"] if qimei is not None else "",
                 QIMEI36=qimei["q36"] if qimei is not None else "",
                 OpenUDID=guid,
                 udid=guid,
                 uid=session_uid,
-                OpenUDID2=guid,
+                OpenUDID2=device.open_udid2,
                 sid=session_sid,
                 aid=device.android_id,
                 os_ver=device.version.release,
-                phonetype=device.model,
-                devicelevel=str(device.version.sdk),
-                newdevicelevel=str(device.version.sdk),
-                rom=device.fingerprint,
+                phonetype=escape(device.model, {'"': "&quot;"}),
             )
         elif platform == Platform.DESKTOP:
             params = CommonParams(
@@ -138,7 +135,7 @@ class VersionPolicy:
                 need_new_code=1,
             )
 
-        return params.model_dump(by_alias=True, exclude_none=True)
+        return {key: str(value) for key, value in params.model_dump(by_alias=True, exclude_none=True).items()}
 
     def get_user_agent(self, platform: Platform, device: Device) -> str:
         """根据平台获取 UA.

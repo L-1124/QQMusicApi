@@ -53,6 +53,9 @@ async def test_device_manager_saves_pure_hardware_without_tokens(tmp_path: Path)
     assert "brand" in raw
     assert "imei" in raw
     assert "android_id" in raw
+    assert raw["open_udid"] == device.open_udid
+    assert raw["open_udid2"] == device.open_udid2
+    assert device.open_udid != device.open_udid2
     assert "qimei" not in raw
     assert "qimei36" not in raw
     assert "session_uid" not in raw
@@ -83,6 +86,13 @@ async def test_device_manager_migrates_legacy_device_json(tmp_path: Path):
     assert device.brand == "Huawei"
     assert device.model == "P30"
     assert not hasattr(device, "qimei")
+
+    normalized = json.loads(device_path.read_bytes())
+    assert normalized["open_udid"] == device.open_udid
+    assert normalized["open_udid2"] == device.open_udid2
+    assert normalized["open_udid"] != normalized["open_udid2"]
+    assert "session_uid" not in normalized
+    assert "qimei" not in normalized
 
     # 验证旧字段已迁移到派生 cache_store
     cached_qimei = await manager.cache_store.get_qimei()

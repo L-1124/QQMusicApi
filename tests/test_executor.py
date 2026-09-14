@@ -491,17 +491,28 @@ async def test_prepare_batch_comm_merge_user_wins(cgi_executor: CgiExecutor):
     """测试用户 comm 合并时覆盖同名键并保留默认键."""
     prepared = await cgi_executor._prepare_batch(_batch([_cgi_request(comm={"cv": 999, "extra": "y"})], _scope()))
     comm = prepared.kwargs["json"]["comm"]
-    assert comm["cv"] == 999
+    assert comm["cv"] == "999"
     assert comm["extra"] == "y"
-    assert comm["ct"] == 24
+    assert comm["ct"] == "24"
+
+
+async def test_prepare_batch_empty_comm_value_removes_default(cgi_executor: CgiExecutor):
+    """测试用户 comm 空值删除默认键且其它值字符串化."""
+    prepared = await cgi_executor._prepare_batch(
+        _batch([_cgi_request(comm={"cv": "", "ct": None, "extra": 0})], _scope())
+    )
+    comm = prepared.kwargs["json"]["comm"]
+    assert "cv" not in comm
+    assert "ct" not in comm
+    assert comm["extra"] == "0"
 
 
 async def test_prepare_batch_override_comm(cgi_executor: CgiExecutor):
     """测试 override_comm 时 comm 完全替换为自定义参数."""
     prepared = await cgi_executor._prepare_batch(
-        _batch([_cgi_request(comm={"custom": "x"}, override_comm=True)], _scope())
+        _batch([_cgi_request(comm={"custom": 1, "empty": None}, override_comm=True)], _scope())
     )
-    assert prepared.kwargs["json"]["comm"] == {"custom": "x"}
+    assert prepared.kwargs["json"]["comm"] == {"custom": "1"}
 
 
 async def test_prepare_batch_web_skips_qimei_and_session(cgi_executor: CgiExecutor):
@@ -515,14 +526,22 @@ async def test_prepare_batch_web_skips_qimei_and_session(cgi_executor: CgiExecut
 
 async def test_prepare_batch_android_ensures_session_and_qimei(cgi_executor: CgiExecutor):
     """测试 ANDROID 平台刷新会话并获取 QIMEI 注入 comm."""
+    device = await cgi_executor._device_store.get_device()
+    device.open_udid = "primary_udid"
+    device.open_udid2 = "secondary_udid"
+    device.model = 'A&B<">'
     prepared = await cgi_executor._prepare_batch(_batch([_cgi_request()], _scope(Platform.ANDROID)))
     android_session = cast("Any", cgi_executor._android_session)
     qimei = cast("Any", cgi_executor._qimei_manager)
     assert android_session.calls == 1
     assert qimei.calls == 1
     comm = prepared.kwargs["json"]["comm"]
-    assert comm["QIMEI"] == "test_q16"
     assert comm["QIMEI36"] == "test_q36"
+    assert comm["OpenUDID"] == "primary_udid"
+    assert comm["udid"] == "primary_udid"
+    assert comm["OpenUDID2"] == "secondary_udid"
+    assert comm["phonetype"] == "A&amp;B&lt;&quot;&gt;"
+    assert all(isinstance(value, str) for value in comm.values())
     assert prepared.kwargs["headers"]["User-Agent"].startswith("QQMusic ")
 
 

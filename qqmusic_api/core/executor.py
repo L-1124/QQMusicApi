@@ -245,7 +245,7 @@ class CgiExecutor:
         except TransportError as exc:
             raise to_network_error(exc) from exc
         if base.override_comm:
-            final_comm = dict(base.comm or {})
+            final_comm = {key: str(value) for key, value in (base.comm or {}).items() if value is not None}
         else:
             final_comm = self._version_policy.build_comm(
                 platform=scope.platform,
@@ -256,7 +256,11 @@ class CgiExecutor:
                 session=session,
             )
             if base.comm:
-                final_comm.update(base.comm)
+                for key, value in base.comm.items():
+                    if value is None or value == "":
+                        final_comm.pop(key, None)
+                    else:
+                        final_comm[key] = str(value)
 
         user_agent = self._version_policy.get_user_agent(scope.platform, device)
 

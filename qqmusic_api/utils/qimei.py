@@ -61,17 +61,27 @@ class QimeiManager:
         self._cache_store = cache_store if cache_store is not None else device_store.cache_store
         self._lock = anyio.Lock()
         self._cache: dict[str, str] | None = None
+        self._cache_saved_at: int | None = None
 
     async def get_cached(self) -> dict[str, str]:
         """获取并缓存当前设备的 QIMEI 信息."""
-        if self._cache is not None:
+        current_time = int(time())
+        if (
+            self._cache is not None
+            and self._cache_saved_at is not None
+            and (current_time - self._cache_saved_at) < 86400
+        ):
             return self._cache
 
         async with self._lock:
-            if self._cache is not None:
+            current_time = int(time())
+            if (
+                self._cache is not None
+                and self._cache_saved_at is not None
+                and (current_time - self._cache_saved_at) < 86400
+            ):
                 return self._cache
 
-            current_time = int(time())
             cached = await self._cache_store.get_qimei()
             if cached is not None:
                 saved_at = cached.get("saved_at")
@@ -80,11 +90,13 @@ class QimeiManager:
                     q36 = cached.get("q36")
                     if q16 and q36:
                         self._cache = {"q16": q16, "q36": q36}
+                        self._cache_saved_at = saved_at
                         return self._cache
 
             device = await self._device_store.get_device()
             cache = await self._request_qimei(device)
             self._cache = cache
+            self._cache_saved_at = current_time
             with contextlib.suppress(Exception):
                 await self._cache_store.set_qimei(
                     cache.get("q16") or "",

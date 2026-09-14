@@ -343,6 +343,8 @@ self._build_cgi(
 )
 ```
 
+发送前，所有 `comm` 值都会转换为字符串。合并模式下可将值设为 `None` 或空字符串，删除自动生成的同名参数。
+
 使用 `override_comm=True` 完全替代自动生成的参数：
 
 ```python

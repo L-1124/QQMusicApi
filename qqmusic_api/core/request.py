@@ -87,7 +87,8 @@ class CgiRequest(BaseRequest[CgiRequestResultT]):
         module: 请求所属的模块名称.
         method: 请求的方法名称.
         param: 请求参数字典.
-        comm: 可选的公共参数, 会与默认公共参数合并或覆盖.
+        comm: 可选的公共参数. 值在发送前转换为字符串; 合并模式下的
+            None 或空字符串会删除同名默认参数.
         override_comm: 若为 True, 则直接使用 `comm` 作为公共参数而不合并默认值.
         preserve_bool: 是否在参数中保留布尔值 (而非转换为整型等).
         allow_error_codes: 允许的错误码集合, 如果响应中包含这些错误码,

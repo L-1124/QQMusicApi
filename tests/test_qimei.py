@@ -8,6 +8,7 @@ import orjson as json
 import pytest
 import pytest_asyncio
 
+import qqmusic_api.utils.qimei as qimei_module
 from qqmusic_api.core.exceptions import HTTPError
 from qqmusic_api.core.transport import TransportTimeout
 from qqmusic_api.core.versioning import VersionProfile
@@ -77,6 +78,20 @@ async def test_expired_device_refreshes_once(device_store: DeviceManager):
     assert cached["q16"] == "test_q16"
     assert cached["q36"] == "test_q36"
     assert cached["saved_at"] is not None
+
+
+async def test_memory_cache_refreshes_after_24_hours(device_store: DeviceManager, monkeypatch: pytest.MonkeyPatch):
+    """测试长生命周期管理器会在内存缓存超过 24 小时后刷新."""
+    now = 100
+    monkeypatch.setattr(qimei_module, "time", lambda: now)
+    await device_store.cache_store.set_qimei("cached_q16", "cached_q36", now)
+    transport = StubTransport(starts=[StubResponse({}, content=_qimei_payload())])
+    manager = _make_manager(transport, device_store)
+
+    assert (await manager.get_cached())["q16"] == "cached_q16"
+    now += 86400
+    assert (await manager.get_cached())["q16"] == "test_q16"
+    assert len(transport.start_calls) == 1
 
 
 async def test_concurrent_calls_send_single_request(device_store: DeviceManager):

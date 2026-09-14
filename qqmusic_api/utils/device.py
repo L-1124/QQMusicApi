@@ -87,6 +87,7 @@ class Device:
     vendor_name: str = "MIUI"
     vendor_os_name: str = "qmapi"
     open_udid: str = field(default_factory=lambda: uuid4().hex)
+    open_udid2: str = field(default_factory=lambda: uuid4().hex)
 
 
 class DeviceCacheStore:
@@ -265,7 +266,10 @@ class DeviceManager:
         elif "version" not in device_data:
             device_data["version"] = OSVersion()
 
-        return Device(**device_data)
+        device = Device(**device_data)
+        if set(raw_data) != valid_fields:
+            await DeviceManager._save_device(device, anyio_path)
+        return device
 
     @staticmethod
     async def _save_device(device: Device, path: Path | anyio.Path | str | None = None) -> None:
