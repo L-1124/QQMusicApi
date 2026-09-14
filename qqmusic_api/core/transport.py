@@ -201,10 +201,23 @@ class _CapacityLimiter:
 
     async def acquire(self, amount: int = 1) -> None:
         """获取指定数量的许可, 容量不足时等待."""
+        if amount <= 0 or amount > self._total:
+            raise ValueError("许可数量必须在 1 与总容量之间")
         async with self._condition:
             while self._used + amount > self._total:
                 await self._condition.wait()
             self._used += amount
+
+    async def acquire_available(self, maximum: int) -> int:
+        """等待空闲容量并获取不超过上限的全部可用许可."""
+        if maximum <= 0:
+            raise ValueError("许可数量上限必须为正整数")
+        async with self._condition:
+            while self._used >= self._total:
+                await self._condition.wait()
+            amount = min(maximum, self._total - self._used)
+            self._used += amount
+            return amount
 
     async def release(self, amount: int = 1) -> None:
         """归还指定数量的许可并唤醒等待者."""
@@ -365,11 +378,13 @@ class NiquestsTransport:
         outcomes: list[BatchOutcome] = [TransportError("未发送")] * len(items)
         collected: list[RawResponse] = []
         try:
-            for start in range(0, len(items), self._max_concurrency):
+            start = 0
+            while start < len(items):
                 chunk = items[start : start + self._max_concurrency]
                 chunk_outcomes = await self._submit_chunk(chunk, return_exceptions=return_exceptions)
-                outcomes[start : start + len(chunk)] = chunk_outcomes
+                outcomes[start : start + len(chunk_outcomes)] = chunk_outcomes
                 collected.extend(response for response in chunk_outcomes if isinstance(response, Response))
+                start += len(chunk_outcomes)
         except BaseException:
             # 后续分块失败时, 释放之前分块已收集但尚未交付的响应.
             await _release_responses(collected)
@@ -383,9 +398,10 @@ class NiquestsTransport:
         return_exceptions: bool = True,
     ) -> "list[BatchOutcome]":
         """提交分块并集中解析."""
-        chunk_outcomes: list[BatchOutcome] = [TransportError("未发送")] * len(chunk)
+        acquired = await self._capacity.acquire_available(len(chunk))
+        chunk = chunk[:acquired]
+        chunk_outcomes: list[BatchOutcome] = [TransportError("未发送")] * acquired
         submitted: list[tuple[int, Response]] = []
-        await self._capacity.acquire(len(chunk))
 
         try:
             for position, request in enumerate(chunk):
@@ -430,7 +446,7 @@ class NiquestsTransport:
             raise
         finally:
             with anyio.CancelScope(shield=True):
-                await self._capacity.release(len(chunk))
+                await self._capacity.release(acquired)
 
         return chunk_outcomes
 

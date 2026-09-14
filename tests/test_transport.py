@@ -256,6 +256,23 @@ async def test_open_stream_requests_with_stream_flag_and_yields_chunks(
     assert transport._capacity._used == 0
 
 
+async def test_request_many_uses_capacity_left_by_open_stream(stub_client: StubAsyncClient):
+    """测试打开流占用许可时批量请求仍使用剩余容量完成."""
+    stream_response = StubStreamResponse()
+    first_response = StubRawResponse()
+    second_response = StubRawResponse()
+    stub_client._outcomes = [stream_response, first_response, second_response]
+    transport = NiquestsTransport(session=cast("Any", stub_client), max_concurrency=2)
+
+    async with transport.open_stream(_prepared()):
+        with anyio.fail_after(1):
+            outcomes = await transport.request_many([_prepared(), _prepared()])
+        assert outcomes == [first_response, second_response]
+        assert transport._capacity._used == 1
+
+    assert transport._capacity._used == 0
+
+
 async def test_open_stream_closes_on_body_error_and_returns_permit(
     transport: NiquestsTransport, stub_client: StubAsyncClient
 ):

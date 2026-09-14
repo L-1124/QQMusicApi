@@ -3,6 +3,7 @@
 from collections.abc import AsyncIterator
 from typing import Any, cast
 
+import anyio
 import pytest
 import pytest_asyncio
 from pydantic import BaseModel
@@ -165,6 +166,22 @@ async def test_stream_lease_yields_stream_and_exits(stub_client: Client):
     assert lease.entered
     assert lease.exited
     assert len(transport.open_stream_calls) == 1
+
+
+async def test_close_from_active_stream_is_rejected_without_closing_transport(stub_client: Client):
+    """测试流操作内部关闭客户端会立即拒绝并保持传输可用."""
+    transport = cast_transport(stub_client)
+    lease = StubStreamLease(stream=StubStream([]))
+    transport.stream_leases.append(lease)
+
+    async with stub_client.stream(_http_request(stub_client)):
+        with anyio.fail_after(1), pytest.raises(RuntimeError, match="在途操作内"):
+            await stub_client.close()
+        assert transport.close_calls == 0
+
+    assert lease.exited
+    await stub_client.close()
+    assert transport.close_calls == 1
 
 
 async def test_stream_lease_releases_on_body_error():

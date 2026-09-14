@@ -45,6 +45,7 @@ CLOSE_CLEANUP_BUDGET_SECONDS = 5.0
 class _Operation:
     """客户端正在执行的操作."""
 
+    owner_task_id: int
     scope: Any = None
     done: anyio.Event = field(default_factory=anyio.Event)
     cancelled_by_close: bool = False
@@ -96,6 +97,7 @@ class Client:
             device_store=device_store,
             version_profile=profile,
             transport=self._transport,
+            cache_store=device_store.cache_store,
         )
         self._engine = RequestEngine(
             cgi_executor=CgiExecutor(
@@ -104,6 +106,7 @@ class Client:
                     qimei_manager=qimei_manager,
                     version_policy=self._defaults.version_policy,
                     transport=self._transport,
+                    cache_store=device_store.cache_store,
                 ),
                 device_store=device_store,
                 qimei_manager=qimei_manager,
@@ -256,7 +259,7 @@ class Client:
         async with self._close_lock:
             if self._close_state != "open":
                 raise RuntimeError("Client 已关闭或正在关闭, 不能发起新操作")
-            operation = _Operation()
+            operation = _Operation(owner_task_id=anyio.get_current_task().id)
             self._operations.add(operation)
         try:
             with anyio.CancelScope() as scope:
@@ -278,10 +281,14 @@ class Client:
 
         Raises:
             NetworkError: 无原始异常时关闭传输失败.
+            RuntimeError: 从当前客户端的在途操作内调用 close.
         """
         async with self._close_lock:
             if self._close_state == "closed":
                 return
+            current_task_id = anyio.get_current_task().id
+            if any(operation.owner_task_id == current_task_id for operation in self._operations):
+                raise RuntimeError("不能从 Client 的在途操作内关闭客户端")
             self._close_state = "closing"
 
             operations = tuple(self._operations)

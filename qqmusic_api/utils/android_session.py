@@ -13,7 +13,7 @@ from ..core.response import parse_cgi_item, unwrap_cgi_envelope
 from ..core.transport import PreparedRequest, Transport
 from ..core.versioning import Platform, VersionPolicy
 from ..models.request import Credential
-from .device import DeviceManager
+from .device import DeviceCacheStore, DeviceManager
 from .qimei import QimeiManager
 
 SESSION_URL = "https://u.y.qq.com/cgi-bin/musicu.fcg"
@@ -53,6 +53,7 @@ class AndroidSessionManager:
         qimei_manager: QimeiManager,
         version_policy: VersionPolicy,
         transport: Transport,
+        cache_store: DeviceCacheStore | None = None,
     ) -> None:
         """初始化 Android 会话管理器.
 
@@ -61,11 +62,13 @@ class AndroidSessionManager:
             qimei_manager: QIMEI 管理器.
             version_policy: 版本策略规则.
             transport: 单物理请求传输边界.
+            cache_store: 自定义缓存存储. 缺省时取 device_store.cache_store.
         """
         self._device_store = device_store
         self._qimei_manager = qimei_manager
         self._version_policy = version_policy
         self._transport = transport
+        self._cache_store = cache_store if cache_store is not None else device_store.cache_store
         self._lock = anyio.Lock()
         self._session: AndroidSession | None = None
 
@@ -93,17 +96,18 @@ class AndroidSessionManager:
             return await self._refresh_session(session, caller=1 if session is not None else 2)
 
     async def _get_cached(self) -> AndroidSession | None:
-        """读取内存或设备文件中的会话."""
+        """读取内存或持久化缓存中的会话."""
         if self._session is not None:
             return self._session
-        device = await self._device_store.get_device()
-        if not device.session_uid or not device.session_sid or device.session_save_time is None:
+        cached = await self._cache_store.get_session()
+        if not cached:
             return None
-        self._session = AndroidSession(
-            uid=device.session_uid,
-            sid=device.session_sid,
-            saved_at=device.session_save_time,
-        )
+        uid = cached.get("uid")
+        sid = cached.get("sid")
+        saved_at = cached.get("saved_at")
+        if not uid or not sid or saved_at is None:
+            return None
+        self._session = AndroidSession(uid=uid, sid=sid, saved_at=saved_at)
         return self._session
 
     async def _refresh_session(self, stale: AndroidSession | None, *, caller: int) -> AndroidSession:
@@ -181,6 +185,6 @@ class AndroidSessionManager:
 
         session = AndroidSession(uid=uid, sid=sid, saved_at=int(time()))
         with contextlib.suppress(Exception):
-            await self._device_store.apply_session(uid, sid)
+            await self._cache_store.set_session(uid, sid, saved_at=session.saved_at)
         self._session = session
         return session
