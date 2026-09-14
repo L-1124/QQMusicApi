@@ -91,10 +91,10 @@ class Client:
         self._close_state: Literal["open", "closing", "closed"] = "open"
         self._close_lock = anyio.Lock()
         self._operations: set[_Operation] = set()
+        profile = self._defaults.version_policy.get_profile(Platform.ANDROID)
         qimei_manager = QimeiManager(
             device_store=device_store,
-            app_version=self._defaults.version_policy.get_qimei_app_version(),
-            sdk_version=self._defaults.version_policy.get_qimei_sdk_version(),
+            version_profile=profile,
             transport=self._transport,
         )
         self._engine = RequestEngine(
@@ -243,21 +243,8 @@ class Client:
     async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:  # noqa: D105
         await self.close()
 
-    async def _register_operation(self) -> _Operation:
-        """在关闭锁内检查状态并登记操作.
-
-        Raises:
-            RuntimeError: 客户端已关闭或正在关闭.
-        """
-        async with self._close_lock:
-            if self._close_state != "open":
-                raise RuntimeError("Client 已关闭或正在关闭, 不能发起新操作")
-            operation = _Operation()
-            self._operations.add(operation)
-            return operation
-
     @asynccontextmanager
-    async def _operation(self) -> AsyncGenerator[None]:
+    async def _operation(self) -> AsyncGenerator[None, None]:
         """登记一个在途请求操作.
 
         Client.close 会取消已登记操作; 操作体内收到取消后清理自身资源,
@@ -266,7 +253,11 @@ class Client:
         Raises:
             RuntimeError: 操作被 Client.close 取消, 或客户端已关闭.
         """
-        operation = await self._register_operation()
+        async with self._close_lock:
+            if self._close_state != "open":
+                raise RuntimeError("Client 已关闭或正在关闭, 不能发起新操作")
+            operation = _Operation()
+            self._operations.add(operation)
         try:
             with anyio.CancelScope() as scope:
                 operation.scope = scope

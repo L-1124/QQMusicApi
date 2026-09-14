@@ -30,8 +30,8 @@ class VersionProfile:
     v: int | None = None
     platform: str | None = None
     ua_version: int | None = None
-    qimei_app_version: str | None = None
-    qimei_sdk_version: str | None = None
+    qimei_app_version: str = "14.9.0.8"
+    qimei_sdk_version: str = "1.2.13.6"
 
 
 @dataclass(slots=True)
@@ -158,24 +158,6 @@ class VersionPolicy:
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
             "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         )
-
-    def get_qimei_app_version(self) -> str:
-        """获取 QIMEI 请求 appVersion.
-
-        Returns:
-            QIMEI appVersion.
-        """
-        profile = self.get_profile(Platform.ANDROID)
-        return profile.qimei_app_version or "14.9.0.8"
-
-    def get_qimei_sdk_version(self) -> str:
-        """获取 QIMEI 请求 sdkVersion.
-
-        Returns:
-            QIMEI sdkVersion.
-        """
-        profile = self.get_profile(Platform.ANDROID)
-        return profile.qimei_sdk_version or "1.2.13.6"
 
     @staticmethod
     def get_g_tk(credential: Credential) -> int:

@@ -190,70 +190,70 @@ def _make_http_executor(transport: StubTransport, *, broken_device_store: bool =
 # ---------------------------------------------------------------------------
 
 
-async def test_execute_one_returns_parsed_result():
+async def test_execute_returns_parsed_result():
     """测试单请求执行返回模型化结果."""
     transport = StubTransport(starts=[make_cgi_envelope([make_cgi_sub(data={"value": 5})])])
     executor = _make_cgi_executor(transport)
-    result = await executor.execute_one(_callsc(_cgi_request(response_model=DummyModel)))
+    result = await executor.execute(_callsc(_cgi_request(response_model=DummyModel)))
     assert result == DummyModel(value=5)
     assert len(transport.start_calls) == 1
 
 
-async def test_execute_one_start_error_raises_network_error():
+async def test_execute_start_error_raises_network_error():
     """测试发送阶段传输异常转换为 NetworkError."""
     transport = StubTransport(starts=[TransportTimeout("timed out")])
     executor = _make_cgi_executor(transport)
     with pytest.raises(NetworkError):
-        await executor.execute_one(_callsc(_cgi_request()))
+        await executor.execute(_callsc(_cgi_request()))
 
 
-async def test_execute_one_require_login_without_credential():
+async def test_execute_require_login_without_credential():
     """测试 require_login 且无有效凭证时抛出 CredentialInvalidError."""
     transport = StubTransport()
     executor = _make_cgi_executor(transport)
     with pytest.raises(CredentialInvalidError):
-        await executor.execute_one(_callsc(_cgi_request(require_login=True, credential=Credential())))
+        await executor.execute(_callsc(_cgi_request(require_login=True, credential=Credential())))
     assert transport.start_calls == []
 
 
-async def test_execute_one_envelope_http_error():
+async def test_execute_envelope_http_error():
     """测试信封阶段非 200 状态码抛出 HTTPError."""
     transport = StubTransport(starts=[StubResponse({}, status_code=500)])
     executor = _make_cgi_executor(transport)
     with pytest.raises(HTTPError, match="500"):
-        await executor.execute_one(_callsc(_cgi_request()))
+        await executor.execute(_callsc(_cgi_request()))
 
 
-async def test_execute_one_envelope_global_error():
+async def test_execute_envelope_global_error():
     """测试信封阶段全局错误码抛出 GlobalApiError."""
     transport = StubTransport(starts=[StubResponse({"code": -400, "req_0": {}})])
     executor = _make_cgi_executor(transport)
     with pytest.raises(GlobalApiError):
-        await executor.execute_one(_callsc(_cgi_request()))
+        await executor.execute(_callsc(_cgi_request()))
 
 
-async def test_execute_one_business_error_passthrough():
+async def test_execute_business_error_passthrough():
     """测试子响应业务码抛出映射异常."""
     transport = StubTransport(starts=[make_cgi_envelope([make_cgi_sub(code=2001)])])
     executor = _make_cgi_executor(transport)
     with pytest.raises(RatelimitedError):
-        await executor.execute_one(_callsc(_cgi_request()))
+        await executor.execute(_callsc(_cgi_request()))
 
 
-async def test_execute_one_known_credential_expired():
+async def test_execute_known_credential_expired():
     """测试凭证过期业务码抛出 CredentialExpiredError."""
     transport = StubTransport(starts=[make_cgi_envelope([make_cgi_sub(code=1000)])])
     executor = _make_cgi_executor(transport)
     with pytest.raises(CredentialExpiredError):
-        await executor.execute_one(_callsc(_cgi_request()))
+        await executor.execute(_callsc(_cgi_request()))
 
 
-async def test_execute_one_data_error_passthrough():
+async def test_execute_data_error_passthrough():
     """测试信封缺少子响应时抛出 ApiDataError."""
     transport = StubTransport(starts=[StubResponse({"req_1": {}})])
     executor = _make_cgi_executor(transport)
     with pytest.raises(ApiDataError, match="缺少或畸形子响应"):
-        await executor.execute_one(_callsc(_cgi_request()))
+        await executor.execute(_callsc(_cgi_request()))
 
 
 # ---------------------------------------------------------------------------
@@ -393,14 +393,14 @@ async def test_execute_many_cancellation_propagates():
     assert scope.cancelled_caught
 
 
-async def test_execute_one_prepare_transport_error_raises_network_error():
+async def test_execute_prepare_transport_error_raises_network_error():
     """测试准备阶段的传输异常转换为公开 NetworkError."""
     executor = _make_cgi_executor(
         StubTransport(),
         android_error=TransportTimeout("qimei timed out"),
     )
     with pytest.raises(NetworkError):
-        await executor.execute_one(_callsc(_cgi_request(platform=Platform.ANDROID)))
+        await executor.execute(_callsc(_cgi_request(platform=Platform.ANDROID)))
 
 
 async def test_execute_many_prepare_transport_error_backfills_network_error():
@@ -648,16 +648,16 @@ def test_batch_key_separates_sign_and_comm():
 # ---------------------------------------------------------------------------
 
 
-async def test_http_execute_one_returns_json_dict():
+async def test_http_execute_returns_json_dict():
     """测试单请求执行返回解析后的 JSON 字典."""
     transport = StubTransport(starts=[StubResponse({"ok": True})])
     executor = _make_http_executor(transport)
-    result = await executor.execute_one(_callsc(_http_request()))
+    result = await executor.execute(_callsc(_http_request()))
     assert result == {"ok": True}
     assert len(transport.start_calls) == 1
 
 
-async def test_http_execute_one_raw_returns_payload_snapshot():
+async def test_http_execute_raw_returns_payload_snapshot():
     """测试 raw 交付返回值语义的原始载荷快照."""
     response = StubResponse(
         {"ok": True},
@@ -668,7 +668,7 @@ async def test_http_execute_one_raw_returns_payload_snapshot():
     )
     transport = StubTransport(starts=[response])
     executor = _make_http_executor(transport)
-    result = await executor.execute_one(_callsc(_http_request(raw=True)))
+    result = await executor.execute(_callsc(_http_request(raw=True)))
     assert isinstance(result, RawPayload)
     assert result.status_code == 200
     assert result.url == "https://stub.example.com/"
@@ -678,37 +678,37 @@ async def test_http_execute_one_raw_returns_payload_snapshot():
     assert result.json() == {"ok": True}
 
 
-async def test_http_execute_one_returns_model():
+async def test_http_execute_returns_model():
     """测试单请求执行返回模型实例."""
     transport = StubTransport(starts=[StubResponse({"value": 6})])
     executor = _make_http_executor(transport)
-    result = await executor.execute_one(_callsc(_http_request(response_model=DummyModel)))
+    result = await executor.execute(_callsc(_http_request(response_model=DummyModel)))
     assert result == DummyModel(value=6)
 
 
-async def test_http_execute_one_network_error():
+async def test_http_execute_network_error():
     """测试传输异常转换为 NetworkError."""
     transport = StubTransport(starts=[TransportTimeout("timed out")])
     executor = _make_http_executor(transport)
     with pytest.raises(NetworkError):
-        await executor.execute_one(_callsc(_http_request()))
+        await executor.execute(_callsc(_http_request()))
 
 
-async def test_http_execute_one_timeout_maps_to_timeout_network_error():
+async def test_http_execute_timeout_maps_to_timeout_network_error():
     """测试传输超时转换为 TimeoutNetworkError 以保留超时语义."""
     transport = StubTransport(starts=[TransportTimeout("timed out")])
     executor = _make_http_executor(transport)
     with pytest.raises(TimeoutNetworkError):
-        await executor.execute_one(_callsc(_http_request()))
+        await executor.execute(_callsc(_http_request()))
 
 
 @pytest.mark.parametrize("raw", [False, True])
-async def test_http_execute_one_http_status_error(*, raw: bool):
+async def test_http_execute_http_status_error(*, raw: bool):
     """测试响应状态异常转换为项目 HTTPError."""
     transport = StubTransport(starts=[StubResponse({}, status_code=503, http_error=True)])
     executor = _make_http_executor(transport)
     with pytest.raises(HTTPError) as exc_info:
-        await executor.execute_one(_callsc(_http_request(raw=raw)))
+        await executor.execute(_callsc(_http_request(raw=raw)))
     assert exc_info.value.status_code == 503
 
 

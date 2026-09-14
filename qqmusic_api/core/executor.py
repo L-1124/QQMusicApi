@@ -13,7 +13,6 @@ from ..utils.device import DeviceManager
 from ..utils.qimei import QimeiManager
 from .engine import RequestScope, ScopedCall
 from .exceptions import ApiDataError, CredentialInvalidError
-from .request import CgiRequest, HttpRequest
 from .response import ensure_http_success, parse_cgi_item, parse_http_response, snapshot_payload, unwrap_cgi_envelope
 from .transport import (
     DEFAULT_MAX_CONCURRENCY,
@@ -29,6 +28,7 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from ..models.request import Credential
+    from .request import CgiRequest, HttpRequest
 
 MUSICU_URL = "https://u.y.qq.com/cgi-bin/musicu.fcg"
 MUSICS_URL = "https://u.y.qq.com/cgi-bin/musics.fcg"
@@ -92,34 +92,12 @@ class CgiExecutor:
         self._transport = transport
         self._max_concurrency = max_concurrency
 
-    async def execute_one(self, call: ScopedCall) -> Any:
-        """执行单个 CGI 请求条目并返回解析结果.
-
-        异常直接抛出, 不包装为异常组; 准备阶段 (QIMEI/Android Session)
-        与传输阶段的网络异常统一转换为 NetworkError. 需要登录而凭证
-        无效时抛出 CredentialInvalidError.
-        """
-        request = cast("CgiRequest[Any]", call.request)
-        if request.require_login and not bool(call.scope.credential.musicid and call.scope.credential.musickey):
-            raise CredentialInvalidError("请求需要登录, 未提供有效的登录凭证")
-
-        batch = CgiBatch(scope=call.scope, calls=(call,))
-        prepared = await self._prepare_batch(batch)
-        outcome = (
-            await send_many(
-                self._transport,
-                [prepared],
-                max_concurrency=self._max_concurrency,
-            )
-        )[0]
-        if isinstance(outcome, Exception):
-            if isinstance(outcome, TransportError):
-                raise to_network_error(outcome) from outcome
-            raise outcome
-
-        result = self._decode_batch(batch, outcome)[0]
-        if isinstance(result, Exception):
-            raise result
+    async def execute(self, call: ScopedCall) -> Any:
+        """执行单个 CGI 请求条目并返回解析结果."""
+        [(_, result)] = await self.execute_many(
+            [call],
+            batch_size=1,
+        )
         return result
 
     async def execute_many(
@@ -265,7 +243,20 @@ class CgiExecutor:
             qimei = await self._qimei_manager.get_cached() if scope.platform == Platform.ANDROID else None
         except TransportError as exc:
             raise to_network_error(exc) from exc
-        final_comm = self._build_comm(base, scope, device, qimei, session)
+        if base.override_comm:
+            final_comm = dict(base.comm or {})
+        else:
+            final_comm = self._version_policy.build_comm(
+                platform=scope.platform,
+                credential=scope.credential,
+                device=device,
+                qimei=qimei,
+                guid=device.open_udid,
+                session=session,
+            )
+            if base.comm:
+                final_comm.update(base.comm)
+
         user_agent = self._version_policy.get_user_agent(scope.platform, device)
 
         payload: dict[str, Any] = {"comm": final_comm}
@@ -291,30 +282,6 @@ class CgiExecutor:
             kwargs={"json": payload, "params": params, "headers": {"User-Agent": user_agent}},
         )
 
-    def _build_comm(
-        self,
-        base: CgiRequest[Any],
-        scope: RequestScope,
-        device: Any,
-        qimei: Any,
-        session: Any = None,
-    ) -> dict[str, Any]:
-        """构建批次公共参数."""
-        if base.override_comm:
-            return dict(base.comm or {})
-
-        final = self._version_policy.build_comm(
-            platform=scope.platform,
-            credential=scope.credential,
-            device=device,
-            qimei=qimei,
-            guid=device.open_udid,
-            session=session,
-        )
-        if base.comm:
-            final.update(base.comm)
-        return final
-
 
 class HttpExecutor:
     """HTTP 请求执行器. 请求不合并, 经共享批量辅助并发执行."""
@@ -333,21 +300,10 @@ class HttpExecutor:
         self._transport = transport
         self._max_concurrency = max_concurrency
 
-    async def execute_one(self, call: ScopedCall) -> Any:
+    async def execute(self, call: ScopedCall) -> Any:
         """执行单个 HTTP 请求并返回解析结果."""
-        prepared = await self.prepare(call)
-        outcome = (
-            await send_many(
-                self._transport,
-                [prepared],
-                max_concurrency=self._max_concurrency,
-            )
-        )[0]
-        if isinstance(outcome, Exception):
-            if isinstance(outcome, TransportError):
-                raise to_network_error(outcome) from outcome
-            raise outcome
-        return await self._deliver(call, outcome)
+        [(_, result)] = await self.execute_many([call])
+        return result
 
     async def execute_many(
         self, calls: "Sequence[ScopedCall]", *, return_exceptions: bool = False
@@ -433,7 +389,7 @@ class HttpExecutor:
     async def _deliver(self, call: ScopedCall, response: Any) -> Any:
         """交付响应: 原始载荷快照或解析结果, 二者均为无资源语义的值."""
         request = cast("HttpRequest[Any]", call.request)
-        ensure_http_success(response)
         if request.raw:
+            ensure_http_success(response)
             return snapshot_payload(response)
         return parse_http_response(response, response_model=request.response_model)

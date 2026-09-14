@@ -10,6 +10,7 @@ import pytest_asyncio
 
 from qqmusic_api.core.exceptions import HTTPError
 from qqmusic_api.core.transport import TransportTimeout
+from qqmusic_api.core.versioning import VersionProfile
 from qqmusic_api.utils.device import Device, DeviceManager
 from qqmusic_api.utils.qimei import QimeiManager
 from tests.kernel_contract import StubResponse, StubTransport
@@ -27,8 +28,7 @@ def _make_manager(transport: StubTransport, device_store: DeviceManager) -> Qime
     """构造测试用 QIMEI 管理器."""
     return QimeiManager(
         device_store=device_store,
-        app_version="14.9.0.8",
-        sdk_version="1.2.13.6",
+        version_profile=VersionProfile(ct=11, cv=14090008),
         transport=transport,
     )
 

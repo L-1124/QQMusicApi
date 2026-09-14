@@ -65,7 +65,7 @@ class ScopedCall:
 class CgiExecuting(Protocol):
     """CGI 执行器的结构化窄接口."""
 
-    async def execute_one(self, call: ScopedCall) -> Any:
+    async def execute(self, call: ScopedCall) -> Any:
         """执行单个 CGI 请求条目."""
         ...
 
@@ -87,7 +87,7 @@ class HttpExecuting(Protocol):
         """组装 HTTP 传输请求."""
         ...
 
-    async def execute_one(self, call: ScopedCall) -> Any:
+    async def execute(self, call: ScopedCall) -> Any:
         """执行单个 HTTP 请求条目."""
         ...
 
@@ -144,9 +144,9 @@ class RequestEngine:
 
         call = self._resolve_calls([request])[0]
         if isinstance(call.request, CgiRequest):
-            return await self._cgi.execute_one(call)
+            return await self._cgi.execute(call)
         if isinstance(call.request, HttpRequest):
-            return await self._http.execute_one(call)
+            return await self._http.execute(call)
         raise TypeError(f"不支持的请求类型: {type(call.request)}")
 
     async def open_stream(self, request: BaseRequest[Any]) -> AbstractAsyncContextManager[RawStream]:

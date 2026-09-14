@@ -32,7 +32,7 @@ class StubCgiExecutor:
         self.received_batch_size: int | None = None
         self.received_return_exceptions: bool | None = None
 
-    async def execute_one(self, call: ScopedCall) -> Any:
+    async def execute(self, call: ScopedCall) -> Any:
         """记录单请求调用并返回固定值."""
         self.calls.append(("one", call))
         return "cgi-one"
@@ -72,7 +72,7 @@ class StubHttpExecutor:
         self.calls.append(("prepare", call))
         return PreparedRequest(method="GET", url="https://example.com")
 
-    async def execute_one(self, call: ScopedCall) -> Any:
+    async def execute(self, call: ScopedCall) -> Any:
         """记录单请求调用并返回固定值."""
         self.calls.append(("one", call))
         return "http-one"
