@@ -8,13 +8,45 @@ from typing import Any, Generic, Literal, TypeVar
 from fastapi import Request
 from pydantic import BaseModel
 
-from qqmusic_api import Client, Credential
+from qqmusic_api import Client, Credential, Platform
+from qqmusic_api.core.engine import RequestEngine, RequestScope
+from qqmusic_api.core.request import BaseRequest, ResultT
 
 from ..core.cache import CacheBackend
 
 EnumT = TypeVar("EnumT", bound=Enum)
-
 COOKIE_SECURITY_REQUIREMENT = {"MusicId": [], "MusicKey": []}
+
+
+class EngineRequestExecutor:
+    """在单个 Web 请求作用域内执行模块请求."""
+
+    def __init__(self, engine: RequestEngine, scope: RequestScope) -> None:
+        """绑定请求引擎与执行作用域."""
+        self.engine = engine
+        self._scope = scope
+
+    @property
+    def credential(self) -> Credential:
+        """返回绑定作用域的凭证."""
+        return self._scope.credential
+
+    @property
+    def platform(self) -> Platform:
+        """返回绑定作用域的平台."""
+        return self._scope.platform
+
+    async def execute(self, request: BaseRequest[ResultT]) -> ResultT:
+        """使用请求覆盖值或绑定作用域执行请求."""
+        req_platform = getattr(request, "platform", None)
+        req_credential = getattr(request, "credential", None)
+        return await self.engine.execute(
+            request,
+            RequestScope(
+                credential=req_credential or self.credential,
+                platform=req_platform or self.platform,
+            ),
+        )
 
 
 class HttpMethod(str, Enum):
@@ -150,6 +182,7 @@ class WebRoute:
     description: str | None = None
     param_docs: Mapping[str, str] = field(default_factory=dict)
     adapter: Callable[["RouteContext"], Awaitable[Any] | Any] | None = None
+    endpoint: Callable[..., Any] | None = None
     tags: tuple[str, ...] = ()
 
     @property
@@ -168,6 +201,25 @@ class RouteContext:
     route: WebRoute
     params: Mapping[str, Any]
     credential: Credential | None = None
+    engine: RequestEngine | None = None
+
+    async def execute_endpoint(
+        self,
+        module_type: type[Any],
+        endpoint: Callable[..., Any],
+        /,
+        **kwargs: Any,
+    ) -> Any:
+        """在当前请求作用域内调用已声明的 SDK 端点方法."""
+        engine = self.engine or getattr(self.client, "_engine", None)
+        if engine is None:
+            raise RuntimeError("RouteContext 执行端点时缺少 engine 依赖")
+        scope = RequestScope(
+            credential=self.credential or Credential(),
+            platform=getattr(self.client, "platform", Platform.ANDROID),
+        )
+        module = module_type(EngineRequestExecutor(engine, scope))
+        return await endpoint(module, **kwargs)
 
 
 PUBLIC_60 = CachePolicy(ttl=60)

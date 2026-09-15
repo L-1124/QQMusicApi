@@ -5,6 +5,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from qqmusic_api.core.endpoint import get_endpoint_meta
 from qqmusic_api.models.comment import CommentBizType
 from qqmusic_api.models.search import SearchSelector
 from qqmusic_api.modules.search import SearchType
@@ -47,10 +48,10 @@ def P(name: str, annotation: Any, description: str | None = None) -> ParamOverri
 
 
 def R(
-    module: str,
+    module: str | Callable[..., Any],
     method: str,
-    path: str,
-    response_model: type,
+    path: str | None = None,
+    response_model: type | None = None,
     *,
     params: tuple[ParamOverride, ...] = (),
     methods: tuple[HttpMethod, ...] = (HttpMethod.GET,),
@@ -62,12 +63,33 @@ def R(
     description: str | None = None,
 ) -> WebRoute:
     """声明 Web 路由."""
+    endpoint: Callable[..., Any] | None = None
+    if callable(module):
+        if path is not None:
+            raise ValueError("endpoint 路由不能同时声明 legacy target")
+        endpoint = module
+        path = method
+        endpoint_key = get_endpoint_meta(endpoint).key
+        try:
+            module, method = endpoint_key.split(".", 1)
+        except ValueError as exc:
+            raise ValueError(f"endpoint key 无法映射 Web 路由: {endpoint_key}") from exc
+    if path is None:
+        raise ValueError(f"Web 路由缺少路径: {module}.{method}")
+    resolved_response_model = response_model
+    if endpoint is not None:
+        meta = get_endpoint_meta(endpoint)
+        if resolved_response_model is not None and resolved_response_model is not meta.response_model:
+            raise ValueError(f"Web 路由响应模型与 endpoint 不一致: {module}.{method}")
+        resolved_response_model = meta.response_model
+    if resolved_response_model is None:
+        raise ValueError(f"Web 路由缺少响应模型: {module}.{method}")
     return WebRoute(
         module=module,
         method=method,
         path=path,
         methods=methods,
-        response_model=response_model,
+        response_model=resolved_response_model,
         param_overrides=params,
         auth=auth,
         cache=cache,
@@ -75,6 +97,7 @@ def R(
         body_model=body_model,
         summary=summary,
         description=description,
+        endpoint=endpoint,
     )
 
 

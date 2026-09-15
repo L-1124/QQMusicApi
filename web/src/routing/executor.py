@@ -10,6 +10,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 
 from qqmusic_api import Credential
+from qqmusic_api.core.engine import RequestScope
 from qqmusic_api.core.exceptions import CredentialExpiredError
 
 from ..core.auth import configured_credential_for_api, refresh_and_store
@@ -17,7 +18,7 @@ from ..core.cache import cached_response, make_cache_key
 from ..core.credential_store import CredentialStore, credential_has_login
 from ..core.deps import get_credential_store
 from ..core.response import ApiResponse, success_response
-from .route_types import AuthPolicy, RouteContext
+from .route_types import AuthPolicy, EngineRequestExecutor, RouteContext
 
 logger = logging.getLogger(__name__)
 
@@ -101,6 +102,7 @@ async def _invoke_route(context: RouteContext, params: dict[str, Any], resolved_
             route=context.route,
             params=params,
             credential=resolved_credential,
+            engine=context.engine,
         )
         result = context.route.adapter(adapter_context)
     else:
@@ -109,8 +111,19 @@ async def _invoke_route(context: RouteContext, params: dict[str, Any], resolved_
         ):
             params["credential"] = resolved_credential
 
-        module = getattr(context.client, context.route.module)
-        bound_method = getattr(module, context.route.method)
+        client_module = getattr(context.client, context.route.module)
+        if context.route.endpoint is None:
+            bound_method = getattr(client_module, context.route.method)
+        else:
+            engine = context.engine or getattr(context.client, "_engine", None)
+            if engine is None:
+                raise RuntimeError("Web endpoint 路由缺少 RequestEngine 依赖")
+            scope = RequestScope(
+                credential=resolved_credential or Credential(),
+                platform=context.client.platform,
+            )
+            module = type(client_module)(EngineRequestExecutor(engine, scope))
+            bound_method = context.route.endpoint.__get__(module, type(module))
         result = bound_method(**params)
     if inspect.isawaitable(result):
         return await result

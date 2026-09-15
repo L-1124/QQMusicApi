@@ -11,6 +11,7 @@ from fastapi import Depends, FastAPI, Path, Query, Request
 from pydantic import BaseModel
 
 from qqmusic_api import Client, Credential
+from qqmusic_api.core.endpoint import get_endpoint_meta
 from qqmusic_api.modules.album import AlbumApi
 from qqmusic_api.modules.comment import CommentApi
 from qqmusic_api.modules.login import LoginApi
@@ -124,13 +125,15 @@ def make_endpoint(route: WebRoute) -> tuple[Callable[..., Any], MethodDocs]:
         params = collect_param_values(kwargs.get("query"), kwargs.get("body"), path_values=path_values)
         if route.adapter is not None and kwargs.get("body") is not None:
             params["body"] = kwargs["body"]
+        client = kwargs["client"]
         context = RouteContext(
             request=kwargs["request"],
-            client=kwargs["client"],
+            client=client,
             cache=kwargs["cache"],
             route=route,
             params=params,
             credential=kwargs.get("credential"),
+            engine=getattr(client, "_engine", None),
         )
         return await execute_route(context)
 
@@ -269,6 +272,12 @@ def _build_endpoint_signature(
 def _validate_route(route: WebRoute, path_methods: set[tuple[str, str]]) -> list[str]:
     errors: list[str] = []
     key = f"{route.module}.{route.method}"
+    if route.endpoint is not None:
+        endpoint_meta = get_endpoint_meta(route.endpoint)
+        if endpoint_meta.key != key:
+            errors.append(f"Web 路由目标与 endpoint key 不一致: {key} != {endpoint_meta.key}")
+        if endpoint_meta.response_model is not route.response_model:
+            errors.append(f"Web 路由响应模型与 endpoint 不一致: {key}")
     for method in route.methods:
         path_method = (route.path, method.value)
         if path_method in path_methods:
@@ -396,6 +405,8 @@ def _is_supported_query_annotation(annotation: Any, *, explicit: bool = False) -
 
 
 def _resolve_method(route: WebRoute) -> Any | None:
+    if route.endpoint is not None:
+        return route.endpoint
     module_cls = _MODULE_CLASSES.get(route.module)
     if module_cls is None:
         return None

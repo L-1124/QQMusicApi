@@ -9,6 +9,7 @@ from qqmusic_api.modules.song import (
     BaseSongFileType,
     EncryptedSongFileType,
     RingSongFileType,
+    SongApi,
     SongFileInfo,
     SongFileType,
     SongQueryInfo,
@@ -136,8 +137,10 @@ class QuerySongRequest(BaseModel):
 async def get_song_urls_adapter(context: RouteContext):
     """批量获取歌曲文件链接."""
     body = context.params["body"]
-    return await context.client.song.get_song_urls(
-        [
+    return await context.execute_endpoint(
+        SongApi,
+        SongApi.get_song_urls,
+        file_info=[
             SongFileInfo(
                 mid=item.mid,
                 file_type=item.file_type,
