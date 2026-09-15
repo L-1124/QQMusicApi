@@ -5,6 +5,7 @@ import contextlib
 import logging
 import random
 from datetime import datetime, timedelta, timezone
+from functools import lru_cache
 from time import time
 from typing import TYPE_CHECKING, Any, TypedDict, cast
 
@@ -31,11 +32,14 @@ MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDEIxgwoutfwoJxcGQeedgP7FG9qaIuS0qzfR8gWkrk
 -----END PUBLIC KEY-----"""
 SECRET = "ZdJqM15EeO2zWc08"
 APP_KEY = "0AND0HD6FE4HY80F"
+EXTRA = f'{{"appKey":"{APP_KEY}"}}'
 CHANNEL_ID = "10003505"
 PACKAGE_ID = "com.tencent.qqmusic"
 HEX_CHARS = "0123456789abcdef"
 DEVICE_TOKEN_KEY = b"lvcwmSYVr2Axv1gn"
 DEVICE_TOKEN_IV = b"Zs0ntDqG2jyhKN0c"
+_QIMEI_SIGN_KEY = "qimei_qq_androidpzAuCmaFAaFaHrdakPjLIEqKrGnSOOvH"
+_RSA_PUBLIC_KEY = cast("RSAPublicKey", serialization.load_pem_public_key(PUBLIC_KEY.encode()))
 
 
 class QimeiResult(TypedDict):
@@ -158,8 +162,7 @@ def rsa_encrypt(content: bytes) -> bytes:
     Returns:
         bytes: 加密后的字节流.
     """
-    key = cast("RSAPublicKey", serialization.load_pem_public_key(PUBLIC_KEY.encode()))
-    return key.encrypt(content, padding.PKCS1v15())
+    return _RSA_PUBLIC_KEY.encrypt(content, padding.PKCS1v15())
 
 
 def aes_encrypt(key: bytes, content: bytes, iv: bytes | None = None) -> bytes:
@@ -179,6 +182,7 @@ def aes_encrypt(key: bytes, content: bytes, iv: bytes | None = None) -> bytes:
     return encryptor.update(content + (padding_size * chr(padding_size)).encode()) + encryptor.finalize()
 
 
+@lru_cache
 def calc_device_oz(android_id: str) -> str:
     """根据 Android ID 计算设备安全字段 oz.
 
@@ -192,6 +196,7 @@ def calc_device_oz(android_id: str) -> str:
     return base64.b64encode(encrypted).decode()
 
 
+@lru_cache
 def calc_device_oo(model: str) -> str:
     """根据设备型号计算设备安全字段 oo.
 
@@ -229,6 +234,7 @@ def random_beacon_id() -> str:
     return beacon_id
 
 
+@lru_cache
 def _private_ip_for_device(android_id: str) -> str:
     """根据设备标识生成稳定的 IPv4 私网地址."""
     digest = bytes.fromhex(calc_md5(android_id))
@@ -316,15 +322,14 @@ def _build_qimei_request(device: Device, version: str, sdk_version: str) -> tupl
 
     key = base64.b64encode(rsa_encrypt(crypt_key.encode())).decode()
     params = base64.b64encode(aes_encrypt(crypt_key.encode(), json.dumps(payload))).decode()
-    extra = f'{{"appKey":"{APP_KEY}"}}'
-    req_sign = calc_md5(key, params, str(ts * 1000), nonce, SECRET, extra)
+    req_sign = calc_md5(key, params, str(ts * 1000), nonce, SECRET, EXTRA)
 
     headers = {
         "Host": "api.tencentmusic.com",
         "method": "GetQimei",
         "service": "trpc.tme_datasvr.qimeiproxy.QimeiProxy",
         "appid": "qimei_qq_android",
-        "sign": calc_md5("qimei_qq_androidpzAuCmaFAaFaHrdakPjLIEqKrGnSOOvH", str(ts)),
+        "sign": calc_md5(_QIMEI_SIGN_KEY, str(ts)),
         "user-agent": "QQMusic",
         "timestamp": str(ts),
     }
@@ -337,7 +342,7 @@ def _build_qimei_request(device: Device, version: str, sdk_version: str) -> tupl
             "time": str(ts),
             "nonce": nonce,
             "sign": req_sign,
-            "extra": extra,
+            "extra": EXTRA,
         },
     }
     return headers, request_json
