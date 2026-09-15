@@ -5,6 +5,7 @@ from typing import Any, NamedTuple
 
 from qqmusic_api import Platform
 
+from ..core.endpoint import CgiEndpointMeta, CgiRequestData, cgi_endpoint
 from ..core.pagination import BatchRefreshStrategy
 from ..models.request import Credential
 from ..models.song import (
@@ -204,10 +205,26 @@ class SongQueryInfo(NamedTuple):
     song_type: int | None = None
 
 
+_GET_SONG_URLS_MAX_MID = 100
+
+VKEY_META = CgiEndpointMeta(
+    key="song.get_song_urls",
+    module="music.vkey.GetVkey",
+    method="UrlGetVkey",
+    response_model=GetSongUrlsResponse,
+)
+EVKEY_META = CgiEndpointMeta(
+    key="song.get_song_urls.encrypted",
+    module="music.vkey.GetEVkey",
+    method="CgiGetEVkey",
+    response_model=GetSongUrlsResponse,
+)
+
+
 class SongApi(ApiModule):
     """歌曲相关 API 模块类."""
 
-    _GET_SONG_URLS_MAX_MID = 100
+    _GET_SONG_URLS_MAX_MID = _GET_SONG_URLS_MAX_MID
     _SONG_URL_FALLBACK_DOMAIN = "https://isure.stream.qqmusic.qq.com/"
 
     def query_song(
@@ -269,12 +286,18 @@ class SongApi(ApiModule):
             response_model=GetCdnDispatchResponse,
         )
 
+    @cgi_endpoint(
+        key="song.get_song_urls",
+        module="music.vkey.GetVkey",
+        method="UrlGetVkey",
+        response_model=GetSongUrlsResponse,
+    )
     def get_song_urls(
         self,
         file_info: list[SongFileInfo],
         file_type: BaseSongFileType = SongFileType.MP3_128,
         credential: Credential | None = None,
-    ):
+    ) -> CgiRequestData:
         """获取歌曲文件链接.
 
         Args:
@@ -289,16 +312,12 @@ class SongApi(ApiModule):
             raise ValueError(f"mid 数量不能超过 {self._GET_SONG_URLS_MAX_MID}, 当前为 {len(file_info)}")
 
         encrypted = isinstance(file_type, EncryptedSongFileType)
-        module, method = (
-            ("music.vkey.GetVkey", "UrlGetVkey") if not encrypted else ("music.vkey.GetEVkey", "CgiGetEVkey")
-        )
         songmid: list[str] = []
         filename: list[str] = []
         songtype: list[int] = []
         for item in file_info:
             songmid.append(item.mid)
             final_file_type = item.file_type or file_type
-
             filename.append(
                 f"{final_file_type.s}{item.mid}{item.mid}{final_file_type.e}"
                 if not item.media_mid
@@ -306,22 +325,28 @@ class SongApi(ApiModule):
             )
             songtype.append(item.song_type or 0)
 
-        return self._build_cgi(
-            module=module,
-            method=method,
+        resolved_credential = credential or self._binder.credential
+        return CgiRequestData(
+            meta=EVKEY_META if encrypted else VKEY_META,
+            credential=credential,
             param={
-                "uin": self._client.credential.str_musicid if not credential else credential.str_musicid,
+                "uin": (resolved_credential.str_musicid if resolved_credential is not None else "") or "0",
                 "filename": filename,
                 "guid": get_guid(),
                 "songmid": songmid,
                 "songtype": songtype,
                 "ctx": 0,
             },
-            response_model=GetSongUrlsResponse,
-            credential=credential,
         )
 
-    def get_detail(self, value: int | str):
+    @cgi_endpoint(
+        key="song.get_detail",
+        module="music.pf_song_detail_svr",
+        method="get_song_detail_yqq",
+        platform=Platform.WEB,
+        response_model=GetSongDetailResponse,
+    )
+    def get_detail(self, value: int | str) -> CgiRequestData:
         """获取歌曲详细信息.
 
         固定使用 Web 平台.
@@ -334,13 +359,7 @@ class SongApi(ApiModule):
             if isinstance(value, int) or (isinstance(value, str) and value.isdecimal())
             else {"song_mid": value}
         )
-        return self._build_cgi(
-            module="music.pf_song_detail_svr",
-            method="get_song_detail_yqq",
-            param=param,
-            platform=Platform.WEB,
-            response_model=GetSongDetailResponse,
-        )
+        return CgiRequestData(param=param)
 
     def get_similar_song(self, songid: int):
         """获取相似歌曲.

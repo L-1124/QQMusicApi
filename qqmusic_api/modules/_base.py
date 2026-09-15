@@ -1,6 +1,6 @@
 """API 模块基类."""
 
-from typing import TYPE_CHECKING, Any, Literal, overload
+from typing import TYPE_CHECKING, Any, Literal, cast, overload
 
 from niquests.typing import (
     AsyncBodyType,
@@ -21,6 +21,7 @@ from ..core.request import (
     HttpRequest,
     HttpRequestOptions,
     PaginatedCgiRequest,
+    RequestExecutor,
     ResponseModel,
 )
 from ..core.response import RawPayload
@@ -31,13 +32,16 @@ from ..models.request import Credential
 class ApiModule:
     """API 模块基类."""
 
-    def __init__(self, client: "Client") -> None:
-        self._client = client
+    def __init__(self, client: "Client | RequestExecutor") -> None:
+        """绑定请求执行器."""
+        self._binder = cast("RequestExecutor", client)
+        self._client = cast("Client", client if hasattr(client, "_version_policy") else None)
 
     def _build_version_params(self, platform: Platform | None = None) -> dict[str, int]:
         """构建查询接口使用的版本参数."""
-        defaults = self._client._defaults
-        profile = defaults.version_policy.get_profile(platform or defaults.platform)
+        if self._client is None:
+            raise RuntimeError("当前请求执行器不提供 Client 版本策略")
+        profile = self._client._version_policy.get_profile(platform or self._client.platform)
         return {"ct": profile.ct, "cv": profile.cv}
 
     @overload
@@ -45,36 +49,13 @@ class ApiModule:
         self,
         module: str,
         method: str,
-        param: dict[str, Any],
-        *,
-        disable_parse: Literal[True],
-        pager_strategy: PagerStrategy[dict[str, Any]],
-        response_model: type[ResponseModel] | None = None,
-        **options: Unpack[CgiRequestOptions],
-    ) -> PaginatedCgiRequest[dict[str, Any]]: ...
-
-    @overload
-    def _build_cgi(
-        self,
-        module: str,
-        method: str,
-        param: dict[str, Any],
-        *,
-        disable_parse: Literal[True],
-        response_model: type[ResponseModel] | None = None,
-        **options: Unpack[CgiRequestOptions],
-    ) -> CgiRequest[dict[str, Any]]: ...
-
-    @overload
-    def _build_cgi(
-        self,
-        module: str,
-        method: str,
-        param: dict[str, Any],
+        param: dict[str, Any] | None = None,
         *,
         response_model: type[ResponseModel],
         pager_strategy: PagerStrategy[ResponseModel],
-        disable_parse: Literal[False] = False,
+        comm: dict[str, Any] | None = None,
+        credential: Credential | None = None,
+        platform: Platform | None = None,
         **options: Unpack[CgiRequestOptions],
     ) -> PaginatedCgiRequest[ResponseModel]: ...
 
@@ -83,10 +64,13 @@ class ApiModule:
         self,
         module: str,
         method: str,
-        param: dict[str, Any],
+        param: dict[str, Any] | None = None,
         *,
         response_model: type[ResponseModel],
-        disable_parse: Literal[False] = False,
+        pager_strategy: None = None,
+        comm: dict[str, Any] | None = None,
+        credential: Credential | None = None,
+        platform: Platform | None = None,
         **options: Unpack[CgiRequestOptions],
     ) -> CgiRequest[ResponseModel]: ...
 
@@ -95,21 +79,13 @@ class ApiModule:
         self,
         module: str,
         method: str,
-        param: dict[str, Any],
+        param: dict[str, Any] | None = None,
         *,
-        pager_strategy: PagerStrategy[dict[str, Any]],
-        disable_parse: Literal[False] = False,
-        **options: Unpack[CgiRequestOptions],
-    ) -> PaginatedCgiRequest[dict[str, Any]]: ...
-
-    @overload
-    def _build_cgi(
-        self,
-        module: str,
-        method: str,
-        param: dict[str, Any],
-        *,
-        disable_parse: Literal[False] = False,
+        response_model: None = None,
+        pager_strategy: None = None,
+        comm: dict[str, Any] | None = None,
+        credential: Credential | None = None,
+        platform: Platform | None = None,
         **options: Unpack[CgiRequestOptions],
     ) -> CgiRequest[dict[str, Any]]: ...
 
@@ -117,33 +93,54 @@ class ApiModule:
         self,
         module: str,
         method: str,
-        param: dict[str, Any],
+        param: dict[str, Any] | None = None,
         *,
         response_model: type[ResponseModel] | None = None,
         pager_strategy: PagerStrategy[Any] | None = None,
-        disable_parse: bool = False,
+        comm: dict[str, Any] | None = None,
+        credential: Credential | None = None,
+        platform: Platform | None = None,
         **options: Unpack[CgiRequestOptions],
     ) -> CgiRequest[Any] | PaginatedCgiRequest[Any]:
-        """构建可 await 的 CGI 请求描述符."""
+        """构建可 await 的 CGI 请求描述符.
+
+        Args:
+            module: 接口所属的模块名称.
+            method: 接口调用的方法名称.
+            param: 请求的核心业务参数字典.
+            response_model: 用于解析响应数据的 Pydantic 模型.
+            pager_strategy: 分页策略描述符. 提供后返回 PaginatedCgiRequest.
+            comm: 附加的通用请求参数.
+            credential: 本次请求专用的凭证. 优先于客户端全局凭证.
+            platform: 本次请求的平台标识. 优先于客户端全局平台.
+            **options: 其它可选配置 (如 sign, require_login, allow_error_codes, parse_on_allow, override_comm, preserve_bool, disable_parse).
+
+        Returns:
+            CgiRequest 或 PaginatedCgiRequest: 可 await 的 CGI 请求描述符.
+        """
         if pager_strategy is not None:
             return PaginatedCgiRequest(
-                _client=self._client,
+                _client=self._binder,
                 module=module,
                 method=method,
-                param=param,
+                param=param or {},
                 response_model=response_model,
                 pager_strategy=pager_strategy,
-                disable_parse=disable_parse,
+                comm=comm,
+                credential=credential,
+                platform=platform,
                 **options,
             )
 
         return CgiRequest(
-            _client=self._client,
+            _client=self._binder,
             module=module,
             method=method,
-            param=param,
+            param=param or {},
             response_model=response_model,
-            disable_parse=disable_parse,
+            comm=comm,
+            credential=credential,
+            platform=platform,
             **options,
         )
 
@@ -152,13 +149,13 @@ class ApiModule:
         self,
         method: HttpMethodType,
         url: str,
+        *,
         params: QueryParameterType | None = None,
-        headers: HeadersType | None = None,
-        cookies: CookiesType | None = None,
         json: Any | None = None,
         data: BodyType | AsyncBodyType | None = None,
+        headers: HeadersType | None = None,
+        cookies: CookiesType | None = None,
         credential: Credential | None = None,
-        *,
         response_model: type[ResponseModel] | None = None,
         raw: Literal[True],
         **options: Unpack[HttpRequestOptions],
@@ -169,13 +166,13 @@ class ApiModule:
         self,
         method: HttpMethodType,
         url: str,
+        *,
         params: QueryParameterType | None = None,
-        headers: HeadersType | None = None,
-        cookies: CookiesType | None = None,
         json: Any | None = None,
         data: BodyType | AsyncBodyType | None = None,
+        headers: HeadersType | None = None,
+        cookies: CookiesType | None = None,
         credential: Credential | None = None,
-        *,
         response_model: type[ResponseModel],
         raw: bool = False,
         **options: Unpack[HttpRequestOptions],
@@ -186,13 +183,13 @@ class ApiModule:
         self,
         method: HttpMethodType,
         url: str,
+        *,
         params: QueryParameterType | None = None,
-        headers: HeadersType | None = None,
-        cookies: CookiesType | None = None,
         json: Any | None = None,
         data: BodyType | AsyncBodyType | None = None,
+        headers: HeadersType | None = None,
+        cookies: CookiesType | None = None,
         credential: Credential | None = None,
-        *,
         response_model: None = None,
         raw: bool = False,
         **options: Unpack[HttpRequestOptions],
@@ -202,20 +199,37 @@ class ApiModule:
         self,
         method: HttpMethodType,
         url: str,
+        *,
         params: QueryParameterType | None = None,
-        headers: HeadersType | None = None,
-        cookies: CookiesType | None = None,
         json: Any | None = None,
         data: BodyType | AsyncBodyType | None = None,
+        headers: HeadersType | None = None,
+        cookies: CookiesType | None = None,
         credential: Credential | None = None,
-        *,
         response_model: type[ResponseModel] | None = None,
         raw: bool = False,
         **options: Unpack[HttpRequestOptions],
     ) -> HttpRequest[Any]:
-        """构建可 await 的标准 HTTP 请求描述符."""
+        """构建可 await 的标准 HTTP 请求描述符.
+
+        Args:
+            method: HTTP 方法, 如 "GET", "POST" 等.
+            url: 请求目标 URL.
+            params: URL 查询参数.
+            json: JSON 格式请求体.
+            data: 原始请求体数据 (表单/二进制等).
+            headers: HTTP 请求头.
+            cookies: 请求 Cookies.
+            credential: 可选凭证, 覆盖客户端全局凭证.
+            response_model: 响应 Pydantic 模型类.
+            raw: 是否返回原始载荷快照 (RawPayload).
+            **options: 透传给底层传输层的可选配置 (如 files, auth, timeout, allow_redirects).
+
+        Returns:
+            HttpRequest: 可 await 的 HTTP 请求描述符.
+        """
         return HttpRequest(
-            _client=self._client,
+            _client=self._binder,
             method=method,
             url=url,
             params=params,

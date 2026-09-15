@@ -3,7 +3,8 @@
 from enum import IntEnum
 from typing import Any, Literal, overload
 
-from ..core import CgiRequest, HttpRequest, ItemPaginatedCgiRequest, Platform
+from ..core import CgiRequest, ItemPaginatedCgiRequest, Platform
+from ..core.endpoint import CgiRequestData, HttpRequestData, cgi_endpoint, http_endpoint
 from ..core.pagination import MultiFieldContinuationStrategy, PageStrategy
 from ..models.search import (
     AlbumSearch,
@@ -86,7 +87,13 @@ class SearchApi(ApiModule):
             response_model=CompleteResponse,
         )
 
-    def quick_search(self, keyword: str) -> HttpRequest[QuickSearchResponse]:
+    @http_endpoint(
+        key="search.quick_search",
+        method="GET",
+        url_template="https://c.y.qq.com/splcloud/fcgi-bin/smartbox_new.fcg",
+        response_model=QuickSearchResponse,
+    )
+    def quick_search(self, keyword: str) -> HttpRequestData:
         """快速搜索.
 
         Args:
@@ -95,12 +102,7 @@ class SearchApi(ApiModule):
         Returns:
             HttpRequest[QuickSearchResponse]: 快速搜索结果请求描述符.
         """
-        return self._build_http(
-            "GET",
-            "https://c.y.qq.com/splcloud/fcgi-bin/smartbox_new.fcg",
-            params={"key": keyword},
-            response_model=QuickSearchResponse,
-        )
+        return HttpRequestData(params={"key": keyword})
 
     def general_search(
         self,
@@ -231,6 +233,13 @@ class SearchApi(ApiModule):
         highlight: bool = True,
     ) -> ItemPaginatedCgiRequest[SearchByTypeResponse, dict[str, Any]]: ...
 
+    @cgi_endpoint(
+        key="search.search_by_type",
+        module="music.search.SearchCgiService",
+        method="DoSearchForQQMusicMobile",
+        platform=Platform.ANDROID,
+        response_model=SearchByTypeResponse,
+    )
     def search_by_type(
         self,
         keyword: str,
@@ -241,7 +250,7 @@ class SearchApi(ApiModule):
         searchid: str | None = None,
         *,
         highlight: bool = True,
-    ):
+    ) -> CgiRequestData:
         """类型搜索.
 
         固定使用 Android 平台.
@@ -269,10 +278,15 @@ class SearchApi(ApiModule):
         ):
             return r.song or r.singer or r.album or r.songlist or r.mv or r.user or r.audio_alum or []
 
-        return self._build_cgi(
-            "music.search.SearchCgiService",
-            "DoSearchForQQMusicMobile",
-            {
+        pager_strategy = PageStrategy[SearchByTypeResponse](
+            page_key="page_num",
+            page_size=num,
+            start_page=page,
+            has_more_extractor=lambda r: r.nextpage != -1,
+            total_extractor=lambda r: r.total_num,
+        )
+        return CgiRequestData(
+            param={
                 "searchid": searchid or get_searchID(),
                 "query": keyword,
                 "search_type": normalized_search_type,
@@ -287,13 +301,6 @@ class SearchApi(ApiModule):
                 if selectors
                 else [],
             },
-            platform=Platform.ANDROID,
-            response_model=SearchByTypeResponse,
-            pager_strategy=PageStrategy[SearchByTypeResponse](
-                page_key="page_num",
-                page_size=num,
-                start_page=page,
-                has_more_extractor=lambda r: r.nextpage != -1,
-                total_extractor=lambda r: r.total_num,
-            ),
-        ).with_extractor(_extract_items)
+            pager_strategy=pager_strategy,
+            items_extractor=_extract_items,
+        )

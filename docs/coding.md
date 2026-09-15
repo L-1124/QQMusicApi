@@ -122,15 +122,21 @@ async def quick_search(self, keyword: str) -> dict[str, Any]:
 
 ### `_build_http` 参数说明
 
-`_build_http` 用于构建标准 HTTP 请求描述符，自动装配凭证 Cookies 和平台 User-Agent：
+`_build_http` 用于构建标准 HTTP 请求描述符，遵循 httpx 风格参数规范，自动装配凭证 Cookies 和平台 User-Agent：
 
-| 参数           | 类型                     |                                                                                说明 |
-| -------------- | ------------------------ | ----------------------------------------------------------------------------------: |
-| `method`       | `str`                    |                                                     HTTP 方法，如 `"GET"`、`"POST"` |
-| `url`          | `str`                    |                                                                            请求地址 |
-| `credential`   | `Credential` 或 `None`   |                                              覆盖本次请求的凭证，默认使用客户端凭证 |
-| `raw`          | `bool`                   |                  校验 HTTP 状态并返回原始载荷快照（`RawPayload`，值语义，无需释放） |
-| `**kwargs`     |                          |   透传给底层 `niquests` 的参数（`params`、`json`、`data`、`headers`、`cookies` 等） |
+| 参数             | 类型                             | 说明                                                                |
+| ---------------- | -------------------------------- | ------------------------------------------------------------------- |
+| `method`         | `str`                            | HTTP 方法，如 `"GET"`、`"POST"`                                     |
+| `url`            | `str`                            | 请求地址                                                            |
+| `params`         | `Mapping` 或 `None`              | URL 查询参数                                                        |
+| `json`           | `Any` 或 `None`                  | 请求体 JSON 数据                                                    |
+| `data`           | `bytes` / `str` / `None`         | 原始请求体数据（非 JSON 场景）                                      |
+| `headers`        | `Mapping` 或 `None`              | HTTP 请求头                                                         |
+| `cookies`        | `Mapping` 或 `None`              | HTTP 请求 Cookies                                                   |
+| `credential`     | `Credential` 或 `None`           | 覆盖本次请求的凭证，默认使用客户端凭证                              |
+| `response_model` | `type[ResponseModel]` 或 `None`  | 响应模型类型                                                        |
+| `raw`            | `bool`                           | 校验 HTTP 状态并返回原始载荷快照（`RawPayload`，值语义，无需释放）  |
+| `**options`      |                                  | 透传给底层客户端的参数（`timeout`、`allow_redirects`、`files` 等）  |
 
 !!! note
 

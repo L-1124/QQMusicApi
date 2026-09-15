@@ -8,7 +8,7 @@ import pytest
 import pytest_asyncio
 from pydantic import BaseModel
 
-from qqmusic_api.core.engine import ClientDefaults, RequestScope, ScopedCall
+from qqmusic_api.core.engine import RequestScope, ScopedCall
 from qqmusic_api.core.exceptions import (
     ApiDataError,
     CredentialExpiredError,
@@ -30,11 +30,8 @@ from tests.kernel_contract import StubResponse, StubTransport, make_cgi_envelope
 
 pytestmark = pytest.mark.core
 
-_DEFAULTS = ClientDefaults(
-    credential=Credential(musicid=1, musickey="global"),
-    platform=Platform.WEB,
-    version_policy=DEFAULT_VERSION_POLICY,
-)
+_DEFAULT_CREDENTIAL = Credential(musicid=1, musickey="global")
+_DEFAULT_PLATFORM = Platform.WEB
 
 
 class DummyModel(BaseModel):
@@ -103,24 +100,30 @@ class SlowTransport(StubTransport):
 
 def _cgi_request(**kwargs: Any) -> CgiRequest[Any]:
     """构造测试用 CGI 请求描述符."""
-    kwargs.setdefault("module", "test.module")
-    kwargs.setdefault("method", "test_method")
-    kwargs.setdefault("param", {})
-    return CgiRequest(_client=cast("Any", None), **kwargs)
+    return CgiRequest(
+        _client=cast("Any", None),
+        module=kwargs.pop("module", "test.module"),
+        method=kwargs.pop("method", "test_method"),
+        param=kwargs.pop("param", {}),
+        **kwargs,
+    )
 
 
 def _http_request(**kwargs: Any) -> HttpRequest[Any]:
     """构造测试用 HTTP 请求描述符."""
-    kwargs.setdefault("method", "GET")
-    kwargs.setdefault("url", "https://example.com/api")
-    return HttpRequest(_client=cast("Any", None), **kwargs)
+    return HttpRequest(
+        _client=cast("Any", None),
+        method=kwargs.pop("method", "GET"),
+        url=kwargs.pop("url", "https://example.com/api"),
+        **kwargs,
+    )
 
 
 def _scope(platform: Platform = Platform.WEB, credential: Credential | None = None) -> RequestScope:
     """构造测试用请求身份快照."""
     return RequestScope(
-        credential=credential or _DEFAULTS.credential,
-        platform=platform or _DEFAULTS.platform,
+        credential=credential or _DEFAULT_CREDENTIAL,
+        platform=platform or _DEFAULT_PLATFORM,
     )
 
 
@@ -137,8 +140,8 @@ def _make_call(index: int, request: Any, scope: RequestScope | None = None) -> S
     """构造执行条目."""
     if scope is None:
         scope = RequestScope(
-            credential=getattr(request, "credential", None) or _DEFAULTS.credential,
-            platform=getattr(request, "platform", None) or _DEFAULTS.platform,
+            credential=getattr(request, "credential", None) or _DEFAULT_CREDENTIAL,
+            platform=getattr(request, "platform", None) or _DEFAULT_PLATFORM,
         )
     return ScopedCall(index=index, request=request, scope=scope)
 

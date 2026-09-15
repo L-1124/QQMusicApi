@@ -7,8 +7,6 @@ from typing import TYPE_CHECKING
 from xml.sax.saxutils import escape
 
 from ..models.request import CommonParams, Credential
-from ..utils.common import hash33
-from ..utils.device import Device
 
 if TYPE_CHECKING:
     from ..utils.android_session import AndroidSession
@@ -33,6 +31,10 @@ class VersionProfile:
     ua_version: int | None = None
     qimei_app_version: str = "14.9.0.8"
     qimei_sdk_version: str = "1.2.13.6"
+
+
+from ..utils.common import hash33
+from ..utils.device import Device
 
 
 @dataclass(slots=True)

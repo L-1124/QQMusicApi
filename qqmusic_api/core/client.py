@@ -1,23 +1,16 @@
 """QQMusic API 客户端."""
 
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Iterable
 from contextlib import asynccontextmanager
-from dataclasses import dataclass, field
 from functools import cached_property
 from typing import TYPE_CHECKING, Any, Literal, overload
 
-import anyio
 from typing_extensions import Self
 
 from ..models.request import Credential
-from ..utils.android_session import AndroidSessionManager
-from ..utils.device import DeviceManager
-from ..utils.qimei import QimeiManager
-from .engine import ClientDefaults, RequestEngine
-from .exceptions import NetworkError
-from .executor import CgiExecutor, HttpExecutor
+from .engine import RequestCall, RequestEngine, RequestScope
 from .request import BaseRequest, ResultT
-from .transport import DEFAULT_MAX_CONCURRENCY, NiquestsTransport, RawStream, Transport
+from .transport import DEFAULT_MAX_CONCURRENCY, RawStream, Transport
 from .versioning import DEFAULT_VERSION_POLICY, Platform
 
 if TYPE_CHECKING:
@@ -36,19 +29,6 @@ if TYPE_CHECKING:
     from ..modules.top import TopApi
     from ..modules.user import UserApi
     from .request import HttpRequest
-
-
-CLOSE_CLEANUP_BUDGET_SECONDS = 5.0
-
-
-@dataclass(eq=False)
-class _Operation:
-    """客户端正在执行的操作."""
-
-    owner_task_id: int
-    scope: Any = None
-    done: anyio.Event = field(default_factory=anyio.Event)
-    cancelled_by_close: bool = False
 
 
 class Client:
@@ -81,66 +61,42 @@ class Client:
         if max_concurrency is not None and (not isinstance(max_concurrency, int) or max_concurrency <= 0):
             raise ValueError("max_concurrency 必须为正整数")
 
-        self._defaults = ClientDefaults(
-            credential=credential or Credential(),
-            platform=platform or Platform.ANDROID,
-            version_policy=DEFAULT_VERSION_POLICY,
-        )
-        device_store = DeviceManager(device_path)
+        self._credential = credential or Credential()
+        self._platform = platform or Platform.ANDROID
+        self._version_policy = DEFAULT_VERSION_POLICY
         max_concurrency_val = max_concurrency or DEFAULT_MAX_CONCURRENCY
-        self._transport: Transport = transport or NiquestsTransport(max_concurrency=max_concurrency_val)
-        self._close_state: Literal["open", "closing", "closed"] = "open"
-        self._close_lock = anyio.Lock()
-        self._operations: set[_Operation] = set()
-        profile = self._defaults.version_policy.get_profile(Platform.ANDROID)
-        qimei_manager = QimeiManager(
-            device_store=device_store,
-            version_profile=profile,
-            transport=self._transport,
-            cache_store=device_store.cache_store,
+        self._engine = RequestEngine.create(
+            device_path=device_path,
+            max_concurrency=max_concurrency_val,
+            transport=transport,
+            version_policy=self._version_policy,
         )
-        self._engine = RequestEngine(
-            cgi_executor=CgiExecutor(
-                android_session=AndroidSessionManager(
-                    device_store=device_store,
-                    qimei_manager=qimei_manager,
-                    version_policy=self._defaults.version_policy,
-                    transport=self._transport,
-                    cache_store=device_store.cache_store,
-                ),
-                device_store=device_store,
-                qimei_manager=qimei_manager,
-                version_policy=self._defaults.version_policy,
-                transport=self._transport,
-                max_concurrency=max_concurrency_val,
-            ),
-            http_executor=HttpExecutor(
-                device_store=device_store,
-                version_policy=self._defaults.version_policy,
-                transport=self._transport,
-                max_concurrency=max_concurrency_val,
-            ),
-            transport=self._transport,
-            defaults=self._defaults,
-        )
+        self._transport: Transport = self._engine.transport
+
+    def _resolve_scope(self, request: BaseRequest[Any]) -> RequestScope:
+        """解析单次请求使用的凭证与平台身份."""
+        credential = getattr(request, "credential", None) or self.credential
+        req_platform = getattr(request, "platform", None)
+        platform = req_platform if req_platform is not None else self.platform
+        return RequestScope(credential=credential, platform=platform)
 
     @property
     def credential(self) -> Credential:
         """获取当前全局凭证."""
-        return self._defaults.credential
+        return self._credential
 
     @credential.setter
     def credential(self, value: Credential | None):
-        self._defaults.credential = value or Credential()
+        self._credential = value or Credential()
 
     @property
     def platform(self) -> Platform:
         """获取当前全局默认平台."""
-        return self._defaults.platform
+        return self._platform
 
     @platform.setter
     def platform(self, value: Platform):
-        self._defaults.platform = value
+        self._platform = value
 
     @cached_property
     def helper(self) -> "HelperApi":
@@ -246,175 +202,82 @@ class Client:
     async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:  # noqa: D105
         await self.close()
 
-    @asynccontextmanager
-    async def _operation(self) -> AsyncGenerator[None, None]:
-        """登记一个在途请求操作.
+    async def close(self) -> None:
+        """关闭客户端并释放全部网络与引擎资源.
 
-        Client.close 会取消已登记操作; 操作体内收到取消后清理自身资源,
-        随后以 RuntimeError 告知调用者操作被关闭流程取消.
-
-        Raises:
-            RuntimeError: 操作被 Client.close 取消, 或客户端已关闭.
+        幂等操作, 委托 RequestEngine 关闭底层传输与清理在途操作.
         """
-        async with self._close_lock:
-            if self._close_state != "open":
-                raise RuntimeError("Client 已关闭或正在关闭, 不能发起新操作")
-            operation = _Operation(owner_task_id=anyio.get_current_task().id)
-            self._operations.add(operation)
-        try:
-            with anyio.CancelScope() as scope:
-                operation.scope = scope
-                yield
-            if operation.cancelled_by_close:
-                raise RuntimeError("操作已被 Client.close 取消")
-        finally:
-            self._operations.discard(operation)
-            operation.done.set()
-
-    async def close(self):
-        """关闭客户端并释放全部网络资源.
-
-        进入 CLOSING 后取消已登记操作并等待其清理 (屏蔽外层取消,
-        清理预算 5 秒), 随后关闭传输. 全部成功后进入 CLOSED; 关闭
-        失败保持可重试的 CLOSING, 下次 close 再尝试. 顺序重复 close
-        为空操作; 并发 close 等待同一次关闭结果.
-
-        Raises:
-            NetworkError: 无原始异常时关闭传输失败.
-            RuntimeError: 从当前客户端的在途操作内调用 close.
-        """
-        async with self._close_lock:
-            if self._close_state == "closed":
-                return
-            current_task_id = anyio.get_current_task().id
-            if any(operation.owner_task_id == current_task_id for operation in self._operations):
-                raise RuntimeError("不能从 Client 的在途操作内关闭客户端")
-            self._close_state = "closing"
-
-            operations = tuple(self._operations)
-            for operation in operations:
-                operation.cancelled_by_close = True
-                if operation.scope is not None:
-                    operation.scope.cancel()
-            with anyio.CancelScope(shield=True):
-                with anyio.move_on_after(CLOSE_CLEANUP_BUDGET_SECONDS):
-                    for operation in operations:
-                        await operation.done.wait()
-
-                try:
-                    await self._transport.close()
-                except Exception as exc:
-                    raise NetworkError(f"关闭传输失败: {exc}") from exc
-
-            self._close_state = "closed"
+        await self._engine.close()
 
     async def execute(self, request: BaseRequest[ResultT]) -> ResultT:
         """执行单个请求描述符并解析响应结果.
 
         Args:
-            request: 请求描述符实例.
+            request: 要执行的请求描述符.
 
-        Raises:
-            RuntimeError: 客户端已关闭或操作被关闭流程取消.
+        Returns:
+            解析后的响应模型实例或原始数据字典.
         """
-        async with self._operation():
-            return await self._engine.execute(request)
+        scope = self._resolve_scope(request)
+        return await self._engine.execute(request, scope)
 
     @asynccontextmanager
     async def stream(self, request: "HttpRequest[Any]") -> AsyncGenerator[RawStream, None]:
         """打开流式响应租约.
 
-        流式响应持有底层连接, 仅允许在作用域内消费; 退出时 (含异常与
-        取消) 由传输实现关闭底层流并归还并发许可.
+        进入上下文时按需打开响应流, 退出上下文时保证释放底层网络租约.
 
         Args:
-            request: HTTP 请求描述符.
+            request: 要以流式方式执行的 HTTP 请求描述符.
 
         Yields:
-            RawStream: 流式响应视图.
+            原始数据流对象.
 
         Raises:
             TypeError: 请求类型不支持流式, 或传输实现无流式能力.
-            RuntimeError: 客户端已关闭或操作被关闭流程取消.
         """
-        async with self._operation(), self._engine.open_stream(request) as raw_stream:
+        scope = self._resolve_scope(request)
+        async with self._engine.open_stream(request, scope) as raw_stream:
             yield raw_stream
 
     @overload
     async def gather(
         self,
-        requests: list[BaseRequest[ResultT]],
+        requests: "Iterable[BaseRequest[ResultT]]",
         *,
-        batch_size: int = ...,
+        batch_size: int = 20,
         return_exceptions: Literal[False] = False,
     ) -> list[ResultT]: ...
 
     @overload
     async def gather(
         self,
-        requests: list[BaseRequest[ResultT]],
+        requests: "Iterable[BaseRequest[Any]]",
         *,
-        batch_size: int = ...,
+        batch_size: int = 20,
         return_exceptions: Literal[True],
-    ) -> list[ResultT | Exception]: ...
-
-    @overload
-    async def gather(
-        self,
-        requests: list[BaseRequest[Any]],
-        *,
-        batch_size: int = ...,
-        return_exceptions: Literal[False] = False,
     ) -> list[Any]: ...
 
     @overload
     async def gather(
         self,
-        requests: list[BaseRequest[Any]],
+        requests: "Iterable[BaseRequest[Any]]",
         *,
-        batch_size: int = ...,
-        return_exceptions: Literal[True],
-    ) -> list[Any | Exception]: ...
+        batch_size: int = 20,
+        return_exceptions: bool = False,
+    ) -> list[Any]: ...
 
     async def gather(
         self,
-        requests: list[BaseRequest[Any]],
+        requests: "Iterable[BaseRequest[Any]]",
         *,
         batch_size: int = 20,
         return_exceptions: bool = False,
     ) -> list[Any]:
-        """并发执行多个请求描述符并按输入顺序返回解析结果.
-
-        CGI 请求会按可合并条件自动分组, 同一分组内的请求按 `batch_size`
-        批量合并为一次 CGI 多参数调用 (req_0, req_1, ...), 以减少网络往返;
-        不同分组之间并发执行. HTTP 请求不参与合并, 直接并发执行.
-
-        Args:
-            requests: 待执行的请求描述符列表.
-            batch_size: 单个 CGI 批量调用 (多参数合并) 包含的最大请求数; 仅对
-                CGI 请求生效, 不影响 HTTP 请求.
-            return_exceptions: 是否捕捉异常并作为结果返回而不抛出. 为 True 时,
-                请求构造、网络传输、响应解析等所有异常都会被写入对应位置的结果;
-                为 False 时, 任一请求的异常会以异常组形式抛出.
-
-        Returns:
-            与 `requests` 顺序一致的解析结果列表. 当 `return_exceptions` 为
-            True 时, 失败位置的结果为对应的异常对象.
-
-        Raises:
-            ValueError: 当 `batch_size` 小于等于 0 时抛出.
-            ExceptionGroup: 当 `return_exceptions` 为 False 且任一请求执行
-                期间发生异常时, 其余并发请求会被取消, 失败异常会以异常组的
-                形式抛出 (anyio 将异常包装为 `ExceptionGroup`, 它是
-                `BaseExceptionGroup` 的子类; 即使只有一个请求失败也会被包装
-                成异常组; 多个请求同时各自抛出异常时, 异常组可能包含多个
-                异常).
-            ApiDataError: 当内部依赖的结果未能完整回填时抛出 (一般不应发生).
-            RuntimeError: 客户端已关闭或操作被关闭流程取消.
-        """
-        async with self._operation():
-            return await self._engine.gather(
-                requests,
-                batch_size=batch_size,
-                return_exceptions=return_exceptions,
-            )
+        """批量并发执行一组请求描述符并返回其执行结果."""
+        calls = [RequestCall(request=req, scope=self._resolve_scope(req)) for req in requests]
+        return await self._engine.gather(
+            calls,
+            batch_size=batch_size,
+            return_exceptions=return_exceptions,
+        )

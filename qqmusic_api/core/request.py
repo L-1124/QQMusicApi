@@ -2,7 +2,7 @@
 
 from collections.abc import Callable, Generator, Iterable
 from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING, Any, Generic, TypedDict, TypeVar
+from typing import Any, Generic, Protocol, TypedDict, TypeVar
 
 from niquests.typing import (
     AsyncBodyType,
@@ -25,9 +25,6 @@ from .pagination import ItemPaginatedMixin, ItemT_co, PaginatedMixin
 from .response import AllowErrorCodes, RawPayload, ResponseModel
 from .versioning import Platform
 
-if TYPE_CHECKING:
-    from .client import Client
-
 ResultT = TypeVar("ResultT")
 CgiRequestResultT = TypeVar("CgiRequestResultT", bound=BaseModel | dict[str, Any])
 HttpRequestResultT = TypeVar("HttpRequestResultT", bound=RawPayload | BaseModel | dict[str, Any])
@@ -46,6 +43,24 @@ __all__ = [
 ]
 
 
+class RequestExecutor(Protocol):
+    """执行绑定请求描述符所需的最小接口."""
+
+    @property
+    def credential(self) -> Credential:
+        """返回默认凭证."""
+        ...
+
+    @property
+    def platform(self) -> Platform:
+        """返回默认平台."""
+        ...
+
+    async def execute(self, request: "BaseRequest[ResultT]") -> ResultT:
+        """执行请求并返回解析结果."""
+        ...
+
+
 @dataclass(kw_only=True)
 class BaseRequest(Generic[ResultT]):
     """请求描述符基类.
@@ -57,7 +72,7 @@ class BaseRequest(Generic[ResultT]):
         response_model: 期望的响应模型类型, 支持 Pydantic BaseModel.
     """
 
-    _client: "Client"
+    _client: RequestExecutor
     response_model: type[BaseModel] | None = None
 
     def __await__(self) -> Generator[Any, Any, ResultT]:
@@ -68,15 +83,13 @@ class BaseRequest(Generic[ResultT]):
 class CgiRequestOptions(TypedDict, total=False):
     """CGI 请求专用的可选配置."""
 
-    comm: dict[str, Any] | None
-    override_comm: bool
-    preserve_bool: bool
-    allow_error_codes: AllowErrorCodes | None
-    parse_on_allow: bool
-    credential: Credential | None
-    platform: Platform | None
     sign: bool
     require_login: bool
+    allow_error_codes: AllowErrorCodes | None
+    parse_on_allow: bool
+    override_comm: bool
+    preserve_bool: bool
+    disable_parse: bool
 
 
 @dataclass(kw_only=True)
