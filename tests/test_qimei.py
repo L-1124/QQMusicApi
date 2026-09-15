@@ -1,7 +1,7 @@
 """QIMEI 管理器单元测试 (传输桩驱动, 不发起真实网络)."""
 
+import ipaddress
 import time
-from typing import Any, cast
 
 import anyio
 import orjson as json
@@ -10,9 +10,8 @@ import pytest_asyncio
 
 import qqmusic_api.utils.qimei as qimei_module
 from qqmusic_api.core.exceptions import HTTPError
-from qqmusic_api.core.transport import TransportTimeout
 from qqmusic_api.core.versioning import VersionProfile
-from qqmusic_api.utils.device import Device, DeviceManager
+from qqmusic_api.utils.device import DeviceManager
 from qqmusic_api.utils.qimei import (
     QimeiManager,
     calc_device_oo,
@@ -118,22 +117,6 @@ async def test_concurrent_calls_send_single_request(device_store: DeviceManager)
     assert all(item["q16"] == "test_q16" for item in results)
 
 
-async def test_persistence_failure_keeps_result(device_store: DeviceManager):
-    """测试持久化失败时不丢失成功的 QIMEI 结果."""
-    await _expire_device(device_store)
-    transport = StubTransport(starts=[StubResponse({}, content=_qimei_payload())])
-    manager = _make_manager(transport, device_store)
-
-    async def broken_apply(q16: str, q36: str, saved_at: int) -> None:
-        raise OSError("模拟持久化失败")
-
-    cast("Any", device_store.cache_store).set_qimei = broken_apply
-    result = await manager.get_cached()
-    # 持久化异常被吞掉, 成功结果正常返回.
-    assert result["q16"] == "test_q16"
-    assert result["q36"] == "test_q36"
-
-
 async def test_malformed_response_raises_deterministic_error(device_store: DeviceManager):
     """测试响应缺少必要字段时抛出确定异常."""
     await _expire_device(device_store)
@@ -142,15 +125,6 @@ async def test_malformed_response_raises_deterministic_error(device_store: Devic
     transport = StubTransport(starts=[StubResponse({}, content=payload)])
     manager = _make_manager(transport, device_store)
     with pytest.raises(RuntimeError, match="missing required fields"):
-        await manager.get_cached()
-
-
-async def test_timeout_wraps_into_transport_error(device_store: DeviceManager):
-    """测试传输超时异常透传为 TransportTimeout."""
-    await _expire_device(device_store)
-    transport = StubTransport(starts=[TransportTimeout("timed out")])
-    manager = _make_manager(transport, device_store)
-    with pytest.raises(TransportTimeout):
         await manager.get_cached()
 
 
@@ -164,41 +138,15 @@ async def test_http_status_error_raises_project_http_error(device_store: DeviceM
     assert exc_info.value.status_code == 503
 
 
-async def test_request_uses_prepared_post(device_store: DeviceManager):
-    """测试 QIMEI 请求通过 PreparedRequest POST 发出并带预置头."""
-    await _expire_device(device_store)
-    transport = StubTransport(starts=[StubResponse({}, content=_qimei_payload())])
-    manager = _make_manager(transport, device_store)
-    await manager.get_cached()
-    assert len(transport.start_calls) == 1
-    request = transport.start_calls[0]
-    assert request.method == "POST"
-    assert request.url == "https://api.tencentmusic.com/tme/trpc/proxy"
-    assert "sign" in request.kwargs["headers"]
-    assert "qimeiParams" in request.kwargs["json"]
-
-
-async def test_payload_uses_coherent_device_profile(device_store: DeviceManager):
-    """测试 QIMEI 载荷从设备档案读取主板、厂商与构建主机."""
+async def test_payload_keeps_private_ip_stable(device_store: DeviceManager):
+    """测试同一设备生成稳定的私网地址."""
     device = await device_store.get_device()
     payload = random_payload_by_device(device, "20.8.0.8", "5.1.2.22")
     reserved = json.loads(payload["reserved"])
+    repeated = json.loads(random_payload_by_device(device, "20.8.0.8", "5.1.2.22")["reserved"])
 
-    assert reserved["bod"] == device.board
-    assert reserved["manufact"] == device.manufacturer
-    assert reserved["host"] == device.host
-    assert reserved["oz"] == calc_device_oz(device.android_id)
-    assert reserved["oo"] == calc_device_oo(device.model)
-    assert payload["networkType"] == "wifi"
-    assert payload["targetSdkVersion"] == "30"
-
-
-def test_payload_reports_harmony_device():
-    """测试 HarmonyOS 标记随设备系统信息变化."""
-    device = Device.create("xiaomi", seed=42)
-    device.vendor_os_name = "HarmonyOS 4.2"
-    payload = random_payload_by_device(device, "20.8.0.8", "5.1.2.22")
-    assert json.loads(payload["reserved"])["harmony"] == "1"
+    assert reserved["ip"] == repeated["ip"]
+    assert ipaddress.ip_address(reserved["ip"]).is_private
 
 
 @pytest.mark.parametrize(

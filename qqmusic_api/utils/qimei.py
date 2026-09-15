@@ -229,6 +229,12 @@ def random_beacon_id() -> str:
     return beacon_id
 
 
+def _private_ip_for_device(android_id: str) -> str:
+    """根据设备标识生成稳定的 IPv4 私网地址."""
+    digest = bytes.fromhex(calc_md5(android_id))
+    return f"192.168.{digest[0]}.{digest[1] % 253 + 2}"
+
+
 def random_payload_by_device(device: Device, version: str, sdk_version: str) -> dict:
     """根据设备信息随机生成 QIMEI 请求负载.
 
@@ -248,15 +254,20 @@ def random_payload_by_device(device: Device, version: str, sdk_version: str) -> 
         "oz": calc_device_oz(device.android_id),
         "oo": calc_device_oo(device.model),
         "kelong": "0",
+        "ip": _private_ip_for_device(device.android_id),
         "uptimes": (datetime.now(timezone.utc) - timedelta(seconds=fixed_rand)).strftime("%Y-%m-%d %H:%M:%S"),
         "multiUser": "0",
         "bod": device.board,
+        "brd": device.brand,
         "dv": device.device,
-        "firstLevel": "",
+        "firstLevel": str(device.first_api_level),
         "manufact": device.manufacturer or device.brand,
-        "name": device.model,
+        "name": device.product,
         "host": device.host,
         "kernel": device.proc_version,
+        "pre": "0",
+        "av": version,
+        "ch": "",
     }
     return {
         "androidId": device.android_id,

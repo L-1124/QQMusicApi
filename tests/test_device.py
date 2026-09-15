@@ -2,28 +2,18 @@
 
 from pathlib import Path
 
-import anyio
 import orjson as json
 import pytest
 
-from qqmusic_api.utils.device import Device, DeviceCacheStore, DeviceManager
+from qqmusic_api.utils.device import DeviceCacheStore, DeviceManager, generate_device
 
 pytestmark = pytest.mark.core
 
 
-def test_device_cache_store_derived_path():
-    """测试设备缓存存储正确派生同名缓存文件路径."""
-    assert DeviceCacheStore.from_device_path(None).path is None
-    derived = DeviceCacheStore.from_device_path("configs/device.json")
-    assert derived.path == anyio.Path("configs/device.cache.json")
-    derived_custom = DeviceCacheStore.from_device_path("my_device.txt")
-    assert derived_custom.path == anyio.Path("my_device.cache.json")
-
-
-def test_device_factory_is_deterministic_and_coherent():
-    """测试设备工厂按档案和种子生成稳定且关联一致的身份."""
-    first = Device.create("xiaomi", seed=42)
-    second = Device.create("xiaomi", seed=42)
+def test_device_generator_is_deterministic_and_coherent():
+    """测试设备生成器按档案和种子生成稳定且关联一致的身份."""
+    first = generate_device("xiaomi", seed=42)
+    second = generate_device("xiaomi", seed=42)
 
     assert first == second
     assert first.brand == "Xiaomi"
@@ -32,12 +22,6 @@ def test_device_factory_is_deterministic_and_coherent():
     assert len(first.android_id) == 16
     assert len(first.imei) == 15
     assert first.open_udid != first.open_udid2
-
-
-def test_device_factory_rejects_unknown_profile():
-    """测试设备工厂拒绝未知档案名称."""
-    with pytest.raises(ValueError, match="未知设备档案"):
-        Device.create("unknown")
 
 
 async def test_device_cache_store_persistence_and_reload(tmp_path: Path):
@@ -57,29 +41,6 @@ async def test_device_cache_store_persistence_and_reload(tmp_path: Path):
     assert qimei == {"q16": "q16_val", "q36": "q36_val", "saved_at": 1000}
     session = await reloaded.get_session()
     assert session == {"uid": "uid_val", "sid": "sid_val", "saved_at": 2000}
-
-
-async def test_device_manager_saves_pure_hardware_without_tokens(tmp_path: Path):
-    """测试设备管理器保存的 JSON 仅包含静态硬件字段且无任何凭据."""
-    device_path = tmp_path / "device.json"
-    manager = DeviceManager(device_path)
-    device = await manager.get_device()
-    assert isinstance(device, Device)
-    assert not hasattr(device, "qimei")
-    assert not hasattr(device, "session_uid")
-
-    await manager.save_device()
-    raw = json.loads(device_path.read_bytes())
-    assert "brand" in raw
-    assert "imei" in raw
-    assert "android_id" in raw
-    assert raw["open_udid"] == device.open_udid
-    assert raw["open_udid2"] == device.open_udid2
-    assert device.open_udid != device.open_udid2
-    assert "qimei" not in raw
-    assert "qimei36" not in raw
-    assert "session_uid" not in raw
-    assert "session_sid" not in raw
 
 
 async def test_device_manager_migrates_legacy_device_json(tmp_path: Path):

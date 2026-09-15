@@ -1,16 +1,12 @@
 """虚拟设备信息构造与持久化管理. 用于模拟 Android 设备指纹."""
 
-import binascii
 import contextlib
-import hashlib
-import random
-import string
 import time
-from dataclasses import dataclass, field, fields, replace
+from dataclasses import dataclass, fields, replace
 from pathlib import Path
 from random import Random
-from typing import Any, ClassVar
-from uuid import UUID, uuid4
+from typing import Any
+from uuid import UUID
 
 import anyio
 import orjson as json
@@ -44,13 +40,13 @@ def random_imei(rng: Random | None = None) -> str:
 class OSVersion:
     """系统版本信息."""
 
-    incremental: str = "5891938"
-    release: str = "10"
-    codename: str = "REL"
-    sdk: int = 29
+    incremental: str
+    release: str
+    codename: str
+    sdk: int
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass
 class _DeviceProfile:
     """描述一组内部一致的 Android 设备属性."""
 
@@ -64,6 +60,7 @@ class _DeviceProfile:
     brand: str
     manufacturer: str
     host: str
+    first_api_level: int
     version: OSVersion
     vendor_name: str
     vendor_os_name: str
@@ -71,16 +68,20 @@ class _DeviceProfile:
 
 _DEVICE_PROFILES = {
     "vivo": _DeviceProfile(
-        display="",
+        display="PD2408D_A_16.1.18.2.W10",
         product="PD2408",
         device="PD2408",
         board="sun",
         model="V2408A",
         fingerprint="vivo/PD2408/PD2408:15/AP3A.240905.015.A2/compiler250423182036:user/release-keys",
-        proc_version="",
+        proc_version=(
+            "Linux localhost 6.6.89-android15-8-g1f71897ac249-abogki467805059-4k "
+            "#1 SMP PREEMPT Thu Dec 11 01:56:00 UTC 2025 aarch64"
+        ),
         brand="vivo",
         manufacturer="vivo",
-        host="",
+        host="comdg01150014",
+        first_api_level=35,
         version=OSVersion(incremental="compiler250423182036", release="15", codename="REL", sdk=35),
         vendor_name="OriginOS",
         vendor_os_name="OriginOS 5.0",
@@ -96,6 +97,7 @@ _DEVICE_PROFILES = {
         brand="Xiaomi",
         manufacturer="Xiaomi",
         host="",
+        first_api_level=35,
         version=OSVersion(
             incremental="OS3.0.260511.1.WOCCNXM.STABLE-OS31",
             release="16",
@@ -116,24 +118,10 @@ _DEVICE_PROFILES = {
         brand="OPPO",
         manufacturer="OPPO",
         host="",
+        first_api_level=35,
         version=OSVersion(incremental="V.1ab312a_1-2a261", release="15", codename="REL", sdk=35),
         vendor_name="ColorOS",
         vendor_os_name="ColorOS 15",
-    ),
-    "samsung": _DeviceProfile(
-        display="AP3A.240905.015.A2.S9380ZCU5AYHA",
-        product="pa3qzcx",
-        device="pa3q",
-        board="",
-        model="SM-S9380",
-        fingerprint="",
-        proc_version="",
-        brand="samsung",
-        manufacturer="samsung",
-        host="",
-        version=OSVersion(incremental="S9380ZCU5AYHA", release="15", codename="REL", sdk=35),
-        vendor_name="One UI",
-        vendor_os_name="One UI 7.0",
     ),
 }
 
@@ -145,98 +133,78 @@ def _random_mac(rng: Random) -> str:
 
 
 @dataclass
-class Device:
-    """纯粹的虚拟硬件设备信息 (不含动态会话与凭据)."""
+class Device(_DeviceProfile):
+    """硬件设备信息."""
 
-    display: str = field(default_factory=lambda: f"QMAPI.{random.randint(100000, 999999)}.001")
-    product: str = "iarim"
-    device: str = "sagit"
-    board: str = "eomam"
-    model: str = "MI 6"
-    fingerprint: str = field(
-        default_factory=lambda: (
-            f"xiaomi/iarim/sagit:10/eomam.200122.001/{random.randint(1000000, 9999999)}:user/release-keys"
-        ),
+    boot_id: str
+    imei: str
+    bootloader: str
+    base_band: str
+    sim_info: str
+    os_type: str
+    mac_address: str
+    wifi_bssid: str
+    wifi_ssid: str
+    imsi_md5: list[int]
+    android_id: str
+    apn: str
+    open_udid: str
+    open_udid2: str
+
+
+def generate_device(profile: str | None = None, *, seed: int | str | None = None) -> Device:
+    """根据一致的设备档案生成虚拟 Android 设备.
+
+    Args:
+        profile: 设备档案名称 (vivo, xiaomi, oppo). 省略时随机选择一个档案.
+        seed: 可选随机种子, 相同档案和种子生成相同设备身份.
+
+    Returns:
+        新生成的设备信息.
+
+    Raises:
+        ValueError: 指定了未知设备档案时.
+    """
+    rng = Random(seed)
+    if profile is None:
+        selected = rng.choice(tuple(_DEVICE_PROFILES.values()))
+    else:
+        try:
+            selected = _DEVICE_PROFILES[profile.lower()]
+        except KeyError as exc:
+            choices = ", ".join(_DEVICE_PROFILES)
+            raise ValueError(f"未知设备档案: {profile}. 可选值: {choices}") from exc
+
+    return Device(
+        display=selected.display,
+        product=selected.product,
+        device=selected.device,
+        board=selected.board,
+        model=selected.model,
+        fingerprint=selected.fingerprint,
+        boot_id=str(UUID(int=rng.getrandbits(128), version=4)),
+        proc_version=selected.proc_version,
+        imei=random_imei(rng),
+        brand=selected.brand,
+        bootloader="U-boot",
+        base_band="",
+        version=replace(selected.version),
+        sim_info="T-Mobile",
+        os_type="android",
+        mac_address=_random_mac(rng),
+        wifi_bssid=_random_mac(rng),
+        wifi_ssid="<unknown ssid>",
+        imsi_md5=list(rng.randbytes(16)),
+        android_id=f"{rng.getrandbits(64):016x}",
+        apn="wifi",
+        vendor_name=selected.vendor_name,
+        vendor_os_name=selected.vendor_os_name,
+        open_udid=UUID(int=rng.getrandbits(128), version=4).hex,
+        open_udid2=UUID(int=rng.getrandbits(128), version=4).hex,
+        manufacturer=selected.manufacturer,
+        host=selected.host,
+        first_api_level=selected.first_api_level,
     )
-    boot_id: str = field(default_factory=lambda: str(uuid4()))
-    proc_version: str = field(
-        default_factory=lambda: (
-            f"Linux 5.4.0-54-generic-{''.join(random.choices(string.ascii_letters + string.digits, k=8))} (android-build@google.com)"
-        ),
-    )
-    imei: str = field(default_factory=random_imei)
-    brand: str = "Xiaomi"
-    bootloader: str = "U-boot"
-    base_band: str = ""
-    version: OSVersion = field(default_factory=OSVersion)
-    sim_info: str = "T-Mobile"
-    os_type: str = "android"
-    mac_address: str = "00:50:56:C0:00:08"
-    ip_address: ClassVar[list[int]] = [10, 0, 1, 3]
-    wifi_bssid: str = "00:50:56:C0:00:08"
-    wifi_ssid: str = "<unknown ssid>"
-    imsi_md5: list[int] = field(
-        default_factory=lambda: list(hashlib.md5(bytes([random.randint(0, 255) for _ in range(16)])).digest()),
-    )
-    android_id: str = field(
-        default_factory=lambda: binascii.hexlify(bytes([random.randint(0, 255) for _ in range(8)])).decode("utf-8"),
-    )
-    apn: str = "wifi"
-    vendor_name: str = "MIUI"
-    vendor_os_name: str = "qmapi"
-    open_udid: str = field(default_factory=lambda: uuid4().hex)
-    open_udid2: str = field(default_factory=lambda: uuid4().hex)
-    manufacturer: str = "Xiaomi"
-    host: str = "se.infra"
-
-    @classmethod
-    def create(cls, profile: str | None = None, *, seed: int | str | None = None) -> "Device":
-        """根据一致的设备档案创建虚拟 Android 设备.
-
-        Args:
-            profile: 设备档案名称 (vivo, xiaomi, oppo, samsung).
-                省略时随机选择一个档案.
-            seed: 可选随机种子, 相同档案和种子生成相同设备身份.
-
-        Returns:
-            新生成的设备信息.
-
-        Raises:
-            ValueError: 指定了未知设备档案时.
-        """
-        rng = Random(seed)
-        if profile is None:
-            selected = rng.choice(tuple(_DEVICE_PROFILES.values()))
-        else:
-            try:
-                selected = _DEVICE_PROFILES[profile.lower()]
-            except KeyError as exc:
-                choices = ", ".join(_DEVICE_PROFILES)
-                raise ValueError(f"未知设备档案: {profile}. 可选值: {choices}") from exc
-
-        return cls(
-            display=selected.display,
-            product=selected.product,
-            device=selected.device,
-            board=selected.board,
-            model=selected.model,
-            fingerprint=selected.fingerprint,
-            boot_id=str(UUID(int=rng.getrandbits(128), version=4)),
-            proc_version=selected.proc_version,
-            imei=random_imei(rng),
-            brand=selected.brand,
-            version=replace(selected.version),
-            mac_address=_random_mac(rng),
-            wifi_bssid=_random_mac(rng),
-            imsi_md5=list(rng.randbytes(16)),
-            android_id=f"{rng.getrandbits(64):016x}",
-            vendor_name=selected.vendor_name,
-            vendor_os_name=selected.vendor_os_name,
-            open_udid=UUID(int=rng.getrandbits(128), version=4).hex,
-            open_udid2=UUID(int=rng.getrandbits(128), version=4).hex,
-            manufacturer=selected.manufacturer,
-            host=selected.host,
-        )
 
 
 class DeviceCacheStore:
@@ -386,7 +354,7 @@ class DeviceManager:
         """
         anyio_path = anyio.Path(path)
         if not await anyio_path.exists():
-            return Device.create()
+            return generate_device()
 
         raw_data: dict[str, Any] = json.loads(await anyio_path.read_text())
 
@@ -410,10 +378,13 @@ class DeviceManager:
         # 仅保留 Device 声明的静态硬件字段
         valid_fields = {f.name for f in fields(Device)}
         device_data = {k: v for k, v in raw_data.items() if k in valid_fields}
+        if set(device_data) != valid_fields:
+            generated = generate_device()
+            generated_data = {field_.name: getattr(generated, field_.name) for field_ in fields(Device)}
+            generated_data.update(device_data)
+            device_data = generated_data
         if "version" in device_data and isinstance(device_data["version"], dict):
             device_data["version"] = OSVersion(**device_data["version"])
-        elif "version" not in device_data:
-            device_data["version"] = OSVersion()
 
         device = Device(**device_data)
         if set(raw_data) != valid_fields:
@@ -447,11 +418,11 @@ class DeviceManager:
             return self.device
 
         if self._device_path is None:
-            self.device = Device.create()
+            self.device = generate_device()
             return self.device
 
         if not await self._device_path.exists():
-            self.device = Device.create()
+            self.device = generate_device()
             await self._save_device(self.device, self._device_path)
             return self.device
 
