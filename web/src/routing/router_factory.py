@@ -1,5 +1,13 @@
 """类型化 Web 路由注册工厂."""
 
+__all__ = [
+    "MODULE_TYPES",
+    "create_module",
+    "include_routes",
+    "make_endpoint",
+    "validate_routes",
+]
+
 import dataclasses
 import inspect
 import re
@@ -12,18 +20,7 @@ from pydantic import BaseModel
 
 from qqmusic_api import Client, Credential
 from qqmusic_api.core.endpoint import get_endpoint_meta
-from qqmusic_api.modules.album import AlbumApi
-from qqmusic_api.modules.comment import CommentApi
-from qqmusic_api.modules.login import LoginApi
-from qqmusic_api.modules.lyric import LyricApi
-from qqmusic_api.modules.mv import MvApi
-from qqmusic_api.modules.recommend import RecommendApi
-from qqmusic_api.modules.search import SearchApi
-from qqmusic_api.modules.singer import SingerApi
-from qqmusic_api.modules.song import SongApi
-from qqmusic_api.modules.songlist import SonglistApi
-from qqmusic_api.modules.top import TopApi
-from qqmusic_api.modules.user import UserApi
+from qqmusic_api.modules._base import ApiModule
 
 from ..core.auth import credential_from_cookies
 from ..core.cache import CacheBackend
@@ -32,6 +29,7 @@ from ..core.response import ApiResponse
 from .adapter_registry import get_adapter
 from .docstrings import MethodDocs, load_method_docs
 from .executor import collect_param_values, execute_route
+from .modules import MODULE_TYPES, create_module
 from .params import (
     _is_json_query_annotation,
     build_param_model,
@@ -42,20 +40,7 @@ from .params import (
 )
 from .route_types import COOKIE_SECURITY_REQUIREMENT, AuthPolicy, ParamOverride, ParamSource, RouteContext, WebRoute
 
-_MODULE_CLASSES: dict[str, type[Any]] = {
-    "album": AlbumApi,
-    "comment": CommentApi,
-    "lyric": LyricApi,
-    "login": LoginApi,
-    "mv": MvApi,
-    "recommend": RecommendApi,
-    "search": SearchApi,
-    "singer": SingerApi,
-    "song": SongApi,
-    "songlist": SonglistApi,
-    "top": TopApi,
-    "user": UserApi,
-}
+_MODULE_CLASSES: dict[str, type[ApiModule]] = MODULE_TYPES
 credential_dependency = Depends(credential_from_cookies)
 
 
@@ -407,7 +392,7 @@ def _is_supported_query_annotation(annotation: Any, *, explicit: bool = False) -
 def _resolve_method(route: WebRoute) -> Any | None:
     if route.endpoint is not None:
         return route.endpoint
-    module_cls = _MODULE_CLASSES.get(route.module)
+    module_cls = MODULE_TYPES.get(route.module)
     if module_cls is None:
         return None
     return getattr(module_cls, route.method, None)
