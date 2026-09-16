@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
-import functools
+import inspect
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Generic, Literal, ParamSpec, TypeVar, cast
+
+from .request import CgiRequest, HttpRequest
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
@@ -13,7 +15,6 @@ if TYPE_CHECKING:
 
     from ..models.request import Credential
     from .pagination import PagerStrategy
-    from .request import CgiRequest, HttpRequest
     from .response import RawPayload
     from .versioning import Platform
 
@@ -92,6 +93,20 @@ def _register_meta(meta: EndpointMeta[Any]) -> None:
     _ENDPOINT_KEYS.add(meta.key)
 
 
+def _preserve_endpoint_signature(
+    wrapper: Callable[..., Any],
+    func: Callable[..., Any],
+    return_annotation: Any,
+) -> None:
+    """保留端点参数签名并公开转换后的返回类型."""
+    wrapper.__name__ = func.__name__
+    wrapper.__qualname__ = func.__qualname__
+    wrapper.__module__ = func.__module__
+    wrapper.__doc__ = func.__doc__
+    wrapper.__annotations__ = {**func.__annotations__, "return": return_annotation}
+    wrapper.__signature__ = inspect.signature(func).replace(return_annotation=return_annotation)  # type: ignore[attr-defined]
+
+
 def cgi_endpoint(
     key: str,
     module: str,
@@ -111,7 +126,6 @@ def cgi_endpoint(
     _register_meta(meta)
 
     def decorator(func: Callable[P, CgiRequestData]) -> Callable[P, CgiRequest[CgiResultT]]:
-        @functools.wraps(func)
         def wrapped(*args: P.args, **kwargs: P.kwargs) -> CgiRequest[CgiResultT]:
             if not args:
                 raise TypeError("CGI endpoint 必须作为 ApiModule 实例方法调用")
@@ -139,6 +153,7 @@ def cgi_endpoint(
                 return cast("CgiRequest[CgiResultT]", request.with_extractor(data.items_extractor))
             return cast("CgiRequest[CgiResultT]", request)
 
+        _preserve_endpoint_signature(wrapped, func, CgiRequest[response_model])
         wrapped.meta = meta  # type: ignore[attr-defined]
         return wrapped
 
@@ -162,7 +177,6 @@ def http_endpoint(
     _register_meta(meta)
 
     def decorator(func: Callable[P, HttpRequestData]) -> Callable[P, HttpRequest[HttpResultT]]:
-        @functools.wraps(func)
         def wrapped(*args: P.args, **kwargs: P.kwargs) -> HttpRequest[HttpResultT]:
             if not args:
                 raise TypeError("HTTP endpoint 必须作为 ApiModule 实例方法调用")
@@ -186,6 +200,7 @@ def http_endpoint(
                 ),
             )
 
+        _preserve_endpoint_signature(wrapped, func, HttpRequest[response_model])
         wrapped.meta = meta  # type: ignore[attr-defined]
         return wrapped
 

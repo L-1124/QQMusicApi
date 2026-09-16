@@ -110,6 +110,8 @@ def test_endpoint_decorator_preserves_signature_and_metadata():
     assert bound_method.__doc__ == "这是示例函数的文档."
     sig = inspect.signature(bound_method)
     assert list(sig.parameters.keys()) == ["user_id", "flag"]
+    assert sig.return_annotation == CgiRequest[DummyModel]
+    assert not hasattr(bound_method, "__wrapped__")
     meta = get_endpoint_meta(SampleApi.sample)
     assert meta.key == "custom.sample_cgi_test"
     assert isinstance(meta, CgiEndpointMeta)
