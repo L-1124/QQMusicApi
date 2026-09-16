@@ -25,7 +25,7 @@ from ..core.request import (
     ResponseModel,
 )
 from ..core.response import RawPayload
-from ..core.versioning import Platform
+from ..core.versioning import DEFAULT_VERSION_POLICY, Platform
 from ..models.request import Credential
 
 
@@ -39,9 +39,8 @@ class ApiModule:
 
     def _build_version_params(self, platform: Platform | None = None) -> dict[str, int]:
         """构建查询接口使用的版本参数."""
-        if self._client is None:
-            raise RuntimeError("当前请求执行器不提供 Client 版本策略")
-        profile = self._client._version_policy.get_profile(platform or self._client.platform)
+        policy = self._client._version_policy if self._client is not None else DEFAULT_VERSION_POLICY
+        profile = policy.get_profile(platform or self._binder.platform)
         return {"ct": profile.ct, "cv": profile.cv}
 
     @overload

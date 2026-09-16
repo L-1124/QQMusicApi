@@ -22,7 +22,6 @@ from .core.exceptions import (
 )
 from .core.versioning import Platform
 from .models.request import Credential
-from .modules.login import LoginService
 
 __version__ = "0.7.3"
 
@@ -43,7 +42,6 @@ __all__ = [
     "LoginDeviceLimitError",
     "LoginError",
     "LoginRateLimitError",
-    "LoginService",
     "NetworkError",
     "Platform",
     "RatelimitedError",

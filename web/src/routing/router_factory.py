@@ -1,8 +1,6 @@
 """类型化 Web 路由注册工厂."""
 
 __all__ = [
-    "MODULE_TYPES",
-    "create_module",
     "include_routes",
     "make_endpoint",
     "validate_routes",
@@ -18,19 +16,18 @@ from typing import Annotated, Any, cast, get_args, get_origin
 from fastapi import Depends, FastAPI, Path, Query, Request
 from pydantic import BaseModel
 
-from qqmusic_api import Client, Credential, LoginService, Platform
+from qqmusic_api import Credential, Platform
 from qqmusic_api.core.endpoint import get_endpoint_meta
 from qqmusic_api.core.engine import RequestEngine
-from qqmusic_api.modules._base import ApiModule
 
 from ..core.auth import credential_from_cookies
 from ..core.cache import CacheBackend
-from ..core.deps import cache_dependency, client_dependency, engine_dependency, login_service_dependency
+from ..core.deps import cache_dependency, engine_dependency
 from ..core.response import ApiResponse
 from .adapter_registry import get_adapter
 from .docstrings import MethodDocs, load_method_docs
 from .executor import collect_param_values, execute_route
-from .modules import MODULE_TYPES, create_module
+from .modules import MODULE_TYPES
 from .params import (
     _is_json_query_annotation,
     build_param_model,
@@ -41,7 +38,6 @@ from .params import (
 )
 from .route_types import COOKIE_SECURITY_REQUIREMENT, AuthPolicy, ParamOverride, ParamSource, RouteContext, WebRoute
 
-_MODULE_CLASSES: dict[str, type[ApiModule]] = MODULE_TYPES
 credential_dependency = Depends(credential_from_cookies)
 
 
@@ -111,8 +107,6 @@ def make_endpoint(route: WebRoute) -> tuple[Callable[..., Any], MethodDocs]:
         params = collect_param_values(kwargs.get("query"), kwargs.get("body"), path_values=path_values)
         if route.adapter is not None and kwargs.get("body") is not None:
             params["body"] = kwargs["body"]
-        client = kwargs.get("client")
-        platform = getattr(client, "platform", Platform.ANDROID) if client is not None else Platform.ANDROID
         context = RouteContext(
             request=kwargs["request"],
             engine=kwargs["engine"],
@@ -120,9 +114,7 @@ def make_endpoint(route: WebRoute) -> tuple[Callable[..., Any], MethodDocs]:
             route=route,
             params=params,
             credential=kwargs.get("credential"),
-            platform=platform,
-            client=client,
-            login_service=kwargs.get("login_service"),
+            platform=Platform.ANDROID,
         )
         return await execute_route(context)
 
@@ -239,18 +231,6 @@ def _build_endpoint_signature(
                 annotation=RequestEngine,
             ),
             inspect.Parameter(
-                "login_service",
-                inspect.Parameter.POSITIONAL_OR_KEYWORD,
-                default=login_service_dependency,
-                annotation=LoginService,
-            ),
-            inspect.Parameter(
-                "client",
-                inspect.Parameter.POSITIONAL_OR_KEYWORD,
-                default=client_dependency,
-                annotation=Client,
-            ),
-            inspect.Parameter(
                 "cache",
                 inspect.Parameter.POSITIONAL_OR_KEYWORD,
                 default=cache_dependency,
@@ -353,7 +333,7 @@ def _validate_sdk_contract(route: WebRoute, route_params: tuple[ParamOverride, .
     key = f"{route.module}.{route.method}"
     method = _resolve_method(route)
     if method is None:
-        return [f"Client 缺少模块或方法: {key}"]
+        return [f"模块缺少方法: {key}"]
     signature = inspect.signature(method)
     hidden = {param.name for param in route.param_overrides if not param.forward}
     sdk_params = {name for name in signature.parameters if name not in {"self", "credential"} and name not in hidden}

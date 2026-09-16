@@ -9,7 +9,7 @@ from typing import Any, Generic, Literal, TypeVar
 from fastapi import Request
 from pydantic import BaseModel
 
-from qqmusic_api import Client, Credential, LoginService, Platform
+from qqmusic_api import Credential, Platform
 from qqmusic_api.core.engine import EngineRequestExecutor, RequestEngine, RequestScope
 from qqmusic_api.modules._base import ApiModule
 
@@ -173,15 +173,6 @@ class RouteContext:
     params: Mapping[str, Any]
     credential: Credential | None = None
     platform: Platform = Platform.ANDROID
-    client: Client | None = None
-    login_service: LoginService | None = None
-
-    @property
-    def require_login_service(self) -> LoginService:
-        """获取必需的 LoginService 实例, 未注入时按 engine 构造回退."""
-        if self.login_service is not None:
-            return self.login_service
-        return LoginService(self.engine)
 
     async def execute_module(
         self,
@@ -206,17 +197,6 @@ class RouteContext:
         if inspect.isawaitable(result):
             return await result
         return result
-
-    async def execute_endpoint(
-        self,
-        module_type: str | type[ApiModule],
-        endpoint: str | Callable[..., Any],
-        /,
-        *args: Any,
-        **kwargs: Any,
-    ) -> Any:
-        """在当前请求作用域内调用已声明的 SDK 端点方法 (委托给 execute_module)."""
-        return await self.execute_module(module_type, endpoint, *args, **kwargs)
 
 
 PUBLIC_60 = CachePolicy(ttl=60)

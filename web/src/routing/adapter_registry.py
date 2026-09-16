@@ -18,7 +18,7 @@ def adapter(module: str, method: str) -> Callable[[AdapterFn], AdapterFn]:
     inline adapter= 声明的优先级高于此注册表.
 
     Args:
-        module: 模块名, 对应 router_factory._MODULE_CLASSES 的 key.
+        module: 模块名, 对应 modules.MODULE_TYPES 的 key.
         method: SDK 方法名或 adapter-only 路由的虚拟名.
 
     Returns:

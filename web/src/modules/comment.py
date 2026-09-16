@@ -20,7 +20,7 @@ class AddCommentBody(BaseModel):
 async def add_comment_adapter(context: RouteContext):
     """添加评论适配器."""
     body: AddCommentBody = context.params["body"]
-    return await context.execute_endpoint(
+    return await context.execute_module(
         CommentApi,
         CommentApi.add_comment,
         biz_id=context.params["biz_id"],

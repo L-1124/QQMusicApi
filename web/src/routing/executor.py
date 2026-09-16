@@ -10,8 +10,7 @@ from fastapi import HTTPException
 from fastapi.responses import Response
 from pydantic import BaseModel
 
-from qqmusic_api import Credential, LoginService
-from qqmusic_api.core.engine import RequestScope
+from qqmusic_api import Credential
 from qqmusic_api.core.exceptions import CredentialExpiredError
 
 from ..core.auth import configured_credential_for_api, refresh_and_store
@@ -19,8 +18,8 @@ from ..core.cache import cached_response, make_cache_key
 from ..core.credential_store import CredentialStore, credential_has_login
 from ..core.deps import get_credential_store
 from ..core.response import ApiResponse, success_response
-from .modules import MODULE_TYPES, create_module
-from .route_types import AuthPolicy, EngineRequestExecutor, RouteContext
+from .modules import MODULE_TYPES
+from .route_types import AuthPolicy, RouteContext
 
 logger = logging.getLogger(__name__)
 
@@ -103,28 +102,18 @@ async def execute_route(context: RouteContext) -> Any:
 
 
 async def _invoke_route(context: RouteContext, params: dict[str, Any], resolved_credential: Credential | None) -> Any:
+    scoped_context = dataclasses.replace(
+        context,
+        params=params,
+        credential=resolved_credential,
+    )
     if context.route.adapter is not None:
-        adapter_context = dataclasses.replace(
-            context,
-            params=params,
-            credential=resolved_credential,
-        )
-        result = context.route.adapter(adapter_context)
+        result = context.route.adapter(scoped_context)
     else:
         if resolved_credential is not None and _requires_credential(context.route.module, context.route.method):
             params["credential"] = resolved_credential
-
-        scope = RequestScope(
-            credential=resolved_credential or Credential(),
-            platform=context.platform,
-        )
-        executor = EngineRequestExecutor(context.engine, scope)
-        module = create_module(context.route.module, executor)
-        if context.route.endpoint is None:
-            bound_method = getattr(module, context.route.method)
-        else:
-            bound_method = context.route.endpoint.__get__(module, type(module))
-        result = bound_method(**params)
+        endpoint = context.route.endpoint or context.route.method
+        return await scoped_context.execute_module(context.route.module, endpoint, **params)
     if inspect.isawaitable(result):
         return await result
     return result
@@ -153,10 +142,9 @@ def _model_values(model: BaseModel) -> dict[str, Any]:
 async def _resolve_credential(context: RouteContext, *, strict: bool = True) -> Credential | None:
     credential = context.credential or Credential()
     logger.debug("解析凭证, 初始 musicid: %s", credential.musicid)
-    login_service = context.login_service or LoginService(context.engine)
     resolved = await configured_credential_for_api(
         context.request,
-        login_service,
+        context.engine,
         f"{context.route.module}.{context.route.method}",
         credential,
         platform=context.platform,
@@ -178,8 +166,7 @@ async def _refresh_credential(context: RouteContext, credential: Credential) -> 
         raise CredentialExpiredError("登录凭证已失效", code=0)
     try:
         logger.info("开始刷新凭证 %s", credential.musicid)
-        login_service = context.login_service or LoginService(context.engine)
-        refreshed = await refresh_and_store(login_service, store, credential, platform=context.platform)
+        refreshed = await refresh_and_store(context.engine, store, credential, platform=context.platform)
         logger.info("凭证 %s 刷新成功", credential.musicid)
         return refreshed
     except Exception as exc:

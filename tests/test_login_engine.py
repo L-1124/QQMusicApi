@@ -1,4 +1,4 @@
-"""无状态登录服务核心单元测试 (桩驱动, 无网络依赖)."""
+"""登录模块的引擎绑定单元测试 (桩驱动, 无网络依赖)."""
 
 import asyncio
 import json
@@ -7,11 +7,11 @@ from typing import Any, cast
 import pytest
 
 from qqmusic_api import Client, Credential, CredentialRefreshError, Platform
-from qqmusic_api.core.engine import RequestEngine
+from qqmusic_api.core.engine import EngineRequestExecutor, RequestEngine, RequestScope
 from qqmusic_api.core.executor import CgiExecutor, HttpExecutor
 from qqmusic_api.core.transport import PreparedRequest
 from qqmusic_api.core.versioning import DEFAULT_VERSION_POLICY
-from qqmusic_api.modules.login import LoginApi, LoginService
+from qqmusic_api.modules.login import LoginApi
 from qqmusic_api.utils.device import DeviceManager
 from tests.kernel_contract import StubResponse, make_cgi_envelope, make_cgi_sub
 
@@ -68,6 +68,16 @@ def make_stub_engine(transport: Any) -> RequestEngine:
     return RequestEngine(cgi_executor=cgi, http_executor=http, transport=transport)
 
 
+def make_login_api(
+    engine: RequestEngine,
+    credential: Credential | None = None,
+    platform: Platform = Platform.ANDROID,
+) -> LoginApi:
+    """构造绑定引擎作用域的登录模块."""
+    scope = RequestScope(credential=credential or Credential(), platform=platform)
+    return LoginApi(EngineRequestExecutor(engine, scope))
+
+
 def _parse_request_body(req: PreparedRequest) -> dict[str, Any]:
     """解析请求数据体为字典."""
     raw_data = req.kwargs.get("data") or req.kwargs.get("json")
@@ -81,8 +91,8 @@ def _parse_request_body(req: PreparedRequest) -> dict[str, Any]:
 
 
 @pytest.mark.asyncio
-async def test_login_service_check_expired_returns_correct_boolean() -> None:
-    """测试无状态登录服务检查凭证过期状态返回布尔值."""
+async def test_engine_bound_login_api_check_expired_returns_correct_boolean() -> None:
+    """测试引擎绑定登录模块检查凭证过期状态返回布尔值."""
     call_index = 0
 
     async def handle_request(_req: PreparedRequest) -> StubResponse:
@@ -93,7 +103,7 @@ async def test_login_service_check_expired_returns_correct_boolean() -> None:
 
     transport = DynamicCgiTransport(handle_request)
     engine = make_stub_engine(transport)
-    service = LoginService(engine)
+    service = make_login_api(engine)
 
     cred = Credential(musicid=123456, musickey="test_key")
 
@@ -105,8 +115,8 @@ async def test_login_service_check_expired_returns_correct_boolean() -> None:
 
 
 @pytest.mark.asyncio
-async def test_login_service_concurrent_refresh_zero_state_crosstalk() -> None:
-    """测试多账号并发刷新凭证无状态串扰."""
+async def test_engine_bound_login_api_concurrent_refresh_zero_state_crosstalk() -> None:
+    """测试引擎绑定登录模块并发刷新凭证无状态串扰."""
     cred_a = Credential(musicid=10001, musickey="old_key_a", refresh_token="rt_a")
     cred_b = Credential(musicid=20002, musickey="old_key_b", refresh_token="rt_b")
 
@@ -146,7 +156,7 @@ async def test_login_service_concurrent_refresh_zero_state_crosstalk() -> None:
 
     transport = DynamicCgiTransport(handle_request)
     engine = make_stub_engine(transport)
-    service = LoginService(engine)
+    service = make_login_api(engine)
 
     res_a, res_b = await asyncio.gather(
         service.refresh_credential(cred_a),
@@ -163,15 +173,15 @@ async def test_login_service_concurrent_refresh_zero_state_crosstalk() -> None:
 
 
 @pytest.mark.asyncio
-async def test_login_service_refresh_error_raises_credential_refresh_error() -> None:
-    """测试凭证刷新失败时无状态登录服务抛出受控异常."""
+async def test_engine_bound_login_api_refresh_error_raises_credential_refresh_error() -> None:
+    """测试凭证刷新失败时引擎绑定登录模块抛出受控异常."""
 
     async def handle_request(_req: PreparedRequest) -> StubResponse:
         return make_cgi_envelope([make_cgi_sub(code=1000, data={"errMsg": "token expired"})])
 
     transport = DynamicCgiTransport(handle_request)
     engine = make_stub_engine(transport)
-    service = LoginService(engine)
+    service = make_login_api(engine)
 
     cred = Credential(musicid=123456, musickey="test_key")
 
@@ -182,8 +192,8 @@ async def test_login_service_refresh_error_raises_credential_refresh_error() -> 
 
 
 @pytest.mark.asyncio
-async def test_login_service_logout_sends_cgi_with_credential() -> None:
-    """测试无状态登录服务登出接口发送带有凭证的 CGI 请求."""
+async def test_engine_bound_login_api_logout_sends_cgi_with_credential() -> None:
+    """测试引擎绑定登录模块登出接口发送带有凭证的 CGI 请求."""
     captured_comm: dict[str, Any] = {}
 
     async def handle_request(req: PreparedRequest) -> StubResponse:
@@ -194,18 +204,18 @@ async def test_login_service_logout_sends_cgi_with_credential() -> None:
 
     transport = DynamicCgiTransport(handle_request)
     engine = make_stub_engine(transport)
-    service = LoginService(engine)
-
     cred = Credential(musicid=88888, musickey="secret_key")
-    await service.logout(cred, platform=Platform.ANDROID)
+    service = make_login_api(engine, cred)
+
+    await service.logout(cred)
 
     assert captured_comm.get("authst") == "secret_key"
     assert captured_comm.get("qq") == "88888"
 
 
 @pytest.mark.asyncio
-async def test_login_api_delegates_to_service_and_updates_client_state() -> None:
-    """测试 LoginApi 门面正确委托 LoginService 并维护 Client 凭证状态."""
+async def test_client_login_api_updates_client_state() -> None:
+    """测试客户端登录模块刷新与清理默认凭证状态."""
 
     async def handle_request(_req: PreparedRequest) -> StubResponse:
         return make_cgi_envelope(
@@ -226,8 +236,6 @@ async def test_login_api_delegates_to_service_and_updates_client_state() -> None
     client = Client(credential=initial_cred, engine=engine)
 
     assert isinstance(client.login, LoginApi)
-    assert client.login._service is not None
-
     refreshed = await client.login.refresh_credential()
     assert refreshed.musickey == "refreshed_musickey"
     assert client.credential.musickey == "refreshed_musickey"

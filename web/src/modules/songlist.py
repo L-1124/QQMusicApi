@@ -18,7 +18,7 @@ def _song_info_tuples(song_ids: list[int], song_types: list[int]) -> list[tuple[
 @adapter("songlist", "add_songs")
 async def add_songs_adapter(context: RouteContext):
     """添加歌曲到歌单."""
-    return await context.execute_endpoint(
+    return await context.execute_module(
         SonglistApi,
         SonglistApi.add_songs,
         dirid=context.params["dirid"],
@@ -31,7 +31,7 @@ async def add_songs_adapter(context: RouteContext):
 @adapter("songlist", "del_songs")
 async def del_songs_adapter(context: RouteContext):
     """删除歌单中的歌曲."""
-    return await context.execute_endpoint(
+    return await context.execute_module(
         SonglistApi,
         SonglistApi.del_songs,
         dirid=context.params["dirid"],
