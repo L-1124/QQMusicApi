@@ -1,10 +1,21 @@
 """Web 路由注册测试."""
 
+import pytest
 from fastapi import FastAPI
 from fastapi.routing import APIRoute
 
+from qqmusic_api.core.exceptions import (
+    BaseApiException,
+    CredentialExpiredError,
+    CredentialInvalidError,
+    CredentialRefreshError,
+    LoginError,
+    NetworkError,
+    RatelimitedError,
+)
 from qqmusic_api.modules.search import SearchApi
 from qqmusic_api.modules.song import SongApi
+from web.src.app import _base_api_exception_status_code
 from web.src.routes import ROUTES
 from web.src.routing.route_types import AuthPolicy
 from web.src.routing.router_factory import _resolve_route, validate_routes
@@ -155,3 +166,19 @@ def test_adapter_routes_use_chinese_docs_not_route_keys(app: FastAPI) -> None:
     ]
     assert all(summary for summary in all_summaries)
     assert not any("." in summary for summary in all_summaries)
+
+
+@pytest.mark.parametrize(
+    ("exception", "expected_status"),
+    [
+        (CredentialInvalidError("invalid"), 401),
+        (CredentialExpiredError(code=1000), 401),
+        (CredentialRefreshError(code=1000), 401),
+        (RatelimitedError(code=2001), 429),
+        (LoginError(code=20261), 400),
+        (NetworkError("network"), 400),
+    ],
+)
+def test_sdk_exceptions_map_to_stable_http_status(exception: BaseApiException, expected_status: int) -> None:
+    """测试 SDK 公共异常映射为稳定的 HTTP 状态码."""
+    assert _base_api_exception_status_code(exception) == expected_status

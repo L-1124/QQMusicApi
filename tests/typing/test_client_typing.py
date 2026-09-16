@@ -76,3 +76,15 @@ async def _check_awaited_sdk_types(client: Client) -> None:
     assert_type(await client.song.get_detail("0039MnYb0qxYAc"), GetSongDetailResponse)
     assert_type(await client.song.get_song_urls([SongFileInfo(mid="0039MnYb0qxYAc")]), GetSongUrlsResponse)
     assert_type(await client.search.quick_search("晴天"), QuickSearchResponse)
+
+    gathered = await client.gather(
+        [
+            client.song.get_detail("0039MnYb0qxYAc"),
+            client.song.get_detail("004Z8Ihr0JIu5s"),
+        ]
+    )
+    assert_type(gathered, list[GetSongDetailResponse])
+
+    paginated = client.search.search_by_type("晴天", search_type=SearchType.SONG)
+    assert_type(await paginated.collect(), list[SearchByTypeResponse])
+    assert_type(await paginated.collect_items(), list[SongSearch])

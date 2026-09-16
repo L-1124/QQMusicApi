@@ -148,6 +148,10 @@ def test_build_cgi_static_typing():
     )
     assert_type(req_custom, CgiRequest[dict[str, Any]])
 
+    # 6. disable_parse=True 跳过模型转换并返回字典
+    req_unparsed = api._build_cgi("m", "met", param={}, response_model=DummyModel, disable_parse=True)
+    assert_type(req_unparsed, CgiRequest[dict[str, Any]])
+
 
 def test_build_http_static_typing():
     """验证 _build_http 在不同参数组合下的静态类型精确推断."""

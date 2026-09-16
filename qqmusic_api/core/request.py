@@ -89,7 +89,6 @@ class CgiRequestOptions(TypedDict, total=False):
     parse_on_allow: bool
     override_comm: bool
     preserve_bool: bool
-    disable_parse: bool
 
 
 @dataclass(kw_only=True)

@@ -55,6 +55,7 @@ class ApiModule:
         comm: dict[str, Any] | None = None,
         credential: Credential | None = None,
         platform: Platform | None = None,
+        disable_parse: Literal[False] = False,
         **options: Unpack[CgiRequestOptions],
     ) -> PaginatedCgiRequest[ResponseModel]: ...
 
@@ -70,6 +71,23 @@ class ApiModule:
         comm: dict[str, Any] | None = None,
         credential: Credential | None = None,
         platform: Platform | None = None,
+        disable_parse: Literal[True],
+        **options: Unpack[CgiRequestOptions],
+    ) -> CgiRequest[dict[str, Any]]: ...
+
+    @overload
+    def _build_cgi(
+        self,
+        module: str,
+        method: str,
+        param: dict[str, Any] | None = None,
+        *,
+        response_model: type[ResponseModel],
+        pager_strategy: None = None,
+        comm: dict[str, Any] | None = None,
+        credential: Credential | None = None,
+        platform: Platform | None = None,
+        disable_parse: Literal[False] = False,
         **options: Unpack[CgiRequestOptions],
     ) -> CgiRequest[ResponseModel]: ...
 
@@ -85,6 +103,7 @@ class ApiModule:
         comm: dict[str, Any] | None = None,
         credential: Credential | None = None,
         platform: Platform | None = None,
+        disable_parse: bool = False,
         **options: Unpack[CgiRequestOptions],
     ) -> CgiRequest[dict[str, Any]]: ...
 
@@ -99,6 +118,7 @@ class ApiModule:
         comm: dict[str, Any] | None = None,
         credential: Credential | None = None,
         platform: Platform | None = None,
+        disable_parse: bool = False,
         **options: Unpack[CgiRequestOptions],
     ) -> CgiRequest[Any] | PaginatedCgiRequest[Any]:
         """构建可 await 的 CGI 请求描述符.
@@ -112,7 +132,8 @@ class ApiModule:
             comm: 附加的通用请求参数.
             credential: 本次请求专用的凭证. 优先于客户端全局凭证.
             platform: 本次请求的平台标识. 优先于客户端全局平台.
-            **options: 其它可选配置 (如 sign, require_login, allow_error_codes, parse_on_allow, override_comm, preserve_bool, disable_parse).
+            disable_parse: 是否跳过响应模型转换并直接返回字典.
+            **options: 其它可选配置 (如 sign, require_login, allow_error_codes, parse_on_allow, override_comm, preserve_bool).
 
         Returns:
             CgiRequest 或 PaginatedCgiRequest: 可 await 的 CGI 请求描述符.
@@ -128,6 +149,7 @@ class ApiModule:
                 comm=comm,
                 credential=credential,
                 platform=platform,
+                disable_parse=disable_parse,
                 **options,
             )
 
@@ -140,6 +162,7 @@ class ApiModule:
             comm=comm,
             credential=credential,
             platform=platform,
+            disable_parse=disable_parse,
             **options,
         )
 
