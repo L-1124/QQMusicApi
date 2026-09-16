@@ -16,7 +16,7 @@ from starlette.middleware.base import RequestResponseEndpoint
 from starlette.responses import Response
 
 import qqmusic_api
-from qqmusic_api import Client
+from qqmusic_api import Client, LoginService
 from qqmusic_api.core.engine import RequestEngine
 from qqmusic_api.core.exceptions import (
     BaseApiException,
@@ -107,6 +107,7 @@ async def _lifespan(app: FastAPI):
         logger.info("初始化 RequestEngine 与 SDK Client...")
         services.engine = RequestEngine.create(device_path=settings.client.device_path)
         services.client = Client(engine=services.engine)
+        services.login_service = LoginService(services.engine)
         logger.debug("RequestEngine 与 SDK Client 初始化完成")
 
         logger.debug("配置全局凭证设置...")
@@ -120,7 +121,7 @@ async def _lifespan(app: FastAPI):
         services.credential_store.sync_accounts(load_account_configs(ACCOUNT_CONFIG_FILE))
 
         logger.info("执行启动凭证健康检查...")
-        await startup_credential_health_check(services.client, services.credential_store)
+        await startup_credential_health_check(services.require_login_service, services.credential_store)
 
         logger.info("Web 应用启动完成")
     except Exception:

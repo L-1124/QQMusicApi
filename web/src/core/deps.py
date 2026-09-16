@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 
 from fastapi import Depends, Request
 
-from qqmusic_api import Client
+from qqmusic_api import Client, LoginService
 from qqmusic_api.core.engine import RequestEngine
 
 from .cache import CacheBackend
@@ -24,6 +24,7 @@ class WebServices:
     security: "SecurityServices | None" = field(default=None)
     client: Client | None = None
     engine: RequestEngine | None = None
+    login_service: LoginService | None = None
     credential_config: CredentialConfig | None = None
     credential_store: CredentialStore | None = None
 
@@ -33,6 +34,13 @@ class WebServices:
         if self.engine is None:
             raise RuntimeError("RequestEngine 尚未初始化")
         return self.engine
+
+    @property
+    def require_login_service(self) -> LoginService:
+        """获取必需的 LoginService 实例, 未初始化时抛出异常."""
+        if self.login_service is None:
+            raise RuntimeError("LoginService 尚未初始化")
+        return self.login_service
 
 
 def get_web_services(request: Request) -> WebServices:
@@ -59,6 +67,14 @@ def get_engine(request: Request) -> RequestEngine:
     return engine
 
 
+def get_login_service(request: Request) -> LoginService:
+    """获取当前请求绑定的 LoginService 实例."""
+    login_service = get_web_services(request).login_service
+    if login_service is None:
+        raise RuntimeError("LoginService 尚未初始化")
+    return login_service
+
+
 def get_cache(request: Request) -> CacheBackend:
     """获取当前请求绑定的缓存后端."""
     return get_web_services(request).cache
@@ -81,4 +97,5 @@ def get_security_services(request: Request) -> "SecurityServices | None":
 
 client_dependency = Depends(get_client)
 engine_dependency = Depends(get_engine)
+login_service_dependency = Depends(get_login_service)
 cache_dependency = Depends(get_cache)

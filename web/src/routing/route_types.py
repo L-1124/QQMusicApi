@@ -9,9 +9,8 @@ from typing import Any, Generic, Literal, TypeVar
 from fastapi import Request
 from pydantic import BaseModel
 
-from qqmusic_api import Client, Credential, Platform
-from qqmusic_api.core.engine import RequestEngine, RequestScope
-from qqmusic_api.core.request import BaseRequest, ResultT
+from qqmusic_api import Client, Credential, LoginService, Platform
+from qqmusic_api.core.engine import EngineRequestExecutor, RequestEngine, RequestScope
 from qqmusic_api.modules._base import ApiModule
 
 from ..core.cache import CacheBackend
@@ -19,37 +18,6 @@ from .modules import create_module
 
 EnumT = TypeVar("EnumT", bound=Enum)
 COOKIE_SECURITY_REQUIREMENT = {"MusicId": [], "MusicKey": []}
-
-
-class EngineRequestExecutor:
-    """在单个 Web 请求作用域内执行模块请求."""
-
-    def __init__(self, engine: RequestEngine, scope: RequestScope) -> None:
-        """绑定请求引擎与执行作用域."""
-        self.engine = engine
-        self._scope = scope
-
-    @property
-    def credential(self) -> Credential:
-        """返回绑定作用域的凭证."""
-        return self._scope.credential
-
-    @property
-    def platform(self) -> Platform:
-        """返回绑定作用域的平台."""
-        return self._scope.platform
-
-    async def execute(self, request: BaseRequest[ResultT]) -> ResultT:
-        """使用请求覆盖值或绑定作用域执行请求."""
-        req_platform = getattr(request, "platform", None)
-        req_credential = getattr(request, "credential", None)
-        return await self.engine.execute(
-            request,
-            RequestScope(
-                credential=req_credential or self.credential,
-                platform=req_platform or self.platform,
-            ),
-        )
 
 
 class HttpMethod(str, Enum):
@@ -206,6 +174,14 @@ class RouteContext:
     credential: Credential | None = None
     platform: Platform = Platform.ANDROID
     client: Client | None = None
+    login_service: LoginService | None = None
+
+    @property
+    def require_login_service(self) -> LoginService:
+        """获取必需的 LoginService 实例, 未注入时按 engine 构造回退."""
+        if self.login_service is not None:
+            return self.login_service
+        return LoginService(self.engine)
 
     async def execute_module(
         self,

@@ -18,14 +18,14 @@ from typing import Annotated, Any, cast, get_args, get_origin
 from fastapi import Depends, FastAPI, Path, Query, Request
 from pydantic import BaseModel
 
-from qqmusic_api import Client, Credential, Platform
+from qqmusic_api import Client, Credential, LoginService, Platform
 from qqmusic_api.core.endpoint import get_endpoint_meta
 from qqmusic_api.core.engine import RequestEngine
 from qqmusic_api.modules._base import ApiModule
 
 from ..core.auth import credential_from_cookies
 from ..core.cache import CacheBackend
-from ..core.deps import cache_dependency, client_dependency, engine_dependency
+from ..core.deps import cache_dependency, client_dependency, engine_dependency, login_service_dependency
 from ..core.response import ApiResponse
 from .adapter_registry import get_adapter
 from .docstrings import MethodDocs, load_method_docs
@@ -122,6 +122,7 @@ def make_endpoint(route: WebRoute) -> tuple[Callable[..., Any], MethodDocs]:
             credential=kwargs.get("credential"),
             platform=platform,
             client=client,
+            login_service=kwargs.get("login_service"),
         )
         return await execute_route(context)
 
@@ -236,6 +237,12 @@ def _build_endpoint_signature(
                 inspect.Parameter.POSITIONAL_OR_KEYWORD,
                 default=engine_dependency,
                 annotation=RequestEngine,
+            ),
+            inspect.Parameter(
+                "login_service",
+                inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                default=login_service_dependency,
+                annotation=LoginService,
             ),
             inspect.Parameter(
                 "client",

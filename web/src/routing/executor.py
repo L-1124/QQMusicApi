@@ -10,7 +10,7 @@ from fastapi import HTTPException
 from fastapi.responses import Response
 from pydantic import BaseModel
 
-from qqmusic_api import Credential
+from qqmusic_api import Credential, LoginService
 from qqmusic_api.core.engine import RequestScope
 from qqmusic_api.core.exceptions import CredentialExpiredError
 
@@ -153,13 +153,13 @@ def _model_values(model: BaseModel) -> dict[str, Any]:
 async def _resolve_credential(context: RouteContext, *, strict: bool = True) -> Credential | None:
     credential = context.credential or Credential()
     logger.debug("解析凭证, 初始 musicid: %s", credential.musicid)
-    if context.client is None:
-        raise RuntimeError("凭证解析需要 Client 依赖")
+    login_service = context.login_service or LoginService(context.engine)
     resolved = await configured_credential_for_api(
         context.request,
-        context.client,
+        login_service,
         f"{context.route.module}.{context.route.method}",
         credential,
+        platform=context.platform,
     )
     if not credential_has_login(resolved):
         if strict:
@@ -178,9 +178,8 @@ async def _refresh_credential(context: RouteContext, credential: Credential) -> 
         raise CredentialExpiredError("登录凭证已失效", code=0)
     try:
         logger.info("开始刷新凭证 %s", credential.musicid)
-        if context.client is None:
-            raise RuntimeError("凭证刷新需要 Client 依赖")
-        refreshed = await refresh_and_store(context.client, store, credential)
+        login_service = context.login_service or LoginService(context.engine)
+        refreshed = await refresh_and_store(login_service, store, credential, platform=context.platform)
         logger.info("凭证 %s 刷新成功", credential.musicid)
         return refreshed
     except Exception as exc:

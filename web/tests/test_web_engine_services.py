@@ -3,16 +3,16 @@
 import pytest
 from fastapi import FastAPI, Request
 
-from qqmusic_api import Client, Credential, Platform
+from qqmusic_api import Client, Credential, LoginService, Platform
 from qqmusic_api.core.engine import RequestEngine, RequestScope
 from qqmusic_api.core.transport import PreparedRequest, RawResponse
 from qqmusic_api.modules._base import ApiModule
 from qqmusic_api.modules.song import SongApi
 from web.src.app import _cleanup_services
 from web.src.core.cache import MemoryBackend
-from web.src.core.deps import WebServices, get_engine
+from web.src.core.deps import WebServices, get_engine, get_login_service
 from web.src.routes import ROUTES
-from web.src.routing.route_types import EngineRequestExecutor
+from web.src.routing.route_types import EngineRequestExecutor, RouteContext
 from web.src.routing.router_factory import MODULE_TYPES, create_module
 
 
@@ -150,3 +150,65 @@ async def test_lifespan_startup_failure_releases_created_resources() -> None:
 
     assert transport.close_count == 1
     assert engine._close_state == "closed"
+
+
+def test_web_services_provides_login_service() -> None:
+    """测试 Web 服务对象正确提供已配置的登录服务."""
+    transport = CloseTrackingTransport()
+    engine = RequestEngine.create(transport=transport)
+    login_service = LoginService(engine)
+    services = WebServices(cache=MemoryBackend(), engine=engine, login_service=login_service)
+
+    assert services.login_service is login_service
+    assert services.require_login_service is login_service
+
+    app = FastAPI()
+    app.state.services = services
+    dummy_request = Request({"type": "http", "app": app})
+    assert get_login_service(dummy_request) is login_service
+
+
+def test_get_login_service_uninitialized_raises_runtime_error() -> None:
+    """测试未初始化登录服务时获取登录服务抛出运行时异常."""
+    services = WebServices(cache=MemoryBackend(), engine=None, login_service=None)
+    app = FastAPI()
+    app.state.services = services
+    dummy_request = Request({"type": "http", "app": app})
+
+    with pytest.raises(RuntimeError, match="LoginService 尚未初始化"):
+        get_login_service(dummy_request)
+
+    with pytest.raises(RuntimeError, match="LoginService 尚未初始化"):
+        _ = services.require_login_service
+
+
+def test_route_context_provides_login_service_or_fallback() -> None:
+    """测试 RouteContext 正确提供注入的登录服务或基于引擎回退."""
+    transport = CloseTrackingTransport()
+    engine = RequestEngine.create(transport=transport)
+    login_service = LoginService(engine)
+
+    app = FastAPI()
+    dummy_request = Request({"type": "http", "app": app})
+    route = ROUTES[0]
+
+    ctx_with_service = RouteContext(
+        request=dummy_request,
+        engine=engine,
+        cache=MemoryBackend(),
+        route=route,
+        params={},
+        login_service=login_service,
+    )
+    assert ctx_with_service.require_login_service is login_service
+
+    ctx_without_service = RouteContext(
+        request=dummy_request,
+        engine=engine,
+        cache=MemoryBackend(),
+        route=route,
+        params={},
+    )
+    fallback_service = ctx_without_service.require_login_service
+    assert isinstance(fallback_service, LoginService)
+    assert fallback_service._engine is engine

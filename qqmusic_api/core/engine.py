@@ -320,3 +320,43 @@ class RequestEngine:
                 raise ApiDataError(f"缺少以下索引结果: {missing}")
 
             return results
+
+
+class EngineRequestExecutor:
+    """绑定执行作用域的引擎执行器, 满足 RequestExecutor 协议."""
+
+    def __init__(self, engine: RequestEngine, scope: RequestScope) -> None:
+        """绑定请求引擎与执行作用域."""
+        self.engine = engine
+        self._scope = scope
+
+    @property
+    def credential(self) -> Credential:
+        """返回绑定作用域的凭证."""
+        return self._scope.credential
+
+    @property
+    def platform(self) -> Platform:
+        """返回绑定作用域的平台."""
+        return self._scope.platform
+
+    async def execute(self, request: BaseRequest[ResultT]) -> ResultT:
+        """使用请求覆盖值或绑定作用域执行请求."""
+        req_platform = getattr(request, "platform", None)
+        req_credential = getattr(request, "credential", None)
+        return await self.engine.execute(
+            request,
+            RequestScope(
+                credential=req_credential or self.credential,
+                platform=req_platform or self.platform,
+            ),
+        )
+
+
+__all__ = [
+    "EngineRequestExecutor",
+    "RequestCall",
+    "RequestEngine",
+    "RequestScope",
+    "ScopedCall",
+]
