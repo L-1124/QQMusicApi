@@ -18,13 +18,14 @@ from typing import Annotated, Any, cast, get_args, get_origin
 from fastapi import Depends, FastAPI, Path, Query, Request
 from pydantic import BaseModel
 
-from qqmusic_api import Client, Credential
+from qqmusic_api import Client, Credential, Platform
 from qqmusic_api.core.endpoint import get_endpoint_meta
+from qqmusic_api.core.engine import RequestEngine
 from qqmusic_api.modules._base import ApiModule
 
 from ..core.auth import credential_from_cookies
 from ..core.cache import CacheBackend
-from ..core.deps import cache_dependency, client_dependency
+from ..core.deps import cache_dependency, client_dependency, engine_dependency
 from ..core.response import ApiResponse
 from .adapter_registry import get_adapter
 from .docstrings import MethodDocs, load_method_docs
@@ -110,15 +111,17 @@ def make_endpoint(route: WebRoute) -> tuple[Callable[..., Any], MethodDocs]:
         params = collect_param_values(kwargs.get("query"), kwargs.get("body"), path_values=path_values)
         if route.adapter is not None and kwargs.get("body") is not None:
             params["body"] = kwargs["body"]
-        client = kwargs["client"]
+        client = kwargs.get("client")
+        platform = getattr(client, "platform", Platform.ANDROID) if client is not None else Platform.ANDROID
         context = RouteContext(
             request=kwargs["request"],
-            client=client,
+            engine=kwargs["engine"],
             cache=kwargs["cache"],
             route=route,
             params=params,
             credential=kwargs.get("credential"),
-            engine=getattr(client, "_engine", None),
+            platform=platform,
+            client=client,
         )
         return await execute_route(context)
 
@@ -228,6 +231,12 @@ def _build_endpoint_signature(
         params.append(inspect.Parameter("body", inspect.Parameter.POSITIONAL_OR_KEYWORD, annotation=body_model))
     params.extend(
         [
+            inspect.Parameter(
+                "engine",
+                inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                default=engine_dependency,
+                annotation=RequestEngine,
+            ),
             inspect.Parameter(
                 "client",
                 inspect.Parameter.POSITIONAL_OR_KEYWORD,

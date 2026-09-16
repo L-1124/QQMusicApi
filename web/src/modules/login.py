@@ -7,7 +7,7 @@ from typing import Any
 from fastapi import HTTPException
 from pydantic import BaseModel, Field, ValidationError, model_validator
 
-from qqmusic_api import Credential
+from qqmusic_api import Client, Credential
 from qqmusic_api.models.login import (
     QR,
     PhoneAuthCodeResult,
@@ -197,23 +197,32 @@ def _build_qrcode_placeholder(identifier: str, login_type: QRLoginType) -> QR:
     return QR(data=b"", qr_type=login_type, mimetype="image/png", identifier=identifier)
 
 
+def _require_client(context: RouteContext) -> Client:
+    if context.client is None:
+        raise RuntimeError("登录适配器需要 Client 依赖")
+    return context.client
+
+
 @adapter("login", "check_expired")
 async def check_expired_adapter(context: RouteContext) -> bool:
     """检查登录凭证是否过期."""
-    return await context.client.login.check_expired(context.credential)
+    client = _require_client(context)
+    return await client.login.check_expired(context.credential)
 
 
 @adapter("login", "refresh_credential")
 async def refresh_credential_adapter(context: RouteContext) -> Credential:
     """刷新登录凭证."""
-    return await context.client.login.refresh_credential(context.credential)
+    client = _require_client(context)
+    return await client.login.refresh_credential(context.credential)
 
 
 @adapter("login", "qrcode")
 async def qrcode_adapter(context: RouteContext) -> QRCodeData:
     """获取登录二维码."""
     login_type = _validate_web_qr_login_type(context.params["login_type"])
-    qrcode = await context.client.login.get_qrcode(login_type)
+    client = _require_client(context)
+    qrcode = await client.login.get_qrcode(login_type)
     return _serialize_qrcode(qrcode)
 
 
@@ -222,7 +231,8 @@ async def qrcode_status_adapter(context: RouteContext) -> QRCodeStatusData:
     """检查二维码登录状态."""
     login_type = _validate_web_qr_login_type(context.params["login_type"])
     qrcode = _build_qrcode_placeholder(context.params["identifier"], login_type)
-    result = await context.client.login.check_qrcode(qrcode)
+    client = _require_client(context)
+    result = await client.login.check_qrcode(qrcode)
     return _serialize_qrcode_status(result, qrcode)
 
 
@@ -230,7 +240,8 @@ async def qrcode_status_adapter(context: RouteContext) -> QRCodeStatusData:
 async def phone_authcode_adapter(context: RouteContext) -> PhoneAuthCodeData:
     """发送手机验证码."""
     query = _validate_model(SendAuthcodeRequest, dict(context.params))
-    result = await context.client.login.send_authcode(query.phone_value(), query.country_code)
+    client = _require_client(context)
+    result = await client.login.send_authcode(query.phone_value(), query.country_code)
     return _serialize_phone_authcode(result)
 
 
@@ -238,7 +249,8 @@ async def phone_authcode_adapter(context: RouteContext) -> PhoneAuthCodeData:
 async def phone_authorize_adapter(context: RouteContext) -> Credential:
     """使用手机验证码登录."""
     query = _validate_model(PhoneAuthorizeRequest, dict(context.params))
-    return await context.client.login.phone_authorize(query.phone_value(), query.auth_code)
+    client = _require_client(context)
+    return await client.login.phone_authorize(query.phone_value(), query.auth_code)
 
 
 def _validate_model(model_type: type[BaseModel], data: dict[str, Any]) -> Any:

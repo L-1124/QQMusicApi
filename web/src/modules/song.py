@@ -157,14 +157,20 @@ async def get_song_urls_adapter(context: RouteContext):
 @adapter("song", "get_fav_num_by_id")
 async def get_fav_num_by_id_adapter(context: RouteContext):
     """根据单个歌曲 ID 获取收藏数量."""
-    return await context.client.song.get_fav_num([context.params["id"]])
+    return await context.execute_endpoint(
+        SongApi,
+        SongApi.get_fav_num,
+        song_ids=[context.params["id"]],
+    )
 
 
 @adapter("song", "get_song_url")
 async def get_song_url_adapter(context: RouteContext):
     """根据单个歌曲 MID 获取文件链接."""
-    return await context.client.song.get_song_urls(
-        [
+    return await context.execute_endpoint(
+        SongApi,
+        SongApi.get_song_urls,
+        file_info=[
             SongFileInfo(
                 mid=context.params["mid"],
                 song_type=context.params.get("song_type"),
@@ -187,7 +193,11 @@ async def query_song_get_adapter(context: RouteContext):
         mid=None if is_id else value,
         song_type=song_type,
     )
-    return await context.client.song.query_song([query_info])
+    return await context.execute_endpoint(
+        SongApi,
+        SongApi.query_song,
+        song_info=[query_info],
+    )
 
 
 @adapter("song", "query_song_post")
@@ -195,4 +205,8 @@ async def query_song_post_adapter(context: RouteContext):
     """批量查询歌曲."""
     body = context.params["body"]
     query_info = [SongQueryInfo(id=item.id, mid=item.mid, song_type=item.song_type) for item in body.query_info]
-    return await context.client.song.query_song(query_info)
+    return await context.execute_endpoint(
+        SongApi,
+        SongApi.query_song,
+        song_info=query_info,
+    )

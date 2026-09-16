@@ -3,6 +3,8 @@
 from pydantic import BaseModel, Field
 from pydantic.json_schema import SkipJsonSchema
 
+from qqmusic_api.modules.comment import CommentApi
+
 from ..routing.adapter_registry import adapter
 from ..routing.route_types import RouteContext
 
@@ -18,7 +20,9 @@ class AddCommentBody(BaseModel):
 async def add_comment_adapter(context: RouteContext):
     """添加评论适配器."""
     body: AddCommentBody = context.params["body"]
-    return await context.client.comment.add_comment(
+    return await context.execute_endpoint(
+        CommentApi,
+        CommentApi.add_comment,
         biz_id=context.params["biz_id"],
         content=body.content,
         reply_cmt_id=body.reply_cmt_id,
