@@ -1,26 +1,21 @@
 """模块端点元数据与声明装饰器."""
 
-from __future__ import annotations
-
 import inspect
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Generic, Literal, ParamSpec, TypeVar, cast
+from typing import Any, Generic, Literal, ParamSpec, TypeVar, cast
 
+from pydantic import BaseModel
+
+from ..models.request import Credential
+from .pagination import PagerStrategy
 from .request import CgiRequest, HttpRequest
-
-if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable
-
-    from pydantic import BaseModel
-
-    from ..models.request import Credential
-    from .pagination import PagerStrategy
-    from .response import RawPayload
-    from .versioning import Platform
+from .response import RawPayload
+from .versioning import Platform
 
 ResultT = TypeVar("ResultT")
-CgiResultT = TypeVar("CgiResultT", bound="BaseModel | dict[str, Any]")
-HttpResultT = TypeVar("HttpResultT", bound="RawPayload | BaseModel | dict[str, Any]")
+CgiResultT = TypeVar("CgiResultT", bound=BaseModel | dict[str, Any])
+HttpResultT = TypeVar("HttpResultT", bound=RawPayload | BaseModel | dict[str, Any])
 P = ParamSpec("P")
 
 
