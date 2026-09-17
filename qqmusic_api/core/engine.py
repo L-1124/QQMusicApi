@@ -220,7 +220,7 @@ class RequestEngine:
                 return
             current_task_id = anyio.get_current_task().id
             if any(operation.owner_task_id == current_task_id for operation in self._operations):
-                raise RuntimeError("不能在在途操作内关闭客户端或引擎")
+                raise RuntimeError("不能在途操作中关闭客户端或引擎")
             self._close_state = "closing"
 
             operations = tuple(self._operations)
@@ -285,10 +285,11 @@ class RequestEngine:
         """并发执行多个已绑定身份的请求并按原始顺序恢复结果."""
         if batch_size <= 0:
             raise ValueError("batch_size 必须大于 0")
-        if not calls:
-            return []
 
         async with self._operation():
+            if not calls:
+                return []
+
             cgi_calls: list[ScopedCall] = []
             http_calls: list[ScopedCall] = []
             for index, item in enumerate(calls):

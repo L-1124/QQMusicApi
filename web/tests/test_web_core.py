@@ -4,8 +4,21 @@ import asyncio
 
 import pytest
 
+from web.src.core.auth import _credential_refresh_lock, _credential_refresh_locks
 from web.src.core.cache import MemoryBackend
 from web.src.core.security import AccessPolicy, InMemoryConcurrencyLimiter, InMemoryRateLimiter
+
+# ── Credential refresh lock ──
+
+
+@pytest.mark.asyncio
+async def test_credential_refresh_lock_does_not_retain_unused_accounts() -> None:
+    """测试凭证刷新锁在无人使用后移除账号条目."""
+    musicid = 123456
+    async with _credential_refresh_lock(musicid):
+        assert musicid in _credential_refresh_locks
+    assert musicid not in _credential_refresh_locks
+
 
 # ── MemoryBackend ──
 

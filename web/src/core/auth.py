@@ -4,6 +4,7 @@ import asyncio
 import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from weakref import WeakValueDictionary
 
 from anyio.to_thread import run_sync
 from fastapi import HTTPException, Request
@@ -18,13 +19,16 @@ from .deps import get_credential_config, get_credential_store
 logger = logging.getLogger(__name__)
 
 
-_credential_refresh_locks: dict[int, asyncio.Lock] = {}
+_credential_refresh_locks: WeakValueDictionary[int, asyncio.Lock] = WeakValueDictionary()
 
 
 @asynccontextmanager
 async def _credential_refresh_lock(musicid: int) -> AsyncGenerator[None, None]:
     """串行化同一账号的凭证刷新操作."""
-    lock = _credential_refresh_locks.setdefault(musicid, asyncio.Lock())
+    lock = _credential_refresh_locks.get(musicid)
+    if lock is None:
+        lock = asyncio.Lock()
+        _credential_refresh_locks[musicid] = lock
     async with lock:
         yield
 

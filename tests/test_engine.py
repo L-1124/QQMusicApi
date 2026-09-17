@@ -201,6 +201,14 @@ async def test_gather_empty_returns_empty_list():
     assert await engine.gather([]) == []
 
 
+async def test_gather_empty_after_close_raises():
+    """测试 Engine 关闭后执行空请求列表仍抛出 RuntimeError."""
+    engine, _, _ = _engine()
+    await engine.close()
+    with pytest.raises(RuntimeError, match="已关闭"):
+        await engine.gather([])
+
+
 async def test_gather_invalid_batch_size_raises():
     """测试 batch_size 小于等于 0 时抛出 ValueError."""
     engine, _, _ = _engine()
