@@ -181,7 +181,7 @@ async def test_close_from_active_stream_is_rejected_without_closing_transport(st
     transport.stream_leases.append(lease)
 
     async with stub_client.stream(_http_request(stub_client)):
-        with anyio.fail_after(1), pytest.raises(RuntimeError, match="在途操作内"):
+        with anyio.fail_after(1), pytest.raises(RuntimeError, match="在途操作"):
             await stub_client.close()
         assert transport.close_calls == 0
 
