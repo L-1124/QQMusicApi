@@ -9,7 +9,7 @@ from typing_extensions import Self
 
 from ..models.request import Credential
 from .engine import RequestCall, RequestEngine, RequestScope
-from .request import BaseRequest, ResultT
+from .request import BaseRequest, HttpRequest, ResultT
 from .transport import DEFAULT_MAX_CONCURRENCY, RawStream, Transport
 from .versioning import Platform, VersionPolicy
 
@@ -28,7 +28,6 @@ if TYPE_CHECKING:
     from ..modules.songlist import SonglistApi
     from ..modules.top import TopApi
     from ..modules.user import UserApi
-    from .request import HttpRequest
 
 
 class Client:
@@ -224,7 +223,7 @@ class Client:
         return await self._engine.execute(request, scope)
 
     @asynccontextmanager
-    async def stream(self, request: "HttpRequest[Any]") -> AsyncGenerator[RawStream, None]:
+    async def stream(self, request: HttpRequest[Any]) -> AsyncGenerator[RawStream, None]:
         """打开流式响应租约.
 
         进入上下文时按需打开响应流, 退出上下文时保证释放底层网络租约.
