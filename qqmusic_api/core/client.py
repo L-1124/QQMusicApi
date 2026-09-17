@@ -42,7 +42,6 @@ class Client:
         device_path: str | None = None,
         max_concurrency: int | None = None,
         transport: Transport | None = None,
-        engine: RequestEngine | None = None,
     ):
         """初始化客户端实例.
 
@@ -55,7 +54,6 @@ class Client:
             transport: 外部注入的传输实现 (满足 Transport 协议); 注入后
                 该实例生命周期归 Client 所有, close 时一并关闭. 缺省时
                 构建内置 NiquestsTransport.
-            engine: 外部注入的请求调度引擎实例. 注入后直接复用该引擎与底层传输.
 
         Raises:
             ValueError: max_concurrency 非正整数.
@@ -65,15 +63,12 @@ class Client:
 
         self._credential = credential or Credential()
         self._platform = platform or Platform.ANDROID
-        if engine is not None:
-            self._engine = engine
-        else:
-            max_concurrency_val = max_concurrency or DEFAULT_MAX_CONCURRENCY
-            self._engine = RequestEngine.create(
-                device_path=device_path,
-                max_concurrency=max_concurrency_val,
-                transport=transport,
-            )
+        max_concurrency_val = max_concurrency or DEFAULT_MAX_CONCURRENCY
+        self._engine = RequestEngine.create(
+            device_path=device_path,
+            max_concurrency=max_concurrency_val,
+            transport=transport,
+        )
 
     def _resolve_scope(self, request: BaseRequest[Any]) -> RequestScope:
         """解析单次请求使用的凭证与平台身份."""

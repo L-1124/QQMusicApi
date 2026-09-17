@@ -77,8 +77,8 @@ def make_stub_engine(
     )
 
 
-def test_version_policy_propagates_to_engine_bound_and_client_bound_modules() -> None:
-    """测试自定义版本策略统一传递到引擎执行器与客户端模块."""
+def test_version_policy_propagates_to_engine_bound_module() -> None:
+    """测试自定义版本策略统一传递到引擎执行器与绑定模块."""
     default_engine = make_stub_engine(DynamicCgiTransport(None))
     assert default_engine.version_policy is DEFAULT_VERSION_POLICY
 
@@ -91,13 +91,10 @@ def test_version_policy_propagates_to_engine_bound_and_client_bound_modules() ->
     engine = make_stub_engine(transport, custom_policy)
     executor = EngineRequestExecutor(engine, RequestScope())
     engine_module = LoginApi(executor)
-    client = Client(engine=engine)
 
     assert engine.version_policy is custom_policy
     assert executor.version_policy is custom_policy
-    assert client.version_policy is custom_policy
     assert engine_module._build_version_params() == {"ct": 101, "cv": 202}
-    assert client.login._build_version_params() == {"ct": 101, "cv": 202}
 
 
 def make_login_api(
@@ -237,15 +234,13 @@ async def test_client_login_api_updates_client_state() -> None:
         )
 
     transport = DynamicCgiTransport(handle_request)
-    engine = make_stub_engine(transport)
     initial_cred = Credential(musicid=99999, musickey="old_musickey")
-    client = Client(credential=initial_cred, engine=engine)
+    async with Client(credential=initial_cred, platform=Platform.WEB, transport=transport) as client:
+        assert isinstance(client.login, LoginApi)
+        refreshed = await client.login.refresh_credential()
+        assert refreshed.musickey == "refreshed_musickey"
+        assert client.credential.musickey == "refreshed_musickey"
 
-    assert isinstance(client.login, LoginApi)
-    refreshed = await client.login.refresh_credential()
-    assert refreshed.musickey == "refreshed_musickey"
-    assert client.credential.musickey == "refreshed_musickey"
-
-    await client.login.logout()
-    assert client.credential.musicid == 0
-    assert client.credential.musickey == ""
+        await client.login.logout()
+        assert client.credential.musicid == 0
+        assert client.credential.musickey == ""
