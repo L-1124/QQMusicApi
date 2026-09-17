@@ -67,7 +67,6 @@ class Client:
         self._platform = platform or Platform.ANDROID
         if engine is not None:
             self._engine = engine
-            self._transport: Transport = engine.transport
         else:
             max_concurrency_val = max_concurrency or DEFAULT_MAX_CONCURRENCY
             self._engine = RequestEngine.create(
@@ -75,7 +74,6 @@ class Client:
                 max_concurrency=max_concurrency_val,
                 transport=transport,
             )
-            self._transport = self._engine.transport
 
     def _resolve_scope(self, request: BaseRequest[Any]) -> RequestScope:
         """解析单次请求使用的凭证与平台身份."""

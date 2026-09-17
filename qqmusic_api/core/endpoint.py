@@ -84,17 +84,6 @@ class HttpRequestData:
     options: dict[str, Any] = field(default_factory=dict)
 
 
-_ENDPOINT_SOURCES: dict[str, tuple[str, str]] = {}
-
-
-def _register_meta(meta: EndpointMeta[Any], func: Callable[..., Any]) -> None:
-    source = (func.__module__, func.__qualname__)
-    registered_source = _ENDPOINT_SOURCES.get(meta.key)
-    if registered_source is not None and registered_source != source:
-        raise ValueError(f"端点 key '{meta.key}' 重复注册")
-    _ENDPOINT_SOURCES[meta.key] = source
-
-
 def _preserve_endpoint_signature(
     wrapper: Callable[..., Any],
     func: Callable[..., Any],
@@ -127,8 +116,6 @@ def cgi_endpoint(
     )
 
     def decorator(func: Callable[P, CgiRequestData]) -> Callable[P, CgiRequest[CgiResultT]]:
-        _register_meta(meta, func)
-
         def wrapped(*args: P.args, **kwargs: P.kwargs) -> CgiRequest[CgiResultT]:
             if not args:
                 raise TypeError("CGI endpoint 必须作为 ApiModule 实例方法调用")
@@ -179,8 +166,6 @@ def http_endpoint(
     )
 
     def decorator(func: Callable[P, HttpRequestData]) -> Callable[P, HttpRequest[HttpResultT]]:
-        _register_meta(meta, func)
-
         def wrapped(*args: P.args, **kwargs: P.kwargs) -> HttpRequest[HttpResultT]:
             if not args:
                 raise TypeError("HTTP endpoint 必须作为 ApiModule 实例方法调用")

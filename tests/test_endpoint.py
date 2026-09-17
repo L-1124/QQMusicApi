@@ -1,12 +1,10 @@
 """端点元数据与请求描述符生成测试."""
 
-import importlib
 import inspect
 
 import pytest
 from pydantic import BaseModel
 
-import qqmusic_api.modules.search as search_module
 from qqmusic_api.core.endpoint import (
     CgiEndpointMeta,
     CgiRequestData,
@@ -62,38 +60,6 @@ def _module_client(credential: Credential | None = None):
             raise AssertionError(f"不应执行请求: {request}")
 
     return StubClient()
-
-
-def test_endpoint_meta_registration():
-    """验证端点元数据注册及重复 key 校验."""
-
-    @cgi_endpoint(
-        key="test.unique_cgi_1",
-        module="mod",
-        method="met",
-        response_model=DummyModel,
-    )
-    def first_endpoint(self) -> CgiRequestData:
-        return CgiRequestData(param={})
-
-    # 重复注册相同 key 应当抛出 ValueError
-    with pytest.raises(ValueError, match="重复注册"):
-
-        @cgi_endpoint(
-            key="test.unique_cgi_1",
-            module="mod2",
-            method="met2",
-            response_model=DummyModel,
-        )
-        def duplicate_endpoint(self) -> CgiRequestData:
-            return CgiRequestData(param={})
-
-
-def test_endpoint_registration_allows_module_reload() -> None:
-    """验证同一来源的 endpoint 在模块重载时可以重新注册."""
-    reloaded = importlib.reload(search_module)
-
-    assert get_endpoint_meta(reloaded.SearchApi.quick_search).key == "search.quick_search"
 
 
 def test_endpoint_decorator_preserves_signature_and_metadata():

@@ -239,6 +239,6 @@ async def test_stream_rejects_non_streaming_transport():
 
 def cast_transport(client: Client) -> StubTransport:
     """以桩类型取回客户端注入的传输实例."""
-    transport = client._transport
+    transport = client._engine.transport
     assert isinstance(transport, StubTransport)
     return transport
