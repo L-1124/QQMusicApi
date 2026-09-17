@@ -23,7 +23,7 @@ from typing_extensions import Self
 from ..models.request import Credential
 from .pagination import ItemPaginatedMixin, ItemT_co, PaginatedMixin
 from .response import AllowErrorCodes, RawPayload, ResponseModel
-from .versioning import Platform
+from .versioning import Platform, VersionPolicy
 
 ResultT = TypeVar("ResultT")
 CgiRequestResultT = TypeVar("CgiRequestResultT", bound=BaseModel | dict[str, Any])
@@ -54,6 +54,11 @@ class RequestExecutor(Protocol):
     @property
     def platform(self) -> Platform:
         """返回默认平台."""
+        ...
+
+    @property
+    def version_policy(self) -> VersionPolicy:
+        """返回请求使用的版本策略."""
         ...
 
     async def execute(self, request: "BaseRequest[ResultT]") -> ResultT:

@@ -25,7 +25,7 @@ from ..core.request import (
     ResponseModel,
 )
 from ..core.response import RawPayload
-from ..core.versioning import DEFAULT_VERSION_POLICY, Platform
+from ..core.versioning import Platform
 from ..models.request import Credential
 
 
@@ -41,8 +41,7 @@ class ApiModule:
 
     def _build_version_params(self, platform: Platform | None = None) -> dict[str, int]:
         """构建查询接口使用的版本参数."""
-        policy = self._client._version_policy if self._client is not None else DEFAULT_VERSION_POLICY
-        profile = policy.get_profile(platform or self._binder.platform)
+        profile = self._binder.version_policy.get_profile(platform or self._binder.platform)
         return {"ct": profile.ct, "cv": profile.cv}
 
     @overload

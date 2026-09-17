@@ -119,11 +119,13 @@ class RequestEngine:
         cgi_executor: CgiExecuting,
         http_executor: HttpExecuting,
         transport: Transport,
+        version_policy: VersionPolicy = DEFAULT_VERSION_POLICY,
     ) -> None:
         """初始化请求引擎."""
         self._cgi = cgi_executor
         self._http = http_executor
         self._transport = transport
+        self._version_policy = version_policy
         self._close_state: Literal["open", "closing", "closed"] = "open"
         self._close_lock = anyio.Lock()
         self._operations: set[_Operation] = set()
@@ -132,6 +134,11 @@ class RequestEngine:
     def transport(self) -> Transport:
         """底层的 Transport 实例."""
         return self._transport
+
+    @property
+    def version_policy(self) -> VersionPolicy:
+        """请求使用的版本策略."""
+        return self._version_policy
 
     @classmethod
     def create(
@@ -183,6 +190,7 @@ class RequestEngine:
             cgi_executor=cgi_executor,
             http_executor=http_executor,
             transport=real_transport,
+            version_policy=version_policy,
         )
 
     @asynccontextmanager
@@ -339,6 +347,11 @@ class EngineRequestExecutor:
     def platform(self) -> Platform:
         """返回绑定作用域的平台."""
         return self._scope.platform
+
+    @property
+    def version_policy(self) -> VersionPolicy:
+        """返回所属引擎的版本策略."""
+        return self.engine.version_policy
 
     async def execute(self, request: BaseRequest[ResultT]) -> ResultT:
         """使用请求覆盖值或绑定作用域执行请求."""

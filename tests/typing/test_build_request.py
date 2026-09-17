@@ -14,7 +14,7 @@ from qqmusic_api.core.request import (
     PaginatedCgiRequest,
 )
 from qqmusic_api.core.response import RawPayload
-from qqmusic_api.core.versioning import Platform
+from qqmusic_api.core.versioning import DEFAULT_VERSION_POLICY, Platform
 from qqmusic_api.models.request import Credential
 from qqmusic_api.modules._base import ApiModule
 
@@ -108,6 +108,7 @@ def _dummy_module() -> DummyApi:
     class StubClient:
         credential: Credential = Credential()
         platform: Platform = Platform.ANDROID
+        version_policy = DEFAULT_VERSION_POLICY
 
         async def execute(self, request: Any) -> Any:
             raise NotImplementedError

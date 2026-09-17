@@ -41,7 +41,7 @@ from ..utils.device import Device
 class VersionPolicy:
     """请求版本策略.
 
-    版本策略在 Client 生命周期内固定; 公参按次生成, 不持有
+    版本策略在 RequestEngine 生命周期内固定; 公参按次生成, 不持有
     全局可变缓存.
     """
 

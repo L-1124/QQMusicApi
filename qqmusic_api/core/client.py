@@ -11,7 +11,7 @@ from ..models.request import Credential
 from .engine import RequestCall, RequestEngine, RequestScope
 from .request import BaseRequest, ResultT
 from .transport import DEFAULT_MAX_CONCURRENCY, RawStream, Transport
-from .versioning import DEFAULT_VERSION_POLICY, Platform
+from .versioning import Platform, VersionPolicy
 
 if TYPE_CHECKING:
     from ..modules.album import AlbumApi
@@ -65,7 +65,6 @@ class Client:
 
         self._credential = credential or Credential()
         self._platform = platform or Platform.ANDROID
-        self._version_policy = DEFAULT_VERSION_POLICY
         if engine is not None:
             self._engine = engine
             self._transport: Transport = engine.transport
@@ -75,7 +74,6 @@ class Client:
                 device_path=device_path,
                 max_concurrency=max_concurrency_val,
                 transport=transport,
-                version_policy=self._version_policy,
             )
             self._transport = self._engine.transport
 
@@ -103,6 +101,11 @@ class Client:
     @platform.setter
     def platform(self, value: Platform):
         self._platform = value
+
+    @property
+    def version_policy(self) -> VersionPolicy:
+        """获取请求引擎使用的版本策略."""
+        return self._engine.version_policy
 
     @cached_property
     def helper(self) -> "HelperApi":

@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+from dataclasses import replace
 from typing import Any, cast
 
 import pytest
@@ -10,7 +11,7 @@ from qqmusic_api import Client, Credential, CredentialRefreshError, Platform
 from qqmusic_api.core.engine import EngineRequestExecutor, RequestEngine, RequestScope
 from qqmusic_api.core.executor import CgiExecutor, HttpExecutor
 from qqmusic_api.core.transport import PreparedRequest
-from qqmusic_api.core.versioning import DEFAULT_VERSION_POLICY
+from qqmusic_api.core.versioning import DEFAULT_VERSION_POLICY, VersionPolicy
 from qqmusic_api.modules.login import LoginApi
 from qqmusic_api.utils.device import DeviceManager
 from tests.kernel_contract import StubResponse, make_cgi_envelope, make_cgi_sub
@@ -51,21 +52,52 @@ class DynamicCgiTransport:
         """关闭传输桩."""
 
 
-def make_stub_engine(transport: Any) -> RequestEngine:
+def make_stub_engine(
+    transport: Any,
+    version_policy: VersionPolicy = DEFAULT_VERSION_POLICY,
+) -> RequestEngine:
     """构造注入了桩 QIMEI 与 AndroidSession 的 RequestEngine."""
     cgi = CgiExecutor(
         android_session=cast("Any", StubAndroidSessionManager()),
         device_store=DeviceManager(None),
         qimei_manager=cast("Any", StubQimeiManager()),
-        version_policy=DEFAULT_VERSION_POLICY,
+        version_policy=version_policy,
         transport=transport,
     )
     http = HttpExecutor(
         transport=transport,
-        version_policy=DEFAULT_VERSION_POLICY,
+        version_policy=version_policy,
         device_store=DeviceManager(None),
     )
-    return RequestEngine(cgi_executor=cgi, http_executor=http, transport=transport)
+    return RequestEngine(
+        cgi_executor=cgi,
+        http_executor=http,
+        transport=transport,
+        version_policy=version_policy,
+    )
+
+
+def test_version_policy_propagates_to_engine_bound_and_client_bound_modules() -> None:
+    """测试自定义版本策略统一传递到引擎执行器与客户端模块."""
+    default_engine = make_stub_engine(DynamicCgiTransport(None))
+    assert default_engine.version_policy is DEFAULT_VERSION_POLICY
+
+    custom_policy = VersionPolicy(
+        android=replace(DEFAULT_VERSION_POLICY.android, ct=101, cv=202),
+        desktop=DEFAULT_VERSION_POLICY.desktop,
+        web=DEFAULT_VERSION_POLICY.web,
+    )
+    transport = DynamicCgiTransport(None)
+    engine = make_stub_engine(transport, custom_policy)
+    executor = EngineRequestExecutor(engine, RequestScope())
+    engine_module = LoginApi(executor)
+    client = Client(engine=engine)
+
+    assert engine.version_policy is custom_policy
+    assert executor.version_policy is custom_policy
+    assert client.version_policy is custom_policy
+    assert engine_module._build_version_params() == {"ct": 101, "cv": 202}
+    assert client.login._build_version_params() == {"ct": 101, "cv": 202}
 
 
 def make_login_api(

@@ -1,10 +1,12 @@
 """端点元数据与请求描述符生成测试."""
 
+import importlib
 import inspect
 
 import pytest
 from pydantic import BaseModel
 
+import qqmusic_api.modules.search as search_module
 from qqmusic_api.core.endpoint import (
     CgiEndpointMeta,
     CgiRequestData,
@@ -15,7 +17,7 @@ from qqmusic_api.core.endpoint import (
     http_endpoint,
 )
 from qqmusic_api.core.request import CgiRequest, HttpRequest
-from qqmusic_api.core.versioning import Platform
+from qqmusic_api.core.versioning import DEFAULT_VERSION_POLICY, Platform
 from qqmusic_api.models.request import Credential
 from qqmusic_api.models.search import QuickSearchResponse, SearchByTypeResponse
 from qqmusic_api.models.song import (
@@ -53,6 +55,7 @@ def _module_client(credential: Credential | None = None):
             """初始化默认请求上下文."""
             self.credential = credential or Credential()
             self.platform = Platform.ANDROID
+            self.version_policy = DEFAULT_VERSION_POLICY
 
         async def execute(self, request):
             """拒绝测试意外执行网络请求."""
@@ -84,6 +87,13 @@ def test_endpoint_meta_registration():
         )
         def duplicate_endpoint(self) -> CgiRequestData:
             return CgiRequestData(param={})
+
+
+def test_endpoint_registration_allows_module_reload() -> None:
+    """验证同一来源的 endpoint 在模块重载时可以重新注册."""
+    reloaded = importlib.reload(search_module)
+
+    assert get_endpoint_meta(reloaded.SearchApi.quick_search).key == "search.quick_search"
 
 
 def test_endpoint_decorator_preserves_signature_and_metadata():
