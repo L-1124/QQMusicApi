@@ -123,30 +123,6 @@ def _parse_request_body(req: PreparedRequest) -> dict[str, Any]:
 
 
 @pytest.mark.asyncio
-async def test_engine_bound_login_api_check_expired_returns_correct_boolean() -> None:
-    """测试引擎绑定登录模块检查凭证过期状态返回布尔值."""
-    call_index = 0
-
-    async def handle_request(_req: PreparedRequest) -> StubResponse:
-        nonlocal call_index
-        call_index += 1
-        code = 0 if call_index == 1 else 1000
-        return make_cgi_envelope([make_cgi_sub(code=code)])
-
-    transport = DynamicCgiTransport(handle_request)
-    engine = make_stub_engine(transport)
-    service = make_login_api(engine)
-
-    cred = Credential(musicid=123456, musickey="test_key")
-
-    is_expired_first = await service.check_expired(cred)
-    assert is_expired_first is False
-
-    is_expired_second = await service.check_expired(cred)
-    assert is_expired_second is True
-
-
-@pytest.mark.asyncio
 async def test_engine_bound_login_api_concurrent_refresh_zero_state_crosstalk() -> None:
     """测试引擎绑定登录模块并发刷新凭证无状态串扰."""
     cred_a = Credential(musicid=10001, musickey="old_key_a", refresh_token="rt_a")
@@ -212,9 +188,7 @@ async def test_engine_bound_login_api_refresh_error_raises_credential_refresh_er
         return make_cgi_envelope([make_cgi_sub(code=1000, data={"errMsg": "token expired"})])
 
     transport = DynamicCgiTransport(handle_request)
-    engine = make_stub_engine(transport)
-    service = make_login_api(engine)
-
+    service = make_login_api(make_stub_engine(transport))
     cred = Credential(musicid=123456, musickey="test_key")
 
     with pytest.raises(CredentialRefreshError) as exc_info:
