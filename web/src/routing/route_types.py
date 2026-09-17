@@ -182,7 +182,11 @@ class RouteContext:
         *args: Any,
         **kwargs: Any,
     ) -> Any:
-        """在当前请求作用域内通过 RequestEngine 执行模块方法."""
+        """在当前请求作用域内通过 RequestEngine 执行模块方法.
+
+        Raises:
+            TypeError: 目标方法未返回可执行的请求描述符.
+        """
         scope = RequestScope(
             credential=self.credential or Credential(),
             platform=self.platform,
@@ -194,9 +198,11 @@ class RouteContext:
             result = bound_method(*args, **kwargs)
         else:
             result = method(instance, *args, **kwargs)
-        if inspect.isawaitable(result):
-            return await result
-        return result
+        if not inspect.isawaitable(result):
+            owner = module if isinstance(module, str) else module.__name__
+            name = method if isinstance(method, str) else getattr(method, "__name__", repr(method))
+            raise TypeError(f"路由目标 {owner}.{name} 未返回请求描述符, 实际为 {type(result).__name__}")
+        return await result
 
 
 PUBLIC_60 = CachePolicy(ttl=60)

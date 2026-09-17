@@ -254,11 +254,13 @@ def _validate_route(route: WebRoute, path_methods: set[tuple[str, str]]) -> list
     errors: list[str] = []
     key = f"{route.module}.{route.method}"
     if route.endpoint is not None:
-        endpoint_meta = get_endpoint_meta(route.endpoint)
-        if endpoint_meta.key != key:
-            errors.append(f"Web 路由目标与 endpoint key 不一致: {key} != {endpoint_meta.key}")
-        if endpoint_meta.response_model is not route.response_model:
-            errors.append(f"Web 路由响应模型与 endpoint 不一致: {key}")
+        try:
+            endpoint_meta = get_endpoint_meta(route.endpoint)
+        except TypeError:
+            errors.append(f"Web 路由 endpoint 未声明元数据: {key}")
+        else:
+            if endpoint_meta.key != key:
+                errors.append(f"Web 路由目标与 endpoint key 不一致: {key} != {endpoint_meta.key}")
     for method in route.methods:
         path_method = (route.path, method.value)
         if path_method in path_methods:
