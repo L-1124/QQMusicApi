@@ -1,6 +1,6 @@
 """API 模块基类."""
 
-from typing import TYPE_CHECKING, Any, Literal, cast, overload
+from typing import TYPE_CHECKING, Any, Literal, overload
 
 from niquests.typing import (
     AsyncBodyType,
@@ -34,8 +34,10 @@ class ApiModule:
 
     def __init__(self, client: "Client | RequestExecutor") -> None:
         """绑定请求执行器."""
-        self._binder = cast("RequestExecutor", client)
-        self._client = cast("Client", client if hasattr(client, "_version_policy") else None)
+        from ..core.client import Client
+
+        self._binder = client
+        self._client = client if isinstance(client, Client) else None
 
     def _build_version_params(self, platform: Platform | None = None) -> dict[str, int]:
         """构建查询接口使用的版本参数."""

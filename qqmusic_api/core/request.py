@@ -68,7 +68,7 @@ class BaseRequest(Generic[ResultT]):
     该基类封装了由客户端执行请求时所需的元数据与行为契约.
 
     Attributes:
-        _client: 请求执行的客户端实例, 用于调度请求.
+        _client: 请求绑定的执行器, 用于调度请求.
         response_model: 期望的响应模型类型, 支持 Pydantic BaseModel.
     """
 
@@ -76,7 +76,7 @@ class BaseRequest(Generic[ResultT]):
     response_model: type[BaseModel] | None = None
 
     def __await__(self) -> Generator[Any, Any, ResultT]:
-        """将自身作为载体, 委派给 Client 进行多态调度执行."""
+        """将自身委派给绑定的请求执行器."""
         return self._client.execute(self).__await__()
 
 

@@ -18,30 +18,11 @@ from ..core.cache import cached_response, make_cache_key
 from ..core.credential_store import CredentialStore, credential_has_login
 from ..core.deps import get_credential_store
 from ..core.response import ApiResponse, success_response
-from .modules import MODULE_TYPES
 from .route_types import AuthPolicy, RouteContext
 
 logger = logging.getLogger(__name__)
 
 _VALIDATION_ERROR_TYPES = (KeyError, TypeError, ValueError)
-_CREDENTIAL_REQUIRED_CACHE: dict[tuple[str, str], bool] = {}
-
-
-def _requires_credential(module_name: str, method_name: str) -> bool:
-    """检查模块方法签名是否包含 credential 参数 (不依赖 Client 实例)."""
-    key = (module_name, method_name)
-    if key not in _CREDENTIAL_REQUIRED_CACHE:
-        module_cls = MODULE_TYPES.get(module_name)
-        if module_cls is None:
-            _CREDENTIAL_REQUIRED_CACHE[key] = False
-        else:
-            method = getattr(module_cls, method_name, None)
-            if method is None:
-                _CREDENTIAL_REQUIRED_CACHE[key] = False
-            else:
-                sig = inspect.signature(method)
-                _CREDENTIAL_REQUIRED_CACHE[key] = "credential" in sig.parameters
-    return _CREDENTIAL_REQUIRED_CACHE[key]
 
 
 @runtime_checkable
@@ -110,8 +91,6 @@ async def _invoke_route(context: RouteContext, params: dict[str, Any], resolved_
     if context.route.adapter is not None:
         result = context.route.adapter(scoped_context)
     else:
-        if resolved_credential is not None and _requires_credential(context.route.module, context.route.method):
-            params["credential"] = resolved_credential
         endpoint = context.route.endpoint or context.route.method
         return await scoped_context.execute_module(context.route.module, endpoint, **params)
     if inspect.isawaitable(result):

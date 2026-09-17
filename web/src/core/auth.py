@@ -2,7 +2,6 @@
 
 import asyncio
 import logging
-import weakref
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
@@ -19,35 +18,16 @@ from .deps import get_credential_config, get_credential_store
 logger = logging.getLogger(__name__)
 
 
-class KeyedLock:
-    """带有自动回收功能的每个 Key 独立的 asyncio 锁."""
-
-    def __init__(self) -> None:
-        """初始化锁的存储与保护器."""
-        self._locks: dict[int, asyncio.Lock] = {}
-        self._guard = asyncio.Lock()
-        self._finalizers: dict[int, object] = {}
-
-    @asynccontextmanager
-    async def __call__(self, key: int) -> AsyncGenerator[asyncio.Lock, None]:
-        """获取指定 key 的独立锁, 支持上下文管理."""
-        async with self._guard:
-            if key not in self._locks:
-                lock = asyncio.Lock()
-                self._locks[key] = lock
-
-                def cleanup(_: weakref.ReferenceType, k: int = key) -> None:
-                    self._locks.pop(k, None)
-                    self._finalizers.pop(k, None)
-
-                ref = weakref.ref(lock, cleanup)
-                self._finalizers[key] = ref
-        lock = self._locks[key]
-        async with lock:
-            yield lock
+_credential_refresh_locks: dict[int, asyncio.Lock] = {}
 
 
-_credential_refresh_locks = KeyedLock()
+@asynccontextmanager
+async def _credential_refresh_lock(musicid: int) -> AsyncGenerator[None, None]:
+    """串行化同一账号的凭证刷新操作."""
+    lock = _credential_refresh_locks.setdefault(musicid, asyncio.Lock())
+    async with lock:
+        yield
+
 
 _STARTUP_CONCURRENCY = 5
 
@@ -126,7 +106,7 @@ async def _refresh_configured_credential(
     platform: Platform = Platform.ANDROID,
 ) -> Credential | None:
     """刷新过期默认 Credential 并避免同账号并发刷新."""
-    async with _credential_refresh_locks(candidate.musicid):
+    async with _credential_refresh_lock(candidate.musicid):
         latest = await run_sync(store.get, candidate.musicid)
         current = latest or candidate
         if not credential_needs_refresh(current):

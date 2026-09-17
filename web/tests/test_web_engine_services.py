@@ -295,6 +295,26 @@ async def test_adapter_route_executes_module_through_engine() -> None:
 
 
 @pytest.mark.asyncio
+async def test_authenticated_route_resolves_credential_from_bound_scope() -> None:
+    """测试普通认证路由从绑定的请求作用域解析凭证."""
+    engine = RecordingEngine()
+    credential = Credential(musicid=12345, musickey="key")
+    context = _route_context(
+        _resolved_route("/user/{euin}/homepage"),
+        engine,
+        params={"euin": "12345"},
+        credential=credential,
+    )
+
+    await execute_route(context)
+
+    request, scope = engine.calls[0]
+    assert isinstance(request, CgiRequest)
+    assert request.credential is credential
+    assert scope.credential is credential
+
+
+@pytest.mark.asyncio
 async def test_cached_route_skips_engine_after_first_result() -> None:
     """测试缓存命中后不再执行请求引擎."""
     engine = RecordingEngine()

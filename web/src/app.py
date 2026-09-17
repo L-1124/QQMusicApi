@@ -18,12 +18,16 @@ from starlette.responses import Response
 import qqmusic_api
 from qqmusic_api.core.engine import RequestEngine
 from qqmusic_api.core.exceptions import (
+    ApiDataError,
     BaseApiException,
     CredentialExpiredError,
     CredentialInvalidError,
     CredentialRefreshError,
+    HTTPError,
     LoginError,
+    NetworkError,
     RatelimitedError,
+    TimeoutNetworkError,
 )
 
 from . import modules  # noqa: F401
@@ -43,8 +47,11 @@ logger = logging.getLogger(__name__)
 _ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
     400: {"model": ErrorResponse},
     401: {"model": ErrorResponse},
-    429: {"model": ErrorResponse},
     422: {"model": ErrorResponse},
+    429: {"model": ErrorResponse},
+    502: {"model": ErrorResponse},
+    503: {"model": ErrorResponse},
+    504: {"model": ErrorResponse},
 }
 
 
@@ -75,6 +82,12 @@ def _base_api_exception_status_code(exc: BaseApiException) -> int:
         return 401
     if isinstance(exc, LoginError):
         return 400
+    if isinstance(exc, TimeoutNetworkError):
+        return 504
+    if isinstance(exc, NetworkError):
+        return 503
+    if isinstance(exc, (HTTPError, ApiDataError)):
+        return 502
     return 400
 
 

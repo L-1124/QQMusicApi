@@ -5,13 +5,16 @@ from fastapi import FastAPI
 from fastapi.routing import APIRoute
 
 from qqmusic_api.core.exceptions import (
+    ApiDataError,
     BaseApiException,
     CredentialExpiredError,
     CredentialInvalidError,
     CredentialRefreshError,
+    HTTPError,
     LoginError,
     NetworkError,
     RatelimitedError,
+    TimeoutNetworkError,
 )
 from qqmusic_api.modules.search import SearchApi
 from qqmusic_api.modules.song import SongApi
@@ -176,7 +179,10 @@ def test_adapter_routes_use_chinese_docs_not_route_keys(app: FastAPI) -> None:
         (CredentialRefreshError(code=1000), 401),
         (RatelimitedError(code=2001), 429),
         (LoginError(code=20261), 400),
-        (NetworkError("network"), 400),
+        (HTTPError("upstream", 500), 502),
+        (ApiDataError("invalid payload"), 502),
+        (NetworkError("network"), 503),
+        (TimeoutNetworkError("timeout"), 504),
     ],
 )
 def test_sdk_exceptions_map_to_stable_http_status(exception: BaseApiException, expected_status: int) -> None:
