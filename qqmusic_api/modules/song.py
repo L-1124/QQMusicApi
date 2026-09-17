@@ -330,7 +330,7 @@ class SongApi(ApiModule):
             meta=EVKEY_META if encrypted else VKEY_META,
             credential=credential,
             param={
-                "uin": (resolved_credential.str_musicid if resolved_credential is not None else "") or "0",
+                "uin": resolved_credential.str_musicid,
                 "filename": filename,
                 "guid": get_guid(),
                 "songmid": songmid,

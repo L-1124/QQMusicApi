@@ -160,7 +160,7 @@ def test_get_song_urls_endpoint():
     req_normal = api.get_song_urls(info, file_type=SongFileType.MP3_128)
     assert req_normal.module == VKEY_META.module
     assert req_normal.method == VKEY_META.method
-    assert req_normal.param["uin"] == "0"
+    assert req_normal.param["uin"] == ""
     assert req_normal.response_model is GetSongUrlsResponse
 
     req_encrypted = api.get_song_urls(info, file_type=EncryptedSongFileType.FLAC)
