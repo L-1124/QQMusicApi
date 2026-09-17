@@ -48,7 +48,7 @@ def create_module(module_name: str | type[ApiModule], executor: RequestExecutor)
 
     Args:
         module_name: 模块名称 (对应 MODULE_TYPES 的 key) 或 ApiModule 子类.
-        executor: 满足 RequestExecutor 协议的请求执行器 (如 EngineRequestExecutor).
+        executor: 满足 RequestExecutor 协议的请求执行器 (如 ScopedRequestExecutor).
 
     Returns:
         已绑定执行器的 ApiModule 实例.

@@ -325,7 +325,7 @@ class SongApi(ApiModule):
             )
             songtype.append(item.song_type or 0)
 
-        resolved_credential = credential or self._binder.credential
+        resolved_credential = credential or self._executor.credential
         return CgiRequestData(
             meta=EVKEY_META if encrypted else VKEY_META,
             credential=credential,

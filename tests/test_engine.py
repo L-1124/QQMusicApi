@@ -102,7 +102,7 @@ class _DummyClient:
 def _cgi_spec(**kwargs: Any) -> CgiRequest[Any]:
     """构造测试用 CGI 请求描述符."""
     return CgiRequest(
-        _client=cast("Any", _DummyClient()),
+        _executor=cast("Any", _DummyClient()),
         module=kwargs.pop("module", "m"),
         method=kwargs.pop("method", "m"),
         param=kwargs.pop("param", {}),
@@ -114,7 +114,7 @@ def _cgi_spec(**kwargs: Any) -> CgiRequest[Any]:
 def _http_spec(**kwargs: Any) -> HttpRequest[Any]:
     """构造测试用 HTTP 请求描述符."""
     return HttpRequest(
-        _client=cast("Any", _DummyClient()),
+        _executor=cast("Any", _DummyClient()),
         method=kwargs.pop("method", "GET"),
         url=kwargs.pop("url", "https://example.com"),
         **kwargs,

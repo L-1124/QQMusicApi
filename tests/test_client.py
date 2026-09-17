@@ -35,7 +35,7 @@ class DummyModel(BaseModel):
 def _cgi_request(client: Client, param: dict[str, Any] | None = None, **kwargs: Any) -> CgiRequest[Any]:
     """构造测试用 CGI 请求描述符."""
     return CgiRequest(
-        _client=client,
+        _executor=client,
         module="test",
         method="test",
         param=param or {},
@@ -45,7 +45,7 @@ def _cgi_request(client: Client, param: dict[str, Any] | None = None, **kwargs: 
 
 def _http_request(client: Client, url: str = "https://example.com", **kwargs: Any) -> HttpRequest[Any]:
     """构造测试用 HTTP 请求描述符."""
-    return HttpRequest(_client=client, method="GET", url=url, **kwargs)
+    return HttpRequest(_executor=client, method="GET", url=url, **kwargs)
 
 
 @pytest_asyncio.fixture

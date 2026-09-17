@@ -1,6 +1,6 @@
 """API 模块基类."""
 
-from typing import TYPE_CHECKING, Any, Literal, overload
+from typing import Any, Literal, overload
 
 from niquests.typing import (
     AsyncBodyType,
@@ -12,8 +12,6 @@ from niquests.typing import (
 )
 from typing_extensions import Unpack
 
-if TYPE_CHECKING:
-    from ..core.client import Client
 from ..core.pagination import PagerStrategy
 from ..core.request import (
     CgiRequest,
@@ -32,16 +30,16 @@ from ..models.request import Credential
 class ApiModule:
     """API 模块基类."""
 
-    def __init__(self, client: "Client | RequestExecutor") -> None:
+    def __init__(self, executor: RequestExecutor) -> None:
         """绑定请求执行器."""
         from ..core.client import Client
 
-        self._binder = client
-        self._client = client if isinstance(client, Client) else None
+        self._executor = executor
+        self._client = executor if isinstance(executor, Client) else None
 
     def _build_version_params(self, platform: Platform | None = None) -> dict[str, int]:
         """构建查询接口使用的版本参数."""
-        profile = self._binder.version_policy.get_profile(platform or self._binder.platform)
+        profile = self._executor.version_policy.get_profile(platform or self._executor.platform)
         return {"ct": profile.ct, "cv": profile.cv}
 
     @overload
@@ -141,7 +139,7 @@ class ApiModule:
         """
         if pager_strategy is not None:
             return PaginatedCgiRequest(
-                _client=self._binder,
+                _executor=self._executor,
                 module=module,
                 method=method,
                 param=param or {},
@@ -155,7 +153,7 @@ class ApiModule:
             )
 
         return CgiRequest(
-            _client=self._binder,
+            _executor=self._executor,
             module=module,
             method=method,
             param=param or {},
@@ -252,7 +250,7 @@ class ApiModule:
             HttpRequest: 可 await 的 HTTP 请求描述符.
         """
         return HttpRequest(
-            _client=self._binder,
+            _executor=self._executor,
             method=method,
             url=url,
             params=params,

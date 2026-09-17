@@ -101,7 +101,7 @@ class SlowTransport(StubTransport):
 def _cgi_request(**kwargs: Any) -> CgiRequest[Any]:
     """构造测试用 CGI 请求描述符."""
     return CgiRequest(
-        _client=cast("Any", None),
+        _executor=cast("Any", None),
         module=kwargs.pop("module", "test.module"),
         method=kwargs.pop("method", "test_method"),
         param=kwargs.pop("param", {}),
@@ -112,7 +112,7 @@ def _cgi_request(**kwargs: Any) -> CgiRequest[Any]:
 def _http_request(**kwargs: Any) -> HttpRequest[Any]:
     """构造测试用 HTTP 请求描述符."""
     return HttpRequest(
-        _client=cast("Any", None),
+        _executor=cast("Any", None),
         method=kwargs.pop("method", "GET"),
         url=kwargs.pop("url", "https://example.com/api"),
         **kwargs,

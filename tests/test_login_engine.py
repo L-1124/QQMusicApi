@@ -8,7 +8,7 @@ from typing import Any, cast
 import pytest
 
 from qqmusic_api import Client, Credential, CredentialRefreshError, Platform
-from qqmusic_api.core.engine import EngineRequestExecutor, RequestEngine, RequestScope
+from qqmusic_api.core.engine import RequestEngine, RequestScope, ScopedRequestExecutor
 from qqmusic_api.core.executor import CgiExecutor, HttpExecutor
 from qqmusic_api.core.transport import PreparedRequest
 from qqmusic_api.core.versioning import DEFAULT_VERSION_POLICY, VersionPolicy
@@ -89,7 +89,7 @@ def test_version_policy_propagates_to_engine_bound_module() -> None:
     )
     transport = DynamicCgiTransport(None)
     engine = make_stub_engine(transport, custom_policy)
-    executor = EngineRequestExecutor(engine, RequestScope())
+    executor = ScopedRequestExecutor(engine, RequestScope())
     engine_module = LoginApi(executor)
 
     assert engine.version_policy is custom_policy
@@ -104,7 +104,7 @@ def make_login_api(
 ) -> LoginApi:
     """构造绑定引擎作用域的登录模块."""
     scope = RequestScope(credential=credential or Credential(), platform=platform)
-    return LoginApi(EngineRequestExecutor(engine, scope))
+    return LoginApi(ScopedRequestExecutor(engine, scope))
 
 
 def _parse_request_body(req: PreparedRequest) -> dict[str, Any]:

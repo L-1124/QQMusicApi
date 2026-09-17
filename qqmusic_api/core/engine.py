@@ -15,7 +15,6 @@ from .transport import DEFAULT_MAX_CONCURRENCY, PreparedRequest, RawStream, Stre
 from .versioning import DEFAULT_VERSION_POLICY, Platform, VersionPolicy
 
 ResultT = TypeVar("ResultT")
-IndexedRequest: TypeAlias = "Sequence[ScopedCall]"
 MISSING = sentinel("MISSING")
 CLOSE_CLEANUP_BUDGET_SECONDS = 5.0
 
@@ -59,6 +58,9 @@ class ScopedCall:
     index: int
     request: BaseRequest[Any]
     scope: RequestScope
+
+
+IndexedRequest: TypeAlias = Sequence[ScopedCall]
 
 
 @dataclass(eq=False)
@@ -330,12 +332,12 @@ class RequestEngine:
             return results
 
 
-class EngineRequestExecutor:
+class ScopedRequestExecutor:
     """绑定执行作用域的引擎执行器, 满足 RequestExecutor 协议."""
 
     def __init__(self, engine: RequestEngine, scope: RequestScope) -> None:
         """绑定请求引擎与执行作用域."""
-        self.engine = engine
+        self._engine = engine
         self._scope = scope
 
     @property
@@ -351,13 +353,13 @@ class EngineRequestExecutor:
     @property
     def version_policy(self) -> VersionPolicy:
         """返回所属引擎的版本策略."""
-        return self.engine.version_policy
+        return self._engine.version_policy
 
     async def execute(self, request: BaseRequest[ResultT]) -> ResultT:
         """使用请求覆盖值或绑定作用域执行请求."""
         req_platform = getattr(request, "platform", None)
         req_credential = getattr(request, "credential", None)
-        return await self.engine.execute(
+        return await self._engine.execute(
             request,
             RequestScope(
                 credential=req_credential or self.credential,
@@ -367,9 +369,9 @@ class EngineRequestExecutor:
 
 
 __all__ = [
-    "EngineRequestExecutor",
     "RequestCall",
     "RequestEngine",
     "RequestScope",
     "ScopedCall",
+    "ScopedRequestExecutor",
 ]

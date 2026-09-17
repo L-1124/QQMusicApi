@@ -88,8 +88,8 @@ class LoginApi(ApiModule):
         Returns:
             bool: 是否已过期.
         """
-        target = credential or self._binder.credential
-        if self._binder.platform == Platform.WEB:
+        target = credential or self._executor.credential
+        if self._executor.platform == Platform.WEB:
             resp = await self._build_http(
                 "GET",
                 "https://c6.y.qq.com/rsc/fcgi-bin/fcg_get_profile_homepage.fcg",
@@ -131,7 +131,7 @@ class LoginApi(ApiModule):
         Returns:
             Credential: 刷新后的新凭证对象.
         """
-        target = credential or self._binder.credential
+        target = credential or self._executor.credential
         match target.login_type:
             case 1:
                 param = {
@@ -471,7 +471,7 @@ class LoginApi(ApiModule):
             method="CreateQRCode",
             param={"tmeAppID": "qqmusic", **self._build_version_params()},
             comm={"ct": 23, "cv": 0},
-            platform=Platform.ANDROID if self._binder.platform == Platform.WEB else None,
+            platform=Platform.ANDROID if self._executor.platform == Platform.WEB else None,
         )
 
         if data is None:

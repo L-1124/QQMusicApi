@@ -7,7 +7,7 @@ import pytest
 from fastapi import FastAPI, Request
 
 from qqmusic_api import Credential, Platform
-from qqmusic_api.core.engine import EngineRequestExecutor, RequestEngine, RequestScope
+from qqmusic_api.core.engine import RequestEngine, RequestScope, ScopedRequestExecutor
 from qqmusic_api.core.exceptions import CredentialExpiredError, CredentialRefreshError
 from qqmusic_api.core.request import BaseRequest, CgiRequest, HttpRequest
 from qqmusic_api.core.transport import PreparedRequest, RawResponse
@@ -158,7 +158,7 @@ def test_module_registry_resolves_routes_and_binds_executor() -> None:
     """测试模块注册表覆盖全部路由并将模块绑定到请求执行器."""
     transport = CloseTrackingTransport()
     engine = RequestEngine.create(transport=transport)
-    executor = EngineRequestExecutor(
+    executor = ScopedRequestExecutor(
         engine=engine,
         scope=RequestScope(
             credential=Credential(musicid=12345678, musickey="test_musickey"),
@@ -171,7 +171,7 @@ def test_module_registry_resolves_routes_and_binds_executor() -> None:
     for module_name, module_cls in MODULE_TYPES.items():
         for module in (create_module(module_name, executor), create_module(module_cls, executor)):
             assert isinstance(module, module_cls)
-            assert module._binder is executor
+            assert module._executor is executor
 
     with pytest.raises(KeyError, match="未知的模块类型"):
         create_module("unknown_module_name", executor)

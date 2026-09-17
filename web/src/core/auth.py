@@ -9,7 +9,7 @@ from anyio.to_thread import run_sync
 from fastapi import HTTPException, Request
 
 from qqmusic_api import Credential, Platform
-from qqmusic_api.core.engine import EngineRequestExecutor, RequestEngine, RequestScope
+from qqmusic_api.core.engine import RequestEngine, RequestScope, ScopedRequestExecutor
 from qqmusic_api.modules.login import LoginApi
 
 from .credential_store import CredentialStore, credential_has_login, credential_needs_refresh
@@ -39,7 +39,7 @@ def _login_api(
 ) -> LoginApi:
     """构造绑定当前请求身份的登录模块."""
     scope = RequestScope(credential=credential or Credential(), platform=platform)
-    return LoginApi(EngineRequestExecutor(engine, scope))
+    return LoginApi(ScopedRequestExecutor(engine, scope))
 
 
 def _parse_cookie_int(value: str) -> int:

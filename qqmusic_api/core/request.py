@@ -73,16 +73,16 @@ class BaseRequest(Generic[ResultT]):
     该基类封装了由客户端执行请求时所需的元数据与行为契约.
 
     Attributes:
-        _client: 请求绑定的执行器, 用于调度请求.
+        _executor: 请求绑定的执行器, 用于调度请求.
         response_model: 期望的响应模型类型, 支持 Pydantic BaseModel.
     """
 
-    _client: RequestExecutor
+    _executor: RequestExecutor
     response_model: type[BaseModel] | None = None
 
     def __await__(self) -> Generator[Any, Any, ResultT]:
         """将自身委派给绑定的请求执行器."""
-        return self._client.execute(self).__await__()
+        return self._executor.execute(self).__await__()
 
 
 class CgiRequestOptions(TypedDict, total=False):

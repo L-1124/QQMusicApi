@@ -245,7 +245,7 @@ class Client:
     @overload
     async def gather(
         self,
-        requests: "Iterable[BaseRequest[ResultT]]",
+        requests: Iterable[BaseRequest[ResultT]],
         *,
         batch_size: int = 20,
         return_exceptions: Literal[False] = False,
@@ -254,7 +254,7 @@ class Client:
     @overload
     async def gather(
         self,
-        requests: "Iterable[BaseRequest[Any]]",
+        requests: Iterable[BaseRequest[Any]],
         *,
         batch_size: int = 20,
         return_exceptions: Literal[True],
@@ -263,7 +263,7 @@ class Client:
     @overload
     async def gather(
         self,
-        requests: "Iterable[BaseRequest[Any]]",
+        requests: Iterable[BaseRequest[Any]],
         *,
         batch_size: int = 20,
         return_exceptions: bool = False,
@@ -271,7 +271,7 @@ class Client:
 
     async def gather(
         self,
-        requests: "Iterable[BaseRequest[Any]]",
+        requests: Iterable[BaseRequest[Any]],
         *,
         batch_size: int = 20,
         return_exceptions: bool = False,

@@ -10,7 +10,7 @@ from fastapi import Request
 from pydantic import BaseModel
 
 from qqmusic_api import Credential, Platform
-from qqmusic_api.core.engine import EngineRequestExecutor, RequestEngine, RequestScope
+from qqmusic_api.core.engine import RequestEngine, RequestScope, ScopedRequestExecutor
 from qqmusic_api.modules._base import ApiModule
 
 from ..core.cache import CacheBackend
@@ -187,7 +187,7 @@ class RouteContext:
             credential=self.credential or Credential(),
             platform=self.platform,
         )
-        executor = EngineRequestExecutor(self.engine, scope)
+        executor = ScopedRequestExecutor(self.engine, scope)
         instance = create_module(module, executor)
         if isinstance(method, str):
             bound_method = getattr(instance, method)

@@ -37,7 +37,7 @@ class UserApi(ApiModule):
         """在缺省凭证时自动补一个占位凭证."""
         if credential is not None:
             return credential
-        current = self._binder.credential
+        current = self._executor.credential
         if current.musicid and current.musickey:
             return current
         return self.PLACEHOLDER_CREDENTIAL
@@ -298,7 +298,7 @@ class UserApi(ApiModule):
         data = await self._build_cgi(
             module="music.musicasset.PlaylistFavWrite",
             method="FavPlaylist",
-            param={"uin": (credential or self._binder.credential).encrypt_uin, "v_playlistId": [songlist_id]},
+            param={"uin": (credential or self._executor.credential).encrypt_uin, "v_playlistId": [songlist_id]},
             credential=credential,
             require_login=True,
         )
@@ -317,7 +317,7 @@ class UserApi(ApiModule):
         data = await self._build_cgi(
             module="music.musicasset.PlaylistFavWrite",
             method="CancelFavPlaylist",
-            param={"uin": (credential or self._binder.credential).encrypt_uin, "v_playlistId": [songlist_id]},
+            param={"uin": (credential or self._executor.credential).encrypt_uin, "v_playlistId": [songlist_id]},
             credential=credential,
             require_login=True,
         )
