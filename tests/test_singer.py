@@ -57,7 +57,7 @@ async def test_get_info(client: Client) -> None:
 
 @pytest.mark.parametrize(
     ("mid", "name", "display_type"),
-    [("000qrPik2w6lDr", "Taylor Swift", 2), ("0025NhlN2yWrP4", "周杰伦", 0)],
+    [("000qrPik2w6lDr", "Taylor Swift", 2), ("001BLpXF2DyJe2", "林俊杰", 0)],
 )
 async def test_get_name_special_display(client: Client, mid: str, name: str, display_type: int) -> None:
     """测试真实歌手名称图片与无特殊展示的返回结果."""

@@ -4,6 +4,7 @@ from enum import Enum, IntEnum
 from typing import cast
 
 from ..core import Platform
+from ..core.endpoint import CgiRequestData, cgi_endpoint
 from ..core.pagination import (
     MultiFieldContinuationStrategy,
     OffsetStrategy,
@@ -123,12 +124,18 @@ class IndexType(IntEnum):
 class SingerApi(ApiModule):
     """歌手相关 API."""
 
+    @cgi_endpoint(
+        key="singer.get_singer_list",
+        module="music.musichallSinger.SingerList",
+        method="GetSingerList",
+        response_model=SingerTypeListResponse,
+    )
     def get_singer_list(
         self,
         area: int | AreaType = AreaType.ALL,
         sex: int | SexType = SexType.ALL,
         genre: int | GenreType = GenreType.ALL,
-    ):
+    ) -> CgiRequestData:
         """获取歌手列表原始数据.
 
         Args:
@@ -136,18 +143,21 @@ class SingerApi(ApiModule):
             sex: 性别类型.
             genre: 风格类型.
         """
-        return self._build_cgi(
-            module="music.musichallSinger.SingerList",
-            method="GetSingerList",
+        return CgiRequestData(
             param={
                 "hastag": 0,
                 "area": int(AreaType(area)),
                 "sex": int(SexType(sex)),
                 "genre": int(GenreType(genre)),
             },
-            response_model=SingerTypeListResponse,
         )
 
+    @cgi_endpoint(
+        key="singer.get_singer_list_index",
+        module="music.musichallSinger.SingerList",
+        method="GetSingerListIndex",
+        response_model=SingerIndexPageResponse,
+    )
     def get_singer_list_index(
         self,
         area: int | AreaType = AreaType.ALL,
@@ -156,7 +166,7 @@ class SingerApi(ApiModule):
         index: int | IndexType = IndexType.ALL,
         page: int = 1,
         num: int = 80,
-    ):
+    ) -> CgiRequestData:
         """获取按索引分页的歌手列表原始数据.
 
         Args:
@@ -167,9 +177,7 @@ class SingerApi(ApiModule):
             page: 页码.
             num: 每页返回数量.
         """
-        return self._build_cgi(
-            module="music.musichallSinger.SingerList",
-            method="GetSingerListIndex",
+        return CgiRequestData(
             param={
                 "area": int(AreaType(area)),
                 "sex": int(SexType(sex)),
@@ -178,7 +186,6 @@ class SingerApi(ApiModule):
                 "sin": (page - 1) * num,
                 "cur_page": page,
             },
-            response_model=SingerIndexPageResponse,
             pager_strategy=MultiFieldContinuationStrategy[SingerIndexPageResponse](
                 lambda params, response: (
                     None
@@ -191,9 +198,17 @@ class SingerApi(ApiModule):
                 ),
                 context_name="singer_list_index",
             ),
-        ).with_extractor(lambda r: r.singerlist)
+            items_extractor=lambda r: r.singerlist,
+        )
 
-    def get_info(self, mid: str):
+    @cgi_endpoint(
+        key="singer.get_info",
+        module="music.UnifiedHomepage.UnifiedHomepageSrv",
+        method="GetHomepageHeader",
+        platform=Platform.ANDROID,
+        response_model=HomepageHeaderResponse,
+    )
+    def get_info(self, mid: str) -> CgiRequestData:
         """获取歌手主页基本信息.
 
         固定使用 Android 平台.
@@ -201,15 +216,18 @@ class SingerApi(ApiModule):
         Args:
             mid: 歌手 MID.
         """
-        return self._build_cgi(
-            module="music.UnifiedHomepage.UnifiedHomepageSrv",
-            method="GetHomepageHeader",
+        return CgiRequestData(
             param={"SingerMid": mid},
-            response_model=HomepageHeaderResponse,
-            platform=Platform.ANDROID,
         )
 
-    def get_name_special_display(self, mid: str):
+    @cgi_endpoint(
+        key="singer.get_name_special_display",
+        module="music.UnifiedHomepage.UnifiedHomepageSrv",
+        method="GetHomepageHeader",
+        platform=Platform.ANDROID,
+        response_model=SingerNameSpecialDisplayResponse,
+    )
+    def get_name_special_display(self, mid: str) -> CgiRequestData:
         """获取歌手名称透明 PNG 展示信息.
 
         返回歌手名称、展示类型、图片地址和重叠比例.
@@ -218,22 +236,24 @@ class SingerApi(ApiModule):
         Args:
             mid: 歌手 MID.
         """
-        return self._build_cgi(
-            module="music.UnifiedHomepage.UnifiedHomepageSrv",
-            method="GetHomepageHeader",
+        return CgiRequestData(
             param={"SingerMid": mid},
-            response_model=SingerNameSpecialDisplayResponse,
-            platform=Platform.ANDROID,
             comm={"cv": 20_080_000, "v": 20_080_000},
         )
 
+    @cgi_endpoint(
+        key="singer.get_tab_detail",
+        module="music.UnifiedHomepage.UnifiedHomepageSrv",
+        method="GetHomepageTabDetail",
+        response_model=HomepageTabDetailResponse,
+    )
     def get_tab_detail(
         self,
         mid: str,
         tab_type: TabType,
         page: int = 1,
         num: int = 10,
-    ):
+    ) -> CgiRequestData:
         """获取歌手主页特定 Tab 的详情原始数据.
 
         Args:
@@ -242,9 +262,7 @@ class SingerApi(ApiModule):
             page: 页码.
             num: 返回数量.
         """
-        return self._build_cgi(
-            module="music.UnifiedHomepage.UnifiedHomepageSrv",
-            method="GetHomepageTabDetail",
+        return CgiRequestData(
             param={
                 "SingerMid": mid,
                 "IsQueryTabDetail": 1,
@@ -253,7 +271,6 @@ class SingerApi(ApiModule):
                 "PageSize": num,
                 "Order": 0,
             },
-            response_model=HomepageTabDetailResponse,
             pager_strategy=PageStrategy[HomepageTabDetailResponse](
                 page_key="PageNum",
                 page_size=num,
@@ -262,6 +279,12 @@ class SingerApi(ApiModule):
             ),
         )
 
+    @cgi_endpoint(
+        key="singer.get_desc",
+        module="music.musichallSinger.SingerInfoInter",
+        method="GetSingerDetail",
+        response_model=SingerDetailResponse,
+    )
     def get_desc(
         self,
         mids: list[str],
@@ -271,7 +294,7 @@ class SingerApi(ApiModule):
         group_singer: bool = True,
         pic: bool = True,
         photos: bool = True,
-    ):
+    ) -> CgiRequestData:
         """获取歌手列表的描述信息.
 
         Args:
@@ -282,9 +305,7 @@ class SingerApi(ApiModule):
             pic: 是否返回头像/立绘图片 URL.
             photos: 是否返回相册大图列表.
         """
-        return self._build_cgi(
-            module="music.musichallSinger.SingerInfoInter",
-            method="GetSingerDetail",
+        return CgiRequestData(
             param={
                 "singer_mids": mids,
                 "group_singer": group_singer,
@@ -293,24 +314,32 @@ class SingerApi(ApiModule):
                 "pic": pic,
                 "photos": photos,
             },
-            response_model=SingerDetailResponse,
         )
 
-    def get_similar(self, mid: str, number: int = 10):
+    @cgi_endpoint(
+        key="singer.get_similar",
+        module="music.SimilarSingerSvr",
+        method="GetSimilarSingerList",
+        response_model=SimilarSingerResponse,
+    )
+    def get_similar(self, mid: str, number: int = 10) -> CgiRequestData:
         """获取相似歌手列表.
 
         Args:
             mid: 歌手 MID.
             number: 返回相似歌手的数量.
         """
-        return self._build_cgi(
-            module="music.SimilarSingerSvr",
-            method="GetSimilarSingerList",
+        return CgiRequestData(
             param={"singerMid": mid, "number": number},
-            response_model=SimilarSingerResponse,
         )
 
-    def get_songs_list(self, mid: str, num: int = 10, page: int = 1):
+    @cgi_endpoint(
+        key="singer.get_songs_list",
+        module="musichall.song_list_server",
+        method="GetSingerSongList",
+        response_model=SingerSongListResponse,
+    )
+    def get_songs_list(self, mid: str, num: int = 10, page: int = 1) -> CgiRequestData:
         """获取歌手的歌曲列表.
 
         Args:
@@ -318,20 +347,24 @@ class SingerApi(ApiModule):
             num: 返回歌曲数量.
             page: 分页页码.
         """
-        return self._build_cgi(
-            module="musichall.song_list_server",
-            method="GetSingerSongList",
+        return CgiRequestData(
             param={"singerMid": mid, "order": 1, "number": num, "begin": (page - 1) * num},
-            response_model=SingerSongListResponse,
             pager_strategy=OffsetStrategy[SingerSongListResponse](
                 offset_key="begin",
                 page_size_key="number",
                 total_extractor=lambda r: r.total_num,
                 count_extractor=lambda r: len(r.song_list),
             ),
-        ).with_extractor(lambda response: response.song_list)
+            items_extractor=lambda response: response.song_list,
+        )
 
-    def get_album_list(self, mid: str, num: int = 10, page: int = 1):
+    @cgi_endpoint(
+        key="singer.get_album_list",
+        module="music.musichallAlbum.AlbumListServer",
+        method="GetAlbumList",
+        response_model=SingerAlbumListResponse,
+    )
+    def get_album_list(self, mid: str, num: int = 10, page: int = 1) -> CgiRequestData:
         """获取歌手的专辑列表.
 
         Args:
@@ -339,20 +372,24 @@ class SingerApi(ApiModule):
             num: 返回专辑数量.
             page: 分页页码.
         """
-        return self._build_cgi(
-            module="music.musichallAlbum.AlbumListServer",
-            method="GetAlbumList",
+        return CgiRequestData(
             param={"singerMid": mid, "order": 1, "number": num, "begin": (page - 1) * num},
-            response_model=SingerAlbumListResponse,
             pager_strategy=OffsetStrategy[SingerAlbumListResponse](
                 offset_key="begin",
                 page_size_key="number",
                 total_extractor=lambda r: r.total,
                 count_extractor=lambda r: len(r.album_list),
             ),
-        ).with_extractor(lambda r: r.album_list)
+            items_extractor=lambda r: r.album_list,
+        )
 
-    def get_mv_list(self, mid: str, num: int = 10, page: int = 1):
+    @cgi_endpoint(
+        key="singer.get_mv_list",
+        module="MvService.MvInfoProServer",
+        method="GetSingerMvList",
+        response_model=SingerMvListResponse,
+    )
+    def get_mv_list(self, mid: str, num: int = 10, page: int = 1) -> CgiRequestData:
         """获取歌手 MV 列表数据.
 
         Args:
@@ -360,15 +397,13 @@ class SingerApi(ApiModule):
             num: 返回数量.
             page: 分页页码.
         """
-        return self._build_cgi(
-            module="MvService.MvInfoProServer",
-            method="GetSingerMvList",
+        return CgiRequestData(
             param={"singermid": mid, "order": 1, "count": num, "start": (page - 1) * num},
-            response_model=SingerMvListResponse,
             pager_strategy=OffsetStrategy[SingerMvListResponse](
                 offset_key="start",
                 page_size_key="count",
                 total_extractor=lambda r: r.total,
                 count_extractor=lambda r: len(r.mv_list),
             ),
-        ).with_extractor(lambda r: r.mv_list)
+            items_extractor=lambda r: r.mv_list,
+        )
