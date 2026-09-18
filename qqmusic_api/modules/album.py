@@ -2,6 +2,7 @@
 
 from typing import Any
 
+from ..core.endpoint import CgiRequestData, cgi_endpoint
 from ..core.pagination import OffsetStrategy
 from ..models.album import (
     AlbumFavWriteResponse,
@@ -16,7 +17,13 @@ from ._base import ApiModule
 class AlbumApi(ApiModule):
     """专辑相关 API."""
 
-    def get_detail(self, value: int | str):
+    @cgi_endpoint(
+        key="album.get_detail",
+        module="music.musichallAlbum.AlbumInfoServer",
+        method="GetAlbumDetail",
+        response_model=GetAlbumDetailResponse,
+    )
+    def get_detail(self, value: int | str) -> CgiRequestData:
         """获取专辑详细信息.
 
         Args:
@@ -28,14 +35,15 @@ class AlbumApi(ApiModule):
         else:
             param["albumMId"] = value
 
-        return self._build_cgi(
-            module="music.musichallAlbum.AlbumInfoServer",
-            method="GetAlbumDetail",
-            param=param,
-            response_model=GetAlbumDetailResponse,
-        )
+        return CgiRequestData(param=param)
 
-    def get_song(self, value: int | str, num: int = 10, page: int = 1):
+    @cgi_endpoint(
+        key="album.get_song",
+        module="music.musichallAlbum.AlbumSongList",
+        method="GetAlbumSongList",
+        response_model=GetAlbumSongResponse,
+    )
+    def get_song(self, value: int | str, num: int = 10, page: int = 1) -> CgiRequestData:
         """获取专辑歌曲列表.
 
         Args:
@@ -52,20 +60,24 @@ class AlbumApi(ApiModule):
         else:
             param["albumMid"] = value
 
-        return self._build_cgi(
-            module="music.musichallAlbum.AlbumSongList",
-            method="GetAlbumSongList",
+        return CgiRequestData(
             param=param,
-            response_model=GetAlbumSongResponse,
             pager_strategy=OffsetStrategy[GetAlbumSongResponse](
                 offset_key="begin",
                 page_size_key="num",
                 total_extractor=lambda r: r.total_num,
                 count_extractor=lambda r: len(r.song_list),
             ),
-        ).with_extractor(lambda r: r.song_list)
+            items_extractor=lambda r: r.song_list,
+        )
 
-    def get_new_album(self, area: int = 1, num: int = 20, page: int = 1):
+    @cgi_endpoint(
+        key="album.get_new_album",
+        module="newalbum.NewAlbumServer",
+        method="get_new_album_info",
+        response_model=GetNewAlbumResponse,
+    )
+    def get_new_album(self, area: int = 1, num: int = 20, page: int = 1) -> CgiRequestData:
         """获取新碟上架列表.
 
         Args:
@@ -73,20 +85,25 @@ class AlbumApi(ApiModule):
             num: 每页返回的专辑数量.
             page: 页码, 从 1 开始.
         """
-        return self._build_cgi(
-            module="newalbum.NewAlbumServer",
-            method="get_new_album_info",
+        return CgiRequestData(
             param={"area": area, "num": num, "start": num * (page - 1)},
-            response_model=GetNewAlbumResponse,
             pager_strategy=OffsetStrategy[GetNewAlbumResponse](
                 offset_key="start",
                 page_size_key="num",
                 total_extractor=lambda r: r.total,
                 count_extractor=lambda r: len(r.albums),
             ),
-        ).with_extractor(lambda r: r.albums)
+            items_extractor=lambda r: r.albums,
+        )
 
-    def fav_album(self, album_id: int | list[int], *, credential: Credential | None = None):
+    @cgi_endpoint(
+        key="album.fav_album",
+        module="music.musicasset.AlbumFavWrite",
+        method="FavAlbum",
+        response_model=AlbumFavWriteResponse,
+        require_login=True,
+    )
+    def fav_album(self, album_id: int | list[int], *, credential: Credential | None = None) -> CgiRequestData:
         """收藏专辑到当前登录用户.
 
         Args:
@@ -94,16 +111,19 @@ class AlbumApi(ApiModule):
             credential: 登录凭证.
         """
         ids = [album_id] if isinstance(album_id, int) else album_id
-        return self._build_cgi(
-            module="music.musicasset.AlbumFavWrite",
-            method="FavAlbum",
+        return CgiRequestData(
             param={"v_albumId": ids},
             credential=credential,
-            require_login=True,
-            response_model=AlbumFavWriteResponse,
         )
 
-    def del_fav_album(self, album_id: int | list[int], *, credential: Credential | None = None):
+    @cgi_endpoint(
+        key="album.del_fav_album",
+        module="music.musicasset.AlbumFavWrite",
+        method="CancelFavAlbum",
+        response_model=AlbumFavWriteResponse,
+        require_login=True,
+    )
+    def del_fav_album(self, album_id: int | list[int], *, credential: Credential | None = None) -> CgiRequestData:
         """取消收藏专辑.
 
         Args:
@@ -111,11 +131,7 @@ class AlbumApi(ApiModule):
             credential: 登录凭证.
         """
         ids = [album_id] if isinstance(album_id, int) else album_id
-        return self._build_cgi(
-            module="music.musicasset.AlbumFavWrite",
-            method="CancelFavAlbum",
+        return CgiRequestData(
             param={"v_albumId": ids},
             credential=credential,
-            require_login=True,
-            response_model=AlbumFavWriteResponse,
         )
