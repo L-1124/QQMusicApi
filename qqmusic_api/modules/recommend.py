@@ -2,6 +2,7 @@
 
 from typing import Any
 
+from ..core.endpoint import CgiRequestData, cgi_endpoint
 from ..core.pagination import (
     CursorStrategy,
     MultiFieldContinuationStrategy,
@@ -22,7 +23,15 @@ from ._base import ApiModule
 class RecommendApi(ApiModule):
     """推荐 API."""
 
-    def get_home_feed(self, page: int = 1, direction: int = 0, s_num: int = 0, v_cache: list[str] | None = None):
+    @cgi_endpoint(
+        key="recommend.get_home_feed",
+        module="music.recommend.RecommendFeed",
+        method="get_recommend_feed",
+        response_model=RecommendFeedCardResponse,
+    )
+    def get_home_feed(
+        self, page: int = 1, direction: int = 0, s_num: int = 0, v_cache: list[str] | None = None
+    ) -> CgiRequestData:
         """获取首页推荐 Feed.
 
         Args:
@@ -56,18 +65,22 @@ class RecommendApi(ApiModule):
             next_params["v_cache"] = list(seen)
             return next_params
 
-        return self._build_cgi(
-            "music.recommend.RecommendFeed",
-            "get_recommend_feed",
-            data,
-            response_model=RecommendFeedCardResponse,
+        return CgiRequestData(
+            param=data,
             pager_strategy=MultiFieldContinuationStrategy[RecommendFeedCardResponse](
                 _build_home_feed_next_params,
                 context_name="recommend_home_feed",
             ),
-        ).with_extractor(lambda r: r.shelves)
+            items_extractor=lambda r: r.shelves,
+        )
 
-    def get_guess_recommend(self, *, credential: Credential | None = None):
+    @cgi_endpoint(
+        key="recommend.get_guess_recommend",
+        module="music.radioProxy.MbTrackRadioSvr",
+        method="get_radio_track",
+        response_model=GuessRecommendResponse,
+    )
+    def get_guess_recommend(self, *, credential: Credential | None = None) -> CgiRequestData:
         """获取猜你喜欢推荐.
 
         Tips:
@@ -80,15 +93,18 @@ class RecommendApi(ApiModule):
             "scene": 0,
             "song_ids": [],
         }
-        return self._build_cgi(
-            "music.radioProxy.MbTrackRadioSvr",
-            "get_radio_track",
-            data,
-            response_model=GuessRecommendResponse,
+        return CgiRequestData(
+            param=data,
             credential=credential,
         )
 
-    def get_radar_recommend(self, page: int = 1):
+    @cgi_endpoint(
+        key="recommend.get_radar_recommend",
+        module="music.recommend.TrackRelationServer",
+        method="GetRadarSong",
+        response_model=RadarRecommendResponse,
+    )
+    def get_radar_recommend(self, page: int = 1) -> CgiRequestData:
         """获取雷达推荐.
 
         Args:
@@ -100,19 +116,23 @@ class RecommendApi(ApiModule):
             "FavSongs": [],
             "EntranceSongs": [],
         }
-        return self._build_cgi(
-            "music.recommend.TrackRelationServer",
-            "GetRadarSong",
-            data,
-            response_model=RadarRecommendResponse,
+        return CgiRequestData(
+            param=data,
             pager_strategy=PageStrategy[RadarRecommendResponse](
                 page_key="Page",
                 start_page=page,
                 has_more_extractor=lambda r: r.has_more,
             ),
-        ).with_extractor(lambda r: r.songs)
+            items_extractor=lambda r: r.songs,
+        )
 
-    def get_recommend_songlist(self, page: int = 1, num: int = 25):
+    @cgi_endpoint(
+        key="recommend.get_recommend_songlist",
+        module="music.playlist.PlaylistSquare",
+        method="GetRecommendFeed",
+        response_model=RecommendSonglistResponse,
+    )
+    def get_recommend_songlist(self, page: int = 1, num: int = 25) -> CgiRequestData:
         """获取推荐歌单.
 
         Args:
@@ -120,28 +140,27 @@ class RecommendApi(ApiModule):
             num: 返回推荐歌单数量.
         """
         data = {"From": num * (page - 1), "Size": num}
-        return self._build_cgi(
-            "music.playlist.PlaylistSquare",
-            "GetRecommendFeed",
-            data,
-            response_model=RecommendSonglistResponse,
+        return CgiRequestData(
+            param=data,
             pager_strategy=CursorStrategy[RecommendSonglistResponse](
                 cursor_key="From",
                 has_more_extractor=lambda r: r.has_more,
                 cursor_extractor=lambda r: r.from_limit,
             ),
-        ).with_extractor(lambda r: r.songlists)
+            items_extractor=lambda r: r.songlists,
+        )
 
-    def get_recommend_newsong(self, type: int = 5):  # noqa: A002
+    @cgi_endpoint(
+        key="recommend.get_recommend_newsong",
+        module="newsong.NewSongServer",
+        method="get_new_song_info",
+        response_model=RecommendNewSongResponse,
+    )
+    def get_recommend_newsong(self, type: int = 5) -> CgiRequestData:  # noqa: A002
         """获取推荐新歌.
 
         Args:
             type: 地区/语种筛选. 1=内地, 2=欧美, 3=日本, 4=韩国, 5=最新, 6=港台.
         """
         data = {"type": type}
-        return self._build_cgi(
-            "newsong.NewSongServer",
-            "get_new_song_info",
-            data,
-            response_model=RecommendNewSongResponse,
-        )
+        return CgiRequestData(param=data)
