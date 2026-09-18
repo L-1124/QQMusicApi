@@ -49,6 +49,7 @@ _ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
     401: {"model": ErrorResponse},
     422: {"model": ErrorResponse},
     429: {"model": ErrorResponse},
+    500: {"model": ErrorResponse},
     502: {"model": ErrorResponse},
     503: {"model": ErrorResponse},
     504: {"model": ErrorResponse},
@@ -254,6 +255,11 @@ def create_app() -> FastAPI:
             return error_response(status_code=status_code, msg=str(exc))
         logger.error("上游请求失败: %d", status_code, exc_info=exc)
         return error_response(status_code=status_code, msg=_HTTP_ERROR_MESSAGES.get(status_code, "上游服务异常"))
+
+    @app.exception_handler(Exception)
+    async def _handle_unexpected_exception(_request: Request, exc: Exception) -> JSONResponse:
+        logger.error("未捕获异常", exc_info=exc)
+        return error_response(status_code=500, msg=_HTTP_ERROR_MESSAGES[500])
 
     @app.exception_handler(HTTPException)
     @app.exception_handler(StarletteHTTPException)

@@ -200,9 +200,9 @@ UPSTREAM_LEAK_TEXT = (
 )
 
 
-async def _sdk_error_response(app: FastAPI, exception: BaseApiException) -> JSONResponse:
-    """调用已注册的 SDK 异常处理器."""
-    handler = cast("Any", app.exception_handlers[BaseApiException])
+async def _error_response(app: FastAPI, handler_key: type[Exception], exception: Exception) -> JSONResponse:
+    """调用已注册的异常处理器."""
+    handler = cast("Any", app.exception_handlers[handler_key])
     return cast("JSONResponse", await handler(cast("Request", None), exception))
 
 
@@ -223,7 +223,7 @@ async def test_upstream_5xx_response_hides_upstream_details(
     expected_message: str,
 ) -> None:
     """测试上游 5xx 只回显稳定文案, 不泄漏上游地址, 设备 guid 与 uin."""
-    response = await _sdk_error_response(app, exception)
+    response = await _error_response(app, BaseApiException, exception)
 
     assert response.status_code == expected_status
     assert json.loads(bytes(response.body)) == {"code": -1, "msg": expected_message}
@@ -232,7 +232,16 @@ async def test_upstream_5xx_response_hides_upstream_details(
 @pytest.mark.asyncio
 async def test_client_error_response_keeps_sdk_business_hint(app: FastAPI) -> None:
     """测试 4xx 仍回显 SDK 业务说明."""
-    response = await _sdk_error_response(app, LoginError("验证码错误", code=20271))
+    response = await _error_response(app, BaseApiException, LoginError("验证码错误", code=20271))
 
     assert response.status_code == 400
     assert json.loads(bytes(response.body))["msg"] == "验证码错误"
+
+
+@pytest.mark.asyncio
+async def test_unexpected_exception_returns_json_500(app: FastAPI) -> None:
+    """测试未捕获异常返回 JSON 形状的 500, 不回显异常细节."""
+    response = await _error_response(app, Exception, RuntimeError("Engine 已关闭或正在关闭, 不能发起新操作"))
+
+    assert response.status_code == 500
+    assert json.loads(bytes(response.body)) == {"code": -1, "msg": "服务器内部错误"}
