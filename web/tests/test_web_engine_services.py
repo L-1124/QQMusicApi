@@ -368,7 +368,7 @@ async def test_failed_credential_refresh_marks_store_invalid(tmp_path: Path) -> 
     with pytest.raises(CredentialExpiredError):
         await execute_route(context)
 
-    assert list(store.random_credentials()) == []
+    assert store.random_credentials() == []
     store.close()
 
 

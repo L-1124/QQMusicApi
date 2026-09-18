@@ -62,6 +62,9 @@ _HTTP_ERROR_MESSAGES = {
     404: "资源不存在",
     422: "请求参数校验失败",
     500: "服务器内部错误",
+    502: "上游服务响应异常",
+    503: "上游服务暂不可用",
+    504: "上游服务响应超时",
 }
 
 
@@ -246,10 +249,11 @@ def create_app() -> FastAPI:
 
     @app.exception_handler(BaseApiException)
     async def _handle_base_api_exception(_request: Request, exc: BaseApiException) -> JSONResponse:
-        return error_response(
-            status_code=_base_api_exception_status_code(exc),
-            msg=str(exc),
-        )
+        status_code = _base_api_exception_status_code(exc)
+        if status_code < 500:
+            return error_response(status_code=status_code, msg=str(exc))
+        logger.error("上游请求失败: %d", status_code, exc_info=exc)
+        return error_response(status_code=status_code, msg=_HTTP_ERROR_MESSAGES.get(status_code, "上游服务异常"))
 
     @app.exception_handler(HTTPException)
     @app.exception_handler(StarletteHTTPException)

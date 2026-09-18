@@ -5,7 +5,6 @@ import secrets
 import sqlite3
 import threading
 import time
-from collections.abc import Iterator
 from contextlib import suppress
 from pathlib import Path
 
@@ -82,7 +81,7 @@ class CredentialStore:
 
             logger.info("账号种子同步完成")
 
-    def random_credentials(self) -> Iterator[Credential]:
+    def random_credentials(self) -> list[Credential]:
         """随机顺序返回全部有效 Credential."""
         with self._lock:
             rows = self._connect().execute("SELECT credential_json FROM credentials WHERE valid = 1").fetchall()
@@ -91,10 +90,12 @@ class CredentialStore:
         rng = secrets.SystemRandom()
         rng.shuffle(json_strings)
 
+        credentials: list[Credential] = []
         for json_str in json_strings:
             credential = _load_credential(json_str)
             if credential is not None and credential_has_login(credential):
-                yield credential
+                credentials.append(credential)
+        return credentials
 
     def get(self, musicid: int) -> Credential | None:
         """按 musicid 获取凭证."""

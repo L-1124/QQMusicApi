@@ -1,7 +1,11 @@
 """Web 路由注册测试."""
 
+import json
+from typing import Any, cast
+
 import pytest
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
 
 from qqmusic_api.core.exceptions import (
@@ -188,3 +192,47 @@ def test_adapter_routes_use_chinese_docs_not_route_keys(app: FastAPI) -> None:
 def test_sdk_exceptions_map_to_stable_http_status(exception: BaseApiException, expected_status: int) -> None:
     """测试 SDK 公共异常映射为稳定的 HTTP 状态码."""
     assert _base_api_exception_status_code(exception) == expected_status
+
+
+UPSTREAM_LEAK_TEXT = (
+    "AsyncHTTPConnectionPool(host=upstream.internal, port=9): Max retries exceeded with url: "
+    "/cgi-bin/musicu.fcg?guid=ABCDEF&uin=123456"
+)
+
+
+async def _sdk_error_response(app: FastAPI, exception: BaseApiException) -> JSONResponse:
+    """调用已注册的 SDK 异常处理器."""
+    handler = cast("Any", app.exception_handlers[BaseApiException])
+    return cast("JSONResponse", await handler(cast("Request", None), exception))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("exception", "expected_status", "expected_message"),
+    [
+        (NetworkError(UPSTREAM_LEAK_TEXT), 503, "上游服务暂不可用"),
+        (TimeoutNetworkError(UPSTREAM_LEAK_TEXT), 504, "上游服务响应超时"),
+        (HTTPError(UPSTREAM_LEAK_TEXT, 500), 502, "上游服务响应异常"),
+        (ApiDataError("缺少以下索引结果: [0]"), 502, "上游服务响应异常"),
+    ],
+)
+async def test_upstream_5xx_response_hides_upstream_details(
+    app: FastAPI,
+    exception: BaseApiException,
+    expected_status: int,
+    expected_message: str,
+) -> None:
+    """测试上游 5xx 只回显稳定文案, 不泄漏上游地址, 设备 guid 与 uin."""
+    response = await _sdk_error_response(app, exception)
+
+    assert response.status_code == expected_status
+    assert json.loads(bytes(response.body)) == {"code": -1, "msg": expected_message}
+
+
+@pytest.mark.asyncio
+async def test_client_error_response_keeps_sdk_business_hint(app: FastAPI) -> None:
+    """测试 4xx 仍回显 SDK 业务说明."""
+    response = await _sdk_error_response(app, LoginError("验证码错误", code=20271))
+
+    assert response.status_code == 400
+    assert json.loads(bytes(response.body))["msg"] == "验证码错误"
