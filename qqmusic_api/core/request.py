@@ -204,7 +204,7 @@ class PaginatedCgiRequest(CgiRequest[CgiRequestResultT], PaginatedMixin[CgiReque
         """
         from dataclasses import fields
 
-        kwargs = {f.name: getattr(self, f.name) for f in fields(self)}
+        kwargs = {f.name: getattr(self, f.name) for f in fields(self) if f.name != "items_extractor"}
         return ItemPaginatedCgiRequest(**kwargs, items_extractor=items_extractor)
 
 
@@ -225,3 +225,12 @@ class ItemPaginatedCgiRequest(PaginatedCgiRequest[CgiRequestResultT], ItemPagina
     def _with_page_params(self, params: dict[str, Any]) -> Self:
         """基于新的分页参数生成全新的请求对象."""
         return replace(self, param=params)
+
+    def with_extractor(
+        self, items_extractor: Callable[[CgiRequestResultT], Iterable[NewItemT]]
+    ) -> "ItemPaginatedCgiRequest[CgiRequestResultT, NewItemT]":
+        """替换当前的数据项提取函数并返回新的请求对象."""
+        from dataclasses import fields
+
+        kwargs = {f.name: getattr(self, f.name) for f in fields(self) if f.name != "items_extractor"}
+        return ItemPaginatedCgiRequest(**kwargs, items_extractor=items_extractor)
