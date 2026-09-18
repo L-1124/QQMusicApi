@@ -4,7 +4,7 @@ import asyncio
 
 import pytest
 
-from web.src.core.cache import MemoryBackend
+from web.src.core.cache import MemoryBackend, cached_response, parse_failure_status
 from web.src.core.credential_pool import _credential_refresh_lock, _credential_refresh_locks
 from web.src.core.security import AccessPolicy, InMemoryConcurrencyLimiter, InMemoryRateLimiter
 
@@ -43,6 +43,31 @@ async def test_memory_backend_evicts_oldest_when_full() -> None:
     assert await cache.get("a") is None
     assert await cache.get("b") == b"2"
     assert await cache.get("c") == b"3"
+
+
+# 缓存序列化与负缓存载荷
+
+
+@pytest.mark.asyncio
+async def test_cached_response_etag_is_stable_between_write_and_hit() -> None:
+    """测试首次响应与命中缓存的 ETag 一致 (两处序列化输入必须同源)."""
+    cache = MemoryBackend()
+    payload = {"b": 2, "a": 1}
+    first = cached_response(payload, 60)
+
+    await cache.set("k", payload, 60)
+    hit = cached_response(await cache.get("k"), 60)
+
+    assert first.headers["etag"] == hit.headers["etag"]
+
+
+def test_parse_failure_status_normalizes_backend_payloads() -> None:
+    """测试负缓存载荷解析兼容内存后端的字节与 Redis 的已解析对象."""
+    assert parse_failure_status(b'{"status": 503}') == 503
+    assert parse_failure_status({"status": 502}) == 502
+    assert parse_failure_status(b"not-json") is None
+    assert parse_failure_status({"status": "503"}) is None
+    assert parse_failure_status(None) is None
 
 
 # InMemoryRateLimiter

@@ -41,6 +41,12 @@ backend = "memory"
 # redis_url = "redis://localhost:6379/0"
 # Redis 键前缀
 # redis_prefix = "qqapi:"
+# 是否启用请求合并: 缓存未命中时同一路径与参数的并发请求只回源一次
+coalesce_enabled = true
+# 等待者等待回源的上限秒数; 超时返回 503 (带 Retry-After) 且不再回源
+coalesce_wait_timeout_seconds = 2.0
+# 上游失败标记的负缓存 TTL 秒数; 窗口内同键请求快速失败, 仅 502/503/504 类失败写入
+negative_cache_ttl_seconds = 3
 
 
 [client]

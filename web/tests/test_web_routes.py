@@ -4,7 +4,7 @@ import json
 from typing import Any, cast
 
 import pytest
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
 
@@ -245,3 +245,13 @@ async def test_unexpected_exception_returns_json_500(app: FastAPI) -> None:
 
     assert response.status_code == 500
     assert json.loads(bytes(response.body)) == {"code": -1, "msg": "服务器内部错误"}
+
+
+@pytest.mark.asyncio
+async def test_negative_cache_fast_fail_matches_upstream_failure_response(app: FastAPI) -> None:
+    """测试负缓存 fast-fail 与上游 5xx 的对外响应完全一致."""
+    upstream = await _error_response(app, BaseApiException, NetworkError(UPSTREAM_LEAK_TEXT))
+    fast_fail = await _error_response(app, HTTPException, HTTPException(status_code=503))
+
+    assert upstream.status_code == fast_fail.status_code == 503
+    assert upstream.body == fast_fail.body

@@ -8,7 +8,8 @@ from fastapi import Depends, Request
 from qqmusic_api.core.engine import RequestEngine
 
 from .cache import CacheBackend
-from .config import CredentialConfig
+from .coalesce import Coalescer
+from .config import CacheConfig, CredentialConfig
 from .credential_pool import CredentialPool
 
 if TYPE_CHECKING:
@@ -24,6 +25,8 @@ class WebServices:
     engine: RequestEngine | None = None
     credential_config: CredentialConfig | None = None
     credential_pool: CredentialPool | None = None
+    cache_config: CacheConfig | None = None
+    coalescer: Coalescer = field(default_factory=Coalescer)
 
     @property
     def require_engine(self) -> RequestEngine:
@@ -49,6 +52,16 @@ def get_engine(request: Request) -> RequestEngine:
 def get_cache(request: Request) -> CacheBackend:
     """获取当前请求绑定的缓存后端."""
     return get_web_services(request).cache
+
+
+def get_cache_config(request: Request) -> CacheConfig | None:
+    """获取当前请求绑定的缓存配置."""
+    return get_web_services(request).cache_config
+
+
+def get_coalescer(request: Request) -> Coalescer:
+    """获取当前请求绑定的请求合并器."""
+    return get_web_services(request).coalescer
 
 
 def get_credential_config(request: Request) -> CredentialConfig | None:

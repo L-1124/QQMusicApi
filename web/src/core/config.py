@@ -46,6 +46,9 @@ class CacheConfig(BaseModel):
     backend: Literal["memory", "redis"] = Field(default="memory", description="缓存后端 (memory/redis)")
     redis_url: str | None = Field(default=None, description="Redis 连接地址")
     redis_prefix: str = Field(default="qqapi:", description="Redis 键前缀")
+    coalesce_enabled: bool = Field(default=True, description="是否启用请求合并")
+    coalesce_wait_timeout_seconds: float = Field(default=2.0, gt=0, description="等待者等待回源的上限秒数")
+    negative_cache_ttl_seconds: int = Field(default=3, ge=1, le=60, description="上游失败标记的负缓存 TTL 秒数")
 
 
 class SecurityConfig(BaseModel):

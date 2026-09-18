@@ -14,6 +14,8 @@ from fastapi.responses import JSONResponse, Response
 
 logger = logging.getLogger(__name__)
 
+FAILURE_KEY_SUFFIX = "#fail"
+
 
 class CacheBackend(Protocol):
     """缓存后端协议."""
@@ -61,7 +63,8 @@ class MemoryBackend:
     async def set(self, key: str, data: Any, ttl: int) -> None:
         """写入缓存条目."""
         content = data.model_dump(mode="json") if hasattr(data, "model_dump") else data
-        raw = orjson.dumps(content, default=str)
+
+        raw = orjson.dumps(content, option=orjson.OPT_SORT_KEYS, default=str)
         if key in self._store:
             self._store.move_to_end(key)
             logger.debug("更新内存缓存: %s, TTL: %ds", key, ttl)
@@ -144,6 +147,40 @@ def make_cache_key(path: str, kwargs: dict[str, Any]) -> str:
     serialized = orjson.dumps(kwargs, option=orjson.OPT_SORT_KEYS, default=str)
     param_hash = hashlib.sha256(serialized).hexdigest()[:16]
     return f"{path}:{param_hash}"
+
+
+def make_failure_key(cache_key: str) -> str:
+    """构造负缓存影子键.
+
+    Note:
+        与业务数据分开存储, 使失败标记不进入 `cached_response` 的模型与 ETag 分支.
+    """
+    return f"{cache_key}{FAILURE_KEY_SUFFIX}"
+
+
+def failure_payload(status_code: int) -> dict[str, int]:
+    """构造负缓存载荷."""
+    return {"status": status_code}
+
+
+def parse_failure_status(payload: Any) -> int | None:
+    """解析负缓存载荷, 兼容内存后端的序列化字节与 Redis 的已解析对象."""
+    if isinstance(payload, (bytes, bytearray, memoryview)):
+        try:
+            payload = orjson.loads(payload)
+        except orjson.JSONDecodeError:
+            return None
+    if not isinstance(payload, dict):
+        return None
+    status = payload.get("status")
+    if not isinstance(status, int) or isinstance(status, bool):
+        return None
+    return status
+
+
+async def read_failure_status(cache: CacheBackend, cache_key: str) -> int | None:
+    """读取负缓存状态码; 无标记或载荷不可解析时返回 None."""
+    return parse_failure_status(await cache.get(make_failure_key(cache_key)))
 
 
 def cached_response(data: Any, ttl: int, request: Request | None = None) -> Response:

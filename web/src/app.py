@@ -17,25 +17,17 @@ from starlette.responses import Response
 
 import qqmusic_api
 from qqmusic_api.core.engine import RequestEngine
-from qqmusic_api.core.exceptions import (
-    ApiDataError,
-    BaseApiException,
-    CredentialExpiredError,
-    CredentialInvalidError,
-    CredentialRefreshError,
-    HTTPError,
-    LoginError,
-    NetworkError,
-    RatelimitedError,
-    TimeoutNetworkError,
-)
+from qqmusic_api.core.exceptions import BaseApiException
 
 from . import modules  # noqa: F401
 from .core.cache import MemoryBackend, RedisBackend
+from .core.coalesce import Coalescer
 from .core.config import SecurityConfig, settings
 from .core.credential_pool import CredentialPool
 from .core.credential_store import ACCOUNT_CONFIG_FILE, CredentialStore, load_account_configs
 from .core.deps import WebServices
+from .core.error_mapping import HTTP_ERROR_MESSAGES as _HTTP_ERROR_MESSAGES
+from .core.error_mapping import api_exception_status_code as _base_api_exception_status_code
 from .core.response import ErrorResponse, error_response
 from .core.security import apply_security_middleware, configure_security
 from .routes import ROUTES
@@ -56,19 +48,6 @@ _ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
 }
 
 
-_HTTP_ERROR_MESSAGES = {
-    400: "请求错误",
-    401: "未授权",
-    403: "禁止访问",
-    404: "资源不存在",
-    422: "请求参数校验失败",
-    500: "服务器内部错误",
-    502: "上游服务响应异常",
-    503: "上游服务暂不可用",
-    504: "上游服务响应超时",
-}
-
-
 def _http_exception_message(exc: StarletteHTTPException) -> str:
     """返回稳定且面向调用方的 HTTP 错误说明."""
     if exc.status_code in _HTTP_ERROR_MESSAGES:
@@ -76,23 +55,6 @@ def _http_exception_message(exc: StarletteHTTPException) -> str:
     if isinstance(exc.detail, str) and exc.detail:
         return exc.detail
     return _HTTP_ERROR_MESSAGES.get(exc.status_code, "HTTP 请求错误")
-
-
-def _base_api_exception_status_code(exc: BaseApiException) -> int:
-    """将 SDK 异常映射为对外 HTTP 状态码."""
-    if isinstance(exc, RatelimitedError):
-        return 429
-    if isinstance(exc, (CredentialInvalidError, CredentialExpiredError, CredentialRefreshError)):
-        return 401
-    if isinstance(exc, LoginError):
-        return 400
-    if isinstance(exc, TimeoutNetworkError):
-        return 504
-    if isinstance(exc, NetworkError):
-        return 503
-    if isinstance(exc, (HTTPError, ApiDataError)):
-        return 502
-    return 400
 
 
 async def _cleanup_services(services: WebServices) -> None:
@@ -216,7 +178,12 @@ def create_app() -> FastAPI:
     else:
         cache = MemoryBackend(_max_size=settings.cache.memory_max_size)
 
-    app.state.services = WebServices(cache=cache, security=None)
+    app.state.services = WebServices(
+        cache=cache,
+        security=None,
+        cache_config=settings.cache,
+        coalescer=Coalescer(wait_timeout=settings.cache.coalesce_wait_timeout_seconds),
+    )
     configure_security(app, settings.security)
     app.middleware("http")(apply_security_middleware)
 

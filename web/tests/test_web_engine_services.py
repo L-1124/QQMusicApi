@@ -1,25 +1,35 @@
 """Web 引擎服务依赖与模块执行测试."""
 
+import asyncio
+import json
 import time
 from pathlib import Path
 from typing import Any, cast
 
 import pytest
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 
 from qqmusic_api import Credential, Platform
 from qqmusic_api.core.engine import RequestEngine, RequestScope, ScopedRequestExecutor
-from qqmusic_api.core.exceptions import CredentialExpiredError, CredentialRefreshError
+from qqmusic_api.core.exceptions import (
+    CredentialExpiredError,
+    CredentialRefreshError,
+    LoginError,
+    NetworkError,
+    TimeoutNetworkError,
+)
 from qqmusic_api.core.request import BaseRequest, CgiRequest, HttpRequest
 from qqmusic_api.core.transport import PreparedRequest, RawResponse
 from qqmusic_api.models.song import GetSongUrlsResponse
 from qqmusic_api.modules.song import SongFileType
 from web.src.app import _cleanup_services
 from web.src.core.cache import MemoryBackend
-from web.src.core.config import CredentialConfig
+from web.src.core.coalesce import Coalescer
+from web.src.core.config import CacheConfig, CredentialConfig
 from web.src.core.credential_pool import CredentialPool, PoolCredential
 from web.src.core.credential_store import CredentialStore
 from web.src.core.deps import WebServices, get_engine
+from web.src.core.response import ApiResponse
 from web.src.routes import ROUTES
 from web.src.routing.executor import execute_route
 from web.src.routing.modules import MODULE_TYPES, create_module
@@ -75,6 +85,42 @@ class ScriptedEngine(RecordingEngine):
         return step
 
 
+class SlowEngine(RecordingEngine):
+    """在 RecordingEngine 上注入回源延迟, 用于制造并发等待窗口."""
+
+    def __init__(self, delay: float) -> None:
+        """初始化回源延迟秒数."""
+        super().__init__()
+        self._delay = delay
+
+    async def execute(self, request: BaseRequest[Any], scope: RequestScope) -> Any:
+        """延迟后按声明的响应模型返回空模型."""
+        await asyncio.sleep(self._delay)
+        return await super().execute(request, scope)
+
+
+class SlowScriptedEngine(ScriptedEngine):
+    """在脚本引擎上注入回源延迟, 让失败发生在等待者进入在途组之后."""
+
+    def __init__(self, steps: list[Any | Exception], delay: float) -> None:
+        """初始化脚本步骤与回源延迟秒数."""
+        super().__init__(steps)
+        self._delay = delay
+
+    async def execute(self, request: BaseRequest[Any], scope: RequestScope) -> Any:
+        """延迟后执行下一个脚本步骤."""
+        await asyncio.sleep(self._delay)
+        return await super().execute(request, scope)
+
+
+class FailingSetCache(MemoryBackend):
+    """写入必失败的缓存桩, 用于复现 leader 写缓存失败后 follower 的兜底路径."""
+
+    async def set(self, key: str, data: Any, ttl: int) -> None:
+        """始终抛出写入失败."""
+        raise RuntimeError("缓存写入失败")
+
+
 def _resolved_route(path: str) -> WebRoute:
     """按路径获取已解析的 Web 路由声明."""
     return _resolve_route(next(route for route in ROUTES if route.path == path))
@@ -89,6 +135,9 @@ def _route_context(
     credential: Credential | None = None,
     credential_store: CredentialStore | None = None,
     credential_config: CredentialConfig | None = None,
+    cache_config: CacheConfig | None = None,
+    coalescer: Coalescer | None = None,
+    headers: list[tuple[bytes, bytes]] | None = None,
 ) -> RouteContext:
     """构造绑定引擎桩的路由上下文."""
     app = FastAPI()
@@ -98,8 +147,12 @@ def _route_context(
         engine=cast("RequestEngine", engine),
         credential_pool=CredentialPool(credential_store) if credential_store is not None else None,
         credential_config=credential_config,
+        cache_config=cache_config,
+        coalescer=coalescer if coalescer is not None else Coalescer(),
     )
-    request = Request({"type": "http", "method": "GET", "path": route.path, "headers": [], "app": app})
+    request = Request(
+        {"type": "http", "method": "GET", "path": route.path, "headers": headers or [], "app": app},
+    )
     return RouteContext(
         request=request,
         engine=cast("RequestEngine", engine),
@@ -427,3 +480,220 @@ async def test_pool_refresh_reuses_credential_rotated_by_peer(tmp_path: Path) ->
     assert second.credential.musickey == "new-key"
     assert len(engine.calls) == 1
     store.close()
+
+
+# Request Coalescing
+
+
+def _cached_route() -> WebRoute:
+    """返回带缓存策略的读路由声明."""
+    return _resolved_route("/song/{value}/detail")
+
+
+@pytest.mark.asyncio
+async def test_concurrent_cached_requests_share_single_upstream_call() -> None:
+    """测试同一缓存键的并发请求只回源一次, 且响应体与 ETag 一致."""
+    engine = SlowEngine(delay=0.05)
+    cache = MemoryBackend()
+    coalescer = Coalescer(wait_timeout=1.0)
+    contexts = [
+        _route_context(_cached_route(), engine, params={"value": "1"}, cache=cache, coalescer=coalescer)
+        for _ in range(5)
+    ]
+
+    responses = await asyncio.gather(*(execute_route(context) for context in contexts))
+
+    assert len(engine.calls) == 1
+    payloads = [json.loads(bytes(response.body)) for response in responses]
+    assert all(payload == payloads[0] for payload in payloads)
+    assert len({response.headers["etag"] for response in responses}) == 1
+    assert coalescer.in_flight == 0
+
+
+@pytest.mark.asyncio
+async def test_different_cache_keys_are_not_coalesced() -> None:
+    """测试不同缓存键各自回源, 互不阻塞."""
+    engine = SlowEngine(delay=0.02)
+    coalescer = Coalescer(wait_timeout=1.0)
+    contexts = [
+        _route_context(_cached_route(), engine, params={"value": value}, coalescer=coalescer) for value in ("1", "2")
+    ]
+
+    responses = await asyncio.gather(*(execute_route(context) for context in contexts))
+
+    assert len(engine.calls) == 2
+    assert all(response.status_code == 200 for response in responses)
+
+
+@pytest.mark.asyncio
+async def test_follower_degrades_without_resourcing_after_wait_timeout() -> None:
+    """测试等待者超时后降级返回 503, 且不新增回源."""
+    engine = SlowEngine(delay=0.2)
+    coalescer = Coalescer(wait_timeout=0.01)
+    contexts = [_route_context(_cached_route(), engine, params={"value": "1"}, coalescer=coalescer) for _ in range(2)]
+
+    responses = await asyncio.gather(*(execute_route(context) for context in contexts))
+
+    assert sorted(response.status_code for response in responses) == [200, 503]
+    degraded = next(response for response in responses if response.status_code == 503)
+    assert degraded.headers["retry-after"] == "1"
+    assert len(engine.calls) == 1
+    assert coalescer.in_flight == 0
+
+
+@pytest.mark.asyncio
+async def test_upstream_failure_opens_negative_cache_breaker() -> None:
+    """测试上游失败写入负缓存后, 窗口内的后续请求快速失败且不回源."""
+    engine = ScriptedEngine([NetworkError("上游不可达")])
+    cache = MemoryBackend()
+
+    with pytest.raises(NetworkError):
+        await execute_route(_route_context(_cached_route(), engine, params={"value": "1"}, cache=cache))
+
+    with pytest.raises(HTTPException) as exc_info:
+        await execute_route(_route_context(_cached_route(), engine, params={"value": "1"}, cache=cache))
+
+    assert exc_info.value.status_code == 503
+    assert len(engine.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_client_error_does_not_open_negative_cache() -> None:
+    """测试 4xx 类失败不写负缓存, 后续请求仍会回源."""
+    engine = ScriptedEngine([LoginError("验证码错误", code=20271), LoginError("验证码错误", code=20271)])
+    cache = MemoryBackend()
+    coalescer = Coalescer(wait_timeout=1.0)
+
+    for _ in range(2):
+        with pytest.raises(LoginError):
+            await execute_route(
+                _route_context(_cached_route(), engine, params={"value": "1"}, cache=cache, coalescer=coalescer),
+            )
+
+    assert len(engine.calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_route_without_cache_policy_is_not_coalesced() -> None:
+    """测试无缓存策略的路由不受请求合并影响."""
+    engine = SlowEngine(delay=0.02)
+    coalescer = Coalescer(wait_timeout=1.0)
+    route = _resolved_route("/song/query_song")
+    contexts = [
+        _route_context(route, engine, params={"value": "1", "song_type": None}, coalescer=coalescer) for _ in range(2)
+    ]
+
+    results = await asyncio.gather(*(execute_route(context) for context in contexts))
+
+    assert len(engine.calls) == 2
+    assert all(isinstance(result, ApiResponse) for result in results)
+
+
+@pytest.mark.asyncio
+async def test_coalescing_can_be_disabled_by_config() -> None:
+    """测试关闭请求合并后并发请求各自回源."""
+    engine = SlowEngine(delay=0.02)
+    coalescer = Coalescer(wait_timeout=1.0)
+    cache_config = CacheConfig(coalesce_enabled=False)
+    contexts = [
+        _route_context(
+            _cached_route(),
+            engine,
+            params={"value": "1"},
+            cache_config=cache_config,
+            coalescer=coalescer,
+        )
+        for _ in range(2)
+    ]
+
+    responses = await asyncio.gather(*(execute_route(context) for context in contexts))
+
+    assert len(engine.calls) == 2
+    assert all(response.status_code == 200 for response in responses)
+
+
+@pytest.mark.asyncio
+async def test_waiting_follower_reuses_failure_marker() -> None:
+    """测试等待中的 follower 在 leader 失败后复用失败标记, 不再回源."""
+    engine = SlowScriptedEngine([NetworkError("上游不可达")], delay=0.05)
+    cache = MemoryBackend()
+    coalescer = Coalescer(wait_timeout=1.0)
+    contexts = [
+        _route_context(_cached_route(), engine, params={"value": "1"}, cache=cache, coalescer=coalescer)
+        for _ in range(2)
+    ]
+
+    outcomes = await asyncio.gather(*(execute_route(context) for context in contexts), return_exceptions=True)
+
+    errors = [outcome for outcome in outcomes if isinstance(outcome, BaseException)]
+    assert any(isinstance(error, NetworkError) for error in errors)
+    fast_fail = [error for error in errors if isinstance(error, HTTPException)]
+    assert [error.status_code for error in fast_fail] == [503]
+    assert len(engine.calls) == 1
+    assert coalescer.in_flight == 0
+
+
+@pytest.mark.asyncio
+async def test_timeout_failure_is_remembered_as_504_marker() -> None:
+    """测试超时类失败按 504 写入负缓存 (状态码判定顺序需先于 503)."""
+    engine = ScriptedEngine([TimeoutNetworkError("上游超时")])
+    cache = MemoryBackend()
+
+    with pytest.raises(TimeoutNetworkError):
+        await execute_route(_route_context(_cached_route(), engine, params={"value": "1"}, cache=cache))
+
+    with pytest.raises(HTTPException) as exc_info:
+        await execute_route(_route_context(_cached_route(), engine, params={"value": "1"}, cache=cache))
+
+    assert exc_info.value.status_code == 504
+    assert len(engine.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_follower_rebuilds_response_from_leader_payload() -> None:
+    """测试 leader 写缓存失败且自身返回 304 时, follower 仍按自己的请求重建响应."""
+    engine = SlowEngine(delay=0.05)
+    coalescer = Coalescer(wait_timeout=1.0)
+    route = _cached_route()
+    warmup = await execute_route(_route_context(route, engine, params={"value": "1"}))
+    etag = warmup.headers["etag"]
+
+    broken_cache = FailingSetCache()
+    leader = _route_context(
+        route,
+        engine,
+        params={"value": "1"},
+        cache=broken_cache,
+        coalescer=coalescer,
+        headers=[(b"if-none-match", etag.encode())],
+    )
+    follower = _route_context(route, engine, params={"value": "1"}, cache=broken_cache, coalescer=coalescer)
+
+    leader_response, follower_response = await asyncio.gather(execute_route(leader), execute_route(follower))
+
+    assert leader_response.status_code == 304
+    assert follower_response.status_code == 200
+    assert json.loads(bytes(follower_response.body))["code"] == 0
+    assert len(engine.calls) == 2  # 预热 1 次 + leader 1 次, follower 未回源
+    assert coalescer.in_flight == 0
+
+
+@pytest.mark.asyncio
+async def test_negative_cache_breaker_still_applies_when_coalescing_disabled() -> None:
+    """测试关闭请求合并后上游失败标记仍然生效 (两个开关相互独立)."""
+    engine = ScriptedEngine([NetworkError("上游不可达")])
+    cache = MemoryBackend()
+    cache_config = CacheConfig(coalesce_enabled=False)
+
+    with pytest.raises(NetworkError):
+        await execute_route(
+            _route_context(_cached_route(), engine, params={"value": "1"}, cache=cache, cache_config=cache_config),
+        )
+
+    with pytest.raises(HTTPException) as exc_info:
+        await execute_route(
+            _route_context(_cached_route(), engine, params={"value": "1"}, cache=cache, cache_config=cache_config),
+        )
+
+    assert exc_info.value.status_code == 503
+    assert len(engine.calls) == 1
