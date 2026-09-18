@@ -78,8 +78,10 @@ ROUTES: tuple[WebRoute, ...] = (
     R("song", "get_sheet", "/song/{mid}/sheet", GetSheetResponse, params=MID, cache=PUBLIC_300),
     R("song", "get_similar_song", "/song/{songid}/similar", GetSimilarSongResponse, params=SONGID, cache=PUBLIC_600),
     R(
-        SongApi.get_song_urls,
+        "song",
+        "get_song_urls",
         "/song/get_song_urls",
+        GetSongUrlsResponse,
         methods=(HttpMethod.POST,),
         auth=AuthPolicy.OPTIONAL,
         body_model=SongUrlsRequest,

@@ -146,7 +146,7 @@ def test_pilot_routes_reference_sdk_endpoints() -> None:
     """测试试点路由直接引用 SDK 端点并复用响应模型."""
     endpoints = {route.endpoint for route in RESOLVED_ROUTES if route.endpoint is not None}
 
-    assert {SongApi.get_detail, SongApi.get_song_urls, SearchApi.quick_search, SearchApi.search_by_type} <= endpoints
+    assert {SongApi.get_detail, SearchApi.quick_search, SearchApi.search_by_type} <= endpoints
 
 
 def test_song_file_type_uses_integer_mapping_with_description(app: FastAPI) -> None:
