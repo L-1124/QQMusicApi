@@ -107,7 +107,6 @@ class MockClient:
             raw,
             allow_error_codes=request.allow_error_codes,
             parse_on_allow=request.parse_on_allow,
-            disable_parse=request.disable_parse,
             response_model=request.response_model,
         )
 

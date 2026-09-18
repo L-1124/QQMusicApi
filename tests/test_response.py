@@ -33,9 +33,7 @@ class DummyModel(BaseModel):
     value: int
 
 
-# ---------------------------------------------------------------------------
 # build_result
-# ---------------------------------------------------------------------------
 
 
 def test_build_result_without_model_returns_raw():
@@ -49,9 +47,7 @@ def test_build_result_with_model_validates():
     assert build_result({"value": 1}, DummyModel) == DummyModel(value=1)
 
 
-# ---------------------------------------------------------------------------
 # unwrap_cgi_envelope
-# ---------------------------------------------------------------------------
 
 
 def test_unwrap_envelope_returns_sub_responses():
@@ -126,9 +122,7 @@ def test_unwrap_envelope_sub_response_not_object_is_per_item():
     assert items[1] is None
 
 
-# ---------------------------------------------------------------------------
 # parse_cgi_item
-# ---------------------------------------------------------------------------
 
 
 def test_parse_cgi_item_success_with_model():
@@ -165,12 +159,6 @@ def test_parse_cgi_item_allow_with_parse_on_allow_builds_model():
         response_model=DummyModel,
     )
     assert result == DummyModel(value=5)
-
-
-def test_parse_cgi_item_disable_parse_returns_data():
-    """测试 disable_parse 时返回内层 data 而不建模."""
-    result = parse_cgi_item(make_cgi_sub(data={"value": 1}), disable_parse=True, response_model=DummyModel)
-    assert result == {"value": 1}
 
 
 @pytest.mark.parametrize(
@@ -215,9 +203,7 @@ def test_cgi_error_map_contents():
     } == CGI_ERROR_MAP
 
 
-# ---------------------------------------------------------------------------
 # RawPayload 快照
-# ---------------------------------------------------------------------------
 
 
 def test_snapshot_payload_copies_all_fields():
@@ -253,9 +239,7 @@ def test_snapshot_payload_is_frozen():
         payload.content = b"x"  # type: ignore[reportAttributeIssue]
 
 
-# ---------------------------------------------------------------------------
 # parse_http_response
-# ---------------------------------------------------------------------------
 
 
 def test_parse_http_response_json_dict():

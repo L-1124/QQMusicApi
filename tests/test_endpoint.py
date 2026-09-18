@@ -365,8 +365,8 @@ def test_cgi_endpoint_paginated():
     assert meta.response_model is DummyModel
 
     req = bound_method(page=3)
-    req = bound_method(page=1)
     assert isinstance(req, PaginatedCgiRequest)
+    assert req.param == {"page": 3}
     assert req.response_model is DummyModel
 
 

@@ -188,9 +188,7 @@ def _make_http_executor(transport: StubTransport, *, broken_device_store: bool =
     )
 
 
-# ---------------------------------------------------------------------------
 # CGI 单请求
-# ---------------------------------------------------------------------------
 
 
 async def test_execute_returns_parsed_result():
@@ -259,9 +257,7 @@ async def test_execute_data_error_passthrough():
         await executor.execute(_callsc(_cgi_request()))
 
 
-# ---------------------------------------------------------------------------
 # CGI 批量
-# ---------------------------------------------------------------------------
 
 
 async def test_execute_many_groups_same_credential_into_one_call():
@@ -463,9 +459,7 @@ async def test_execute_many_grouping_error_raises_without_return_exceptions():
         await executor.execute_many(_callsc(indexed), batch_size=20, return_exceptions=False)
 
 
-# ---------------------------------------------------------------------------
 # CGI 准备 (原 CgiPreparer 逻辑, 现为 CgiExecutor 私有方法)
-# ---------------------------------------------------------------------------
 
 
 @pytest_asyncio.fixture
@@ -608,9 +602,7 @@ async def test_prepare_batch_does_not_mutate_user_param(cgi_executor: CgiExecuto
     assert prepared.kwargs["json"]["req_0"]["param"] == {"flag": 1}
 
 
-# ---------------------------------------------------------------------------
 # CgiBatchKey
-# ---------------------------------------------------------------------------
 
 
 def test_batch_key_distinguishes_complete_credentials():
@@ -648,9 +640,7 @@ def test_batch_key_ignores_preserve_bool_and_parse_options():
     """测试 preserve_bool 与解析选项不进入分组键."""
     scope = _scope()
     base = _call(_cgi_request(), scope)
-    variant = _call(
-        _cgi_request(preserve_bool=True, allow_error_codes=(1,), parse_on_allow=True, disable_parse=True), scope
-    )
+    variant = _call(_cgi_request(preserve_bool=True, allow_error_codes=(1,), parse_on_allow=True), scope)
     assert CgiBatchKey.from_call(base) == CgiBatchKey.from_call(variant)
 
 
@@ -665,9 +655,7 @@ def test_batch_key_separates_sign_and_comm():
     )
 
 
-# ---------------------------------------------------------------------------
 # HTTP 执行
-# ---------------------------------------------------------------------------
 
 
 async def test_http_execute_returns_json_dict():
@@ -805,9 +793,7 @@ async def test_http_execute_many_prepare_ordinary_error_raises_without_return_ex
         await executor.execute_many(_callsc([(0, _http_request())]), return_exceptions=False)
 
 
-# ---------------------------------------------------------------------------
 # HTTP 准备 (原 HttpPreparer 逻辑, 现为 HttpExecutor 私有方法)
-# ---------------------------------------------------------------------------
 
 
 @pytest_asyncio.fixture
