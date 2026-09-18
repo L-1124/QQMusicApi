@@ -5,7 +5,6 @@ from typing import Literal
 import pytest
 
 from qqmusic_api import Client, CredentialInvalidError
-from qqmusic_api.core import ItemPaginatedCgiRequest
 
 CoverSize = Literal[150, 300, 500, 800] | None
 
@@ -42,7 +41,6 @@ async def test_get_new_album(client: Client, area: int) -> None:
 async def test_get_new_album_pagination(client: Client) -> None:
     """测试新碟上架分页返回不同数据."""
     req = client.album.get_new_album(area=1, num=5, page=1)
-    assert isinstance(req, ItemPaginatedCgiRequest)
     pages = [page async for page in req.paginate(limit=2)]
     assert len(pages) == 2
     assert pages[0].albums[0].mid != pages[1].albums[0].mid

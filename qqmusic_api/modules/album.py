@@ -9,7 +9,9 @@ from ..models.album import (
     GetAlbumDetailResponse,
     GetAlbumSongResponse,
     GetNewAlbumResponse,
+    NewAlbumItem,
 )
+from ..models.base import Song
 from ..models.request import Credential
 from ._base import ApiModule
 
@@ -42,6 +44,7 @@ class AlbumApi(ApiModule):
         module="music.musichallAlbum.AlbumSongList",
         method="GetAlbumSongList",
         response_model=GetAlbumSongResponse,
+        item_type=Song,
     )
     def get_song(self, value: int | str, num: int = 10, page: int = 1) -> CgiRequestData:
         """获取专辑歌曲列表.
@@ -76,6 +79,7 @@ class AlbumApi(ApiModule):
         module="newalbum.NewAlbumServer",
         method="get_new_album_info",
         response_model=GetNewAlbumResponse,
+        item_type=NewAlbumItem,
     )
     def get_new_album(self, area: int = 1, num: int = 20, page: int = 1) -> CgiRequestData:
         """获取新碟上架列表.

@@ -113,6 +113,7 @@ class SearchApi(ApiModule):
         module="music.adaptor.SearchAdaptor",
         method="do_search_v2",
         response_model=GeneralSearchResponse,
+        pager=True,
     )
     def general_search(
         self,
@@ -246,6 +247,7 @@ class SearchApi(ApiModule):
         method="DoSearchForQQMusicMobile",
         platform=Platform.ANDROID,
         response_model=SearchByTypeResponse,
+        pager=True,
     )
     def search_by_type(
         self,

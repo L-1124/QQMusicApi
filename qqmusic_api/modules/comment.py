@@ -12,7 +12,9 @@ from ..models.comment import (
     AddCommentResponse,
     CommentBizType,
     CommentCountResponse,
+    CommentItem,
     CommentListResponse,
+    MomentCommentItem,
     MomentCommentResponse,
 )
 from ..models.request import Credential
@@ -83,6 +85,7 @@ class CommentApi(ApiModule):
         module="music.globalComment.CommentRead",
         method="GetHotCommentList",
         response_model=CommentListResponse,
+        item_type=CommentItem,
     )
     def get_hot_comments(
         self,
@@ -126,6 +129,7 @@ class CommentApi(ApiModule):
         module="music.globalComment.CommentRead",
         method="GetNewCommentList",
         response_model=CommentListResponse,
+        item_type=CommentItem,
     )
     def get_new_comments(
         self,
@@ -170,6 +174,7 @@ class CommentApi(ApiModule):
         module="music.globalComment.CommentRead",
         method="GetRecCommentList",
         response_model=CommentListResponse,
+        item_type=CommentItem,
     )
     def get_recommend_comments(
         self,
@@ -214,6 +219,7 @@ class CommentApi(ApiModule):
         module="music.globalComment.SongTsComment",
         method="GetSongTsCmList",
         response_model=MomentCommentResponse,
+        item_type=MomentCommentItem,
     )
     def get_moment_comments(
         self,

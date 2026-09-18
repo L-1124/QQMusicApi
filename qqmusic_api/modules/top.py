@@ -2,6 +2,7 @@
 
 from ..core.endpoint import CgiRequestData, cgi_endpoint
 from ..core.pagination import OffsetStrategy
+from ..models.base import Song
 from ..models.top import TopCategoryResponse, TopDetailResponse
 from ._base import ApiModule
 
@@ -24,6 +25,7 @@ class TopApi(ApiModule):
         module="music.musicToplist.Toplist",
         method="GetDetail",
         response_model=TopDetailResponse,
+        item_type=Song,
     )
     def get_detail(
         self,

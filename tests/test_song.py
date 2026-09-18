@@ -3,7 +3,6 @@
 import pytest
 
 from qqmusic_api import Client
-from qqmusic_api.core import ItemPaginatedCgiRequest
 from qqmusic_api.core.exceptions import CgiApiException
 from qqmusic_api.modules.song import EncryptedSongFileType, SongFileInfo, SongFileType, SongQueryInfo
 
@@ -94,7 +93,6 @@ async def test_get_related_mv(client: Client) -> None:
 async def test_get_related_songlist_refresh(client: Client) -> None:
     """测试歌曲相关歌单支持换一批."""
     req1 = client.song.get_related_songlist(100)
-    assert isinstance(req1, ItemPaginatedCgiRequest)
     first_batch = await req1
     req2 = req1.next_request(first_batch)
     assert req2 is not None
@@ -108,7 +106,6 @@ async def test_get_related_songlist_refresh(client: Client) -> None:
 async def test_get_related_mv_refresh(client: Client) -> None:
     """测试歌曲相关 MV 支持换一批."""
     req1 = client.song.get_related_mv(1114857)
-    assert isinstance(req1, ItemPaginatedCgiRequest)
     first_batch = await req1
     req2 = req1.next_request(first_batch)
     assert req2 is not None

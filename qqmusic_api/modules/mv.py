@@ -2,7 +2,7 @@
 
 from ..core.endpoint import CgiRequestData, cgi_endpoint
 from ..core.pagination import OffsetStrategy
-from ..models.mv import GetMvDetailResponse, GetMvListResponse, GetMvUrlsResponse
+from ..models.mv import GetMvDetailResponse, GetMvListResponse, GetMvUrlsResponse, MvListItem
 from ..utils.common import get_guid
 from ._base import ApiModule
 
@@ -82,6 +82,7 @@ class MvApi(ApiModule):
         module="MvService.MvInfoProServer",
         method="GetAllocMvInfo",
         response_model=GetMvListResponse,
+        item_type=MvListItem,
     )
     def get_mv_list(
         self,

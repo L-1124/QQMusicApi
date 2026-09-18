@@ -3,7 +3,6 @@
 import pytest
 
 from qqmusic_api import Client, CredentialInvalidError
-from qqmusic_api.core import ItemPaginatedCgiRequest
 
 
 async def test_get_detail(client: Client) -> None:
@@ -15,7 +14,6 @@ async def test_get_detail(client: Client) -> None:
 async def test_get_detail_with_pagination(client: Client) -> None:
     """测试分页获取歌单歌曲列表."""
     req = client.songlist.get_detail(songlist_id=7843129912, num=5, page=1)
-    assert isinstance(req, ItemPaginatedCgiRequest)
     result = await req
     assert len(result.songs) == 5
 

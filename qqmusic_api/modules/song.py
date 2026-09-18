@@ -3,10 +3,9 @@
 from enum import Enum
 from typing import Any, NamedTuple
 
-from qqmusic_api import Platform
-
 from ..core.endpoint import CgiEndpointMeta, CgiRequestData, cgi_endpoint
 from ..core.pagination import BatchRefreshStrategy
+from ..core.versioning import Platform
 from ..models.request import Credential
 from ..models.song import (
     GetCdnDispatchResponse,
@@ -22,6 +21,8 @@ from ..models.song import (
     GetSongUrlsResponse,
     HasSheetMusicResponse,
     QuerySongResponse,
+    RelatedMv,
+    RelatedPlaylist,
 )
 from ..utils import get_guid
 from ._base import ApiModule
@@ -415,6 +416,7 @@ class SongApi(ApiModule):
         module="music.recommend.TrackRelationServer",
         method="GetRelatedPlaylist",
         response_model=GetRelatedSonglistResponse,
+        item_type=RelatedPlaylist,
     )
     def get_related_songlist(self, songid: int, last: list[int] | None = None) -> CgiRequestData:
         """获取歌曲相关歌单.
@@ -438,6 +440,7 @@ class SongApi(ApiModule):
         module="MvService.MvInfoProServer",
         method="GetSongRelatedMv",
         response_model=GetRelatedMvResponse,
+        item_type=RelatedMv,
     )
     def get_related_mv(self, songid: int, last_mvid: str | None = None) -> CgiRequestData:
         """获取歌曲相关 MV.

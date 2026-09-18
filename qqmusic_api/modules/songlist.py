@@ -3,6 +3,7 @@
 from ..core import CgiApiException
 from ..core.endpoint import CgiRequestData, cgi_endpoint
 from ..core.pagination import OffsetStrategy
+from ..models.base import Song
 from ..models.request import Credential
 from ..models.songlist import CreateDeleteSonglistResp, GetSonglistDetailResponse
 from ._base import ApiModule
@@ -30,6 +31,7 @@ class SonglistApi(ApiModule):
         module="music.srfDissInfo.DissInfo",
         method="CgiGetDiss",
         response_model=GetSonglistDetailResponse,
+        item_type=Song,
     )
     def get_detail(
         self,

@@ -9,11 +9,14 @@ from ..core.pagination import (
     PageStrategy,
     PaginationParams,
 )
+from ..models.base import Song
 from ..models.recommend import (
     GuessRecommendResponse,
     RadarRecommendResponse,
     RecommendFeedCardResponse,
     RecommendNewSongResponse,
+    RecommendShelf,
+    RecommendSonglistItem,
     RecommendSonglistResponse,
 )
 from ..models.request import Credential
@@ -28,6 +31,7 @@ class RecommendApi(ApiModule):
         module="music.recommend.RecommendFeed",
         method="get_recommend_feed",
         response_model=RecommendFeedCardResponse,
+        item_type=RecommendShelf,
     )
     def get_home_feed(
         self, page: int = 1, direction: int = 0, s_num: int = 0, v_cache: list[str] | None = None
@@ -103,6 +107,7 @@ class RecommendApi(ApiModule):
         module="music.recommend.TrackRelationServer",
         method="GetRadarSong",
         response_model=RadarRecommendResponse,
+        item_type=Song,
     )
     def get_radar_recommend(self, page: int = 1) -> CgiRequestData:
         """获取雷达推荐.
@@ -131,6 +136,7 @@ class RecommendApi(ApiModule):
         module="music.playlist.PlaylistSquare",
         method="GetRecommendFeed",
         response_model=RecommendSonglistResponse,
+        item_type=RecommendSonglistItem,
     )
     def get_recommend_songlist(self, page: int = 1, num: int = 25) -> CgiRequestData:
         """获取推荐歌单.

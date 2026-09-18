@@ -10,17 +10,21 @@ from ..core.pagination import (
     OffsetStrategy,
     PageStrategy,
 )
+from ..models.base import Song
 from ..models.singer import (
+    AlbumBrief,
     HomepageHeaderResponse,
     HomepageTabDetailResponse,
     SimilarSingerResponse,
     SingerAlbumListResponse,
+    SingerBrief,
     SingerDetailResponse,
     SingerIndexPageResponse,
     SingerMvListResponse,
     SingerNameSpecialDisplayResponse,
     SingerSongListResponse,
     SingerTypeListResponse,
+    VideoBrief,
 )
 from ._base import ApiModule
 
@@ -157,6 +161,7 @@ class SingerApi(ApiModule):
         module="music.musichallSinger.SingerList",
         method="GetSingerListIndex",
         response_model=SingerIndexPageResponse,
+        item_type=SingerBrief,
     )
     def get_singer_list_index(
         self,
@@ -246,6 +251,7 @@ class SingerApi(ApiModule):
         module="music.UnifiedHomepage.UnifiedHomepageSrv",
         method="GetHomepageTabDetail",
         response_model=HomepageTabDetailResponse,
+        pager=True,
     )
     def get_tab_detail(
         self,
@@ -338,6 +344,7 @@ class SingerApi(ApiModule):
         module="musichall.song_list_server",
         method="GetSingerSongList",
         response_model=SingerSongListResponse,
+        item_type=Song,
     )
     def get_songs_list(self, mid: str, num: int = 10, page: int = 1) -> CgiRequestData:
         """获取歌手的歌曲列表.
@@ -363,6 +370,7 @@ class SingerApi(ApiModule):
         module="music.musichallAlbum.AlbumListServer",
         method="GetAlbumList",
         response_model=SingerAlbumListResponse,
+        item_type=AlbumBrief,
     )
     def get_album_list(self, mid: str, num: int = 10, page: int = 1) -> CgiRequestData:
         """获取歌手的专辑列表.
@@ -388,6 +396,7 @@ class SingerApi(ApiModule):
         module="MvService.MvInfoProServer",
         method="GetSingerMvList",
         response_model=SingerMvListResponse,
+        item_type=VideoBrief,
     )
     def get_mv_list(self, mid: str, num: int = 10, page: int = 1) -> CgiRequestData:
         """获取歌手 MV 列表数据.

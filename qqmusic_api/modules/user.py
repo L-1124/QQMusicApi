@@ -4,13 +4,18 @@ from typing import Any, ClassVar
 
 from ..core.endpoint import CgiRequestData, cgi_endpoint
 from ..core.pagination import MultiFieldContinuationStrategy, OffsetStrategy, PageStrategy
+from ..models.base import Song
 from ..models.request import Credential
 from ..models.songlist import GetSonglistDetailResponse
 from ..models.user import (
     DislikeListData,
+    FriendEntry,
+    RelationUser,
     UserCreatedSonglistResponse,
+    UserFavAlbumItem,
     UserFavAlbumResponse,
     UserFavMvResponse,
+    UserFavSonglistItem,
     UserFavSonglistResponse,
     UserFriendListResponse,
     UserHomepageResponse,
@@ -87,6 +92,7 @@ class UserApi(ApiModule):
         method="GetFollowSingerList",
         response_model=UserRelationListResponse,
         require_login=True,
+        item_type=RelationUser,
     )
     def get_follow_singers(
         self,
@@ -123,6 +129,7 @@ class UserApi(ApiModule):
         method="GetFansList",
         response_model=UserRelationListResponse,
         require_login=True,
+        item_type=RelationUser,
     )
     def get_fans(
         self,
@@ -159,6 +166,7 @@ class UserApi(ApiModule):
         method="GetFriendList",
         response_model=UserFriendListResponse,
         require_login=True,
+        item_type=FriendEntry,
     )
     def get_friend(
         self,
@@ -192,6 +200,7 @@ class UserApi(ApiModule):
         method="GetFollowUserList",
         response_model=UserRelationListResponse,
         require_login=True,
+        item_type=RelationUser,
     )
     def get_follow_user(
         self,
@@ -250,6 +259,7 @@ class UserApi(ApiModule):
         module="music.srfDissInfo.DissInfo",
         method="CgiGetDiss",
         response_model=GetSonglistDetailResponse,
+        item_type=Song,
     )
     def get_fav_song(
         self,
@@ -294,6 +304,7 @@ class UserApi(ApiModule):
         module="music.musicasset.PlaylistFavRead",
         method="CgiGetPlaylistFavInfo",
         response_model=UserFavSonglistResponse,
+        item_type=UserFavSonglistItem,
     )
     def get_fav_songlist(
         self,
@@ -367,6 +378,7 @@ class UserApi(ApiModule):
         module="music.musicasset.AlbumFavRead",
         method="CgiGetAlbumFavInfo",
         response_model=UserFavAlbumResponse,
+        item_type=UserFavAlbumItem,
     )
     def get_fav_album(
         self,
@@ -450,6 +462,7 @@ class UserApi(ApiModule):
         response_model=DislikeListData,
         sign=True,
         require_login=True,
+        pager=True,
     )
     def get_dislike_list(
         self,
