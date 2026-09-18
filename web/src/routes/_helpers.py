@@ -117,6 +117,11 @@ def R(  # type: ignore[inconsistent-overload]
         resolved_response_model = meta.response_model
     if resolved_response_model is None:
         raise ValueError(f"Web 路由缺少响应模型: {module}.{method}")
+
+    from ..routing.modules import MODULE_TYPES
+
+    if module not in MODULE_TYPES:
+        raise ValueError(f"Web 路由模块名不合法 (未在 MODULE_TYPES 注册): {module}")
     return WebRoute(
         module=module,
         method=method,
