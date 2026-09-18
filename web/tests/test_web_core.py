@@ -8,7 +8,7 @@ from web.src.core.auth import _credential_refresh_lock, _credential_refresh_lock
 from web.src.core.cache import MemoryBackend
 from web.src.core.security import AccessPolicy, InMemoryConcurrencyLimiter, InMemoryRateLimiter
 
-# ── Credential refresh lock ──
+# Credential refresh lock
 
 
 @pytest.mark.asyncio
@@ -20,7 +20,7 @@ async def test_credential_refresh_lock_does_not_retain_unused_accounts() -> None
     assert musicid not in _credential_refresh_locks
 
 
-# ── MemoryBackend ──
+# MemoryBackend
 
 
 @pytest.mark.asyncio
@@ -45,7 +45,7 @@ async def test_memory_backend_evicts_oldest_when_full() -> None:
     assert await cache.get("c") == b"3"
 
 
-# ── InMemoryRateLimiter ──
+# InMemoryRateLimiter
 
 
 def test_rate_limiter_allows_within_capacity() -> None:
@@ -67,7 +67,7 @@ def test_rate_limiter_exempt_ip_always_allowed() -> None:
         assert result.remaining == 1
 
 
-# ── InMemoryConcurrencyLimiter ──
+# InMemoryConcurrencyLimiter
 
 
 @pytest.mark.asyncio
@@ -81,7 +81,7 @@ async def test_concurrency_limiter_rejects_over_limit() -> None:
     assert await limiter.acquire() is True
 
 
-# ── AccessPolicy ──
+# AccessPolicy
 
 
 def test_access_policy_allowlist_blocks_unlisted_ip() -> None:

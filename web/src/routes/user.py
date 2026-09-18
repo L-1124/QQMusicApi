@@ -73,7 +73,7 @@ ROUTES: tuple[WebRoute, ...] = (
         auth=AuthPolicy.OPTIONAL,
     ),
     R(UserApi.get_vip_info, "/user/get_vip_info", auth=AuthPolicy.COOKIE_OR_DEFAULT),
-    # -- 收藏/取消收藏歌单 --
+    # 收藏/取消收藏歌单
     R(
         "user",
         "fav_songlist",
@@ -96,7 +96,7 @@ ROUTES: tuple[WebRoute, ...] = (
         summary="取消收藏歌单",
         description="取消收藏他人的公开歌单.歌单本就不在收藏中也返回成功.",
     ),
-    # -- 不喜欢 --
+    # 不喜欢
     R(
         UserApi.get_dislike_list,
         "/user/dislikes",
