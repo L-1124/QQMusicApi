@@ -2,20 +2,19 @@
 
 `qqmusic_api` 采用 `Client + ApiModule + Request` 的结构:
 
-* `Client` 负责网络发送、平台信息和凭证。
-* `ApiModule` 负责声明接口参数，并返回可 `await` 的 `Request`。
+* `ApiModule` 通过 `@cgi_endpoint` / `@http_endpoint` 声明接口契约，方法体只负责返回 `CgiRequestData` / `HttpRequestData` 装载运行时参数。
+* `Request`（`CgiRequest` / `HttpRequest` 及分页子类）是由上述声明装配出的惰性描述符，被 `await` 时才真正执行。
+* `Client` 是使用者门面，持有默认凭证与平台，并把 `Request` 交由 `RequestEngine` 执行。
 
 ## 调用流程图
 
 ### 单请求
 
 ```text
-模块方法 (返回 CgiRequestData 或内部调用 _build_http)
-  -> 装饰器拦截并生成 BaseRequest 描述符
-  -> await request
-  -> Client.execute(request)
-  -> Engine 确定请求身份 (不可变凭证与平台 scope)
-  -> CgiExecutor / HttpExecutor 准备物理请求
+模块方法
+  -> 装配为 BaseRequest 描述符 (CgiRequest / HttpRequest 及分页子类)
+  -> await request: RequestExecutor 解析身份并交由 RequestEngine 分派
+  -> CgiExecutor / HttpExecutor 装配物理请求
   -> Transport.request(prepared) 发送并释放响应
   -> core/response.py 统一解析
   -> 返回原始 dict 或 Pydantic 模型
@@ -24,18 +23,19 @@
 ### 批量并发请求
 
 ```text
-多个被 @cgi_endpoint 装饰的模块方法
-  -> 内部生成 BaseRequest 描述符列表
-    -> Client.gather(requests)
-    -> Engine 确定全部执行条目的身份并按协议分区
-    -> CGI 条目按快照身份 (平台, 完整凭证, comm, 签名) 自动分组
-    -> 每组按 batch_size 拆分为批量请求
-    -> 全部物理批次经 send_many 一次批量发送 (多路复用: 先提交 lazy 请求, 再集中 gather)
-    -> 统一解包解析每个响应项, 逐项归属错误
-    -> 按输入顺序返回结果列表
+多个模块方法
+  -> 各自产出 BaseRequest 描述符
+  -> Client.gather(requests)
+  -> RequestEngine.gather(calls, batch_size=...)
+  -> 按请求类型 (CGI / HTTP) 分区并行执行
+  -> CGI 条目按快照身份自动分组, 每组按 batch_size 拆分后经 send_many 批量发送
+  -> 统一解包解析每个响应项, 逐项归属错误
+  -> 按输入顺序还原结果列表
 ```
 
 `gather` 的分组边界由执行器按 **快照身份** 计算 (生效平台, 完整凭证, 规范化公共参数, 覆盖模式与签名)。只有这些线上环境完全一致的请求才会安全地合并到同一个批量请求中。
+
+服务端接入不经过 `Client`: 由 `RequestEngine` 配合 `ScopedRequestExecutor` 按请求绑定身份, 单请求流程一致。
 
 ## 编写新的 API
 
@@ -79,7 +79,11 @@ class Client:
 
 ### 添加新的请求方法
 
-API 方法返回 `BaseRequest` 描述符对象，并不立即发起请求。对于标准 CGI 风格的 RPC 请求，应当使用 `@cgi_endpoint` 装饰器声明路由契约，并在方法体中返回 `CgiRequestData` 装载运行时参数：
+API 方法返回 `BaseRequest` 描述符对象，并不立即发起请求。可以通过声明式装饰器（`@cgi_endpoint` / `@http_endpoint`）或原生构建方法（`self._build_cgi` / `self._build_http`）构建：
+
+#### 1. CGI 接口 (RPC 风格)
+
+对于标准 CGI 风格的 RPC 请求，可以使用 `@cgi_endpoint` 装饰器声明端点契约，并在方法体中返回 `CgiRequestData` 装载运行时参数：
 
 ```python
 from ..core.endpoint import cgi_endpoint, CgiRequestData
@@ -97,7 +101,39 @@ def get_detail(self, song_id: int) -> CgiRequestData:
     )
 ```
 
-对于非标准 CGI 接口（如直接 GET 请求、获取网页或二维码），则使用原生的 `self._build_http(...)`：
+也可以使用 `self._build_cgi(...)` 构建：
+
+```python
+def get_detail(self, song_id: int):
+    """获取歌曲详情."""
+    return self._build_cgi(
+        module="music.songDetail",  # 接口所属模块
+        method="GetDetail",  # 方法名
+        param={"songid": song_id},  # 业务参数
+    )
+```
+
+#### 2. HTTP 接口 (标准 HTTP)
+
+对于标准 HTTP 请求（如直接 GET 请求、获取网页或二维码），可以使用 `@http_endpoint` 装饰器声明，并在方法体中返回 `HttpRequestData`：
+
+```python
+from ..core.endpoint import http_endpoint, HttpRequestData
+
+
+@http_endpoint(
+    key="search.quick_search",
+    method="GET",
+    url="https://c.y.qq.com/splcloud/fcgi-bin/smartbox_new.fcg",
+)
+def quick_search(self, keyword: str) -> HttpRequestData:
+    """快速搜索 (直接返回解析后的 JSON 数据)."""
+    return HttpRequestData(
+        params={"key": keyword},
+    )
+```
+
+也可以使用 `self._build_http(...)` 构建：
 
 ```python
 async def quick_search(self, keyword: str) -> dict[str, Any]:
@@ -114,52 +150,96 @@ async def quick_search(self, keyword: str) -> dict[str, Any]:
 
 `@cgi_endpoint` 装饰器用于在定义期静态声明端点的核心契约：
 
-| 参数             | 类型                        | 说明                                                                                                        |
-|------------------|-----------------------------|-------------------------------------------------------------------------------------------------------------|
-| `key`            | `str`                       | 端点唯一标识符（如 `"song.get_detail"`）                                                                    |
-| `module`         | `str`                       | 接口所属 CGI 模块名                                                                                         |
-| `method`         | `str`                       | CGI 方法名                                                                                                  |
-| `response_model` | `type[BaseModel]` 或 `None` | 响应模型，为 None 时返回原始 dict                                                                           |
-| `item_type`      | `type` 或 `None`            | （仅分页）数据项模型，声明后推导为 `ItemPaginatedCgiRequest`                                                |
-| `pager`          | `bool`                      | （仅分页）是否为分页端点，若 `item_type` 已填则无需填此项                                                   |
-| `sign`           | `bool`                      | 是否对请求进行签名                                                                                          |
-| `require_login`  | `bool`                      | 是否在执行时强制校验用户登录态                                                                              |
-| `platform`       | `Platform` 或 `None`        | 强制指定该接口使用的目标平台                                                                                |
+| 参数 | 类型 | 说明 |
+| ------------------ | ----------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `key` | `str` | 端点唯一标识符（如 `"song.get_detail"`） |
+| `module` | `str` | 接口所属 CGI 模块名 |
+| `method` | `str` | CGI 方法名 |
+| `response_model` | `type[BaseModel]` 或 `None` | 响应模型，为 None 时返回原始 dict |
+| `item_type` | `type` 或 `None` | （仅分页）数据项模型，声明后推导为 `ItemPaginatedCgiRequest` |
+| `pager` | `bool` | （仅分页）是否为分页端点，若 `item_type` 已填则无需填此项 |
+| `sign` | `bool` | 是否对请求进行签名 |
+| `require_login` | `bool` | 是否在执行时强制校验用户登录态 |
+| `platform` | `Platform` 或 `None` | 强制指定该接口使用的目标平台 |
 
 ### `CgiRequestData` 运行时参数说明
 
 在被 `@cgi_endpoint` 装饰的函数体内返回，用于承载每次调用的动态参数：
 
-| 参数             | 类型                        | 说明                                                                                                        |
-|------------------|-----------------------------|-------------------------------------------------------------------------------------------------------------|
-| `param`          | `dict`                      | 请求体的业务参数 `param` 字段                                                                               |
-| `comm`           | `dict` 或 `None`            | 附加的公共参数                                                                                              |
-| `override_comm`  | `bool`                      | 为 True 时 `comm` 完全替代自动生成的参数；为 False 时合并                                                   |
-| `credential`     | `Credential` 或 `None`      | 覆盖本次请求的凭证                                                                                          |
-| `pager_strategy` | `PagerStrategy` 或 `None`   | 分页策略，必须与装饰器的分页声明匹配                                                                        |
-| `items_extractor`| `Callable` 或 `None`        | （仅声明了 item_type 时需要）从单页响应对象中提取目标列表的闭包                                             |
+| 参数 | 类型 | 说明 |
+| ------------------ | ----------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `param` | `dict` | 请求体的业务参数 `param` 字段 |
+| `comm` | `dict` 或 `None` | 附加的公共参数 |
+| `override_comm` | `bool` | 为 True 时 `comm` 完全替代自动生成的参数；为 False 时合并 |
+| `credential` | `Credential` 或 `None` | 覆盖本次请求的凭证 |
+| `platform` | `Platform` 或 `None` | 覆盖本次请求的平台 |
+| `preserve_bool` | `bool` 或 `None` | 是否保留布尔值原样（默认转为 0/1 整型） |
+| `pager_strategy` | `PagerStrategy` 或 `None` | 分页策略，必须与装饰器的分页声明匹配 |
+| `items_extractor` | `Callable` 或 `None` | （仅声明了 item_type 时需要）从单页响应对象中提取目标列表的闭包 |
+
+### `@http_endpoint` 声明参数说明
+
+`@http_endpoint` 装饰器用于静态声明 HTTP 接口契约：
+
+| 参数 | 类型 | 说明 |
+| ---------------- | -------------------------------- | -------------------------------------------------------------------- |
+| `key` | `str` | 端点唯一标识符（如 `"search.quick_search"`） |
+| `method` | `str` | HTTP 方法，如 `"GET"`、`"POST"` |
+| `url` | `str` | 请求地址模板，支持 `{param}` 占位符配合 `path_params` 渲染 |
+| `response_model` | `type[ResponseModel]` 或 `None` | 响应模型类型 |
+| `raw` | `bool` 或 `None` | 为 True 时返回 `RawPayload`（当模型为 `RawPayload` 时默认为 True） |
+
+### `HttpRequestData` 运行时参数说明
+
+在被 `@http_endpoint` 装饰的函数体内返回，用于承载每次 HTTP 调用的动态参数：
+
+| 参数 | 类型 | 说明 |
+| ------------- | --------------------------- | --------------------------------------------------------- |
+| `path_params` | `dict[str, Any]` 或 `None` | URL 路径参数，用于格式化 `url` 中的占位符 |
+| `params` | `Any` 或 `None` | URL 查询参数（Query string） |
+| `headers` | `Any` 或 `None` | HTTP 请求头 |
+| `cookies` | `Any` 或 `None` | HTTP 请求 Cookies |
+| `json` | `Any` 或 `None` | 请求体 JSON 数据 |
+| `data` | `Any` 或 `None` | 原始请求体数据 |
+| `credential` | `Credential` 或 `None` | 覆盖本次请求的凭证 |
+| `options` | `dict[str, Any]` | 透传给底层客户端的可选参数（如 `timeout`、`files` 等） |
+
+### `_build_cgi` 参数说明
+
+`_build_cgi` 用于构建 CGI 风格 RPC 请求描述符：
+
+| 参数 | 类型 | 说明 |
+| ------------------ | ----------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `module` | `str` | 接口所属模块名 |
+| `method` | `str` | 方法名 |
+| `param` | `dict` | 业务参数 |
+| `response_model` | `type[BaseModel]` 或 `None` | 响应模型，为 None 时返回原始 dict |
+| `comm` | `dict` 或 `None` | 附加的公共参数 |
+| `override_comm` | `bool` | 为 True 时 `comm` 完全替代自动生成的参数；为 False 时合并 |
+| `credential` | `Credential` 或 `None` | 覆盖本次请求的凭证 |
+| `platform` | `Platform` 或 `None` | 覆盖本次请求的平台 |
+| `preserve_bool` | `bool` | 是否保留布尔值原样（默认转为 0/1 整型） |
+| `sign` | `bool` | 是否对请求进行签名 |
+| `require_login` | `bool` | 是否在执行时强制校验用户登录态 |
+| `pager_strategy` | `PagerStrategy` 或 `None` | 分页策略，提供后返回 `PaginatedCgiRequest`；可链式调用 `.with_extractor()` 提升为 `ItemPaginatedCgiRequest` |
 
 ### `_build_http` 参数说明
 
 `_build_http` 用于构建标准 HTTP 请求描述符，遵循 httpx 风格参数规范，自动装配凭证 Cookies 和平台 User-Agent：
 
-| 参数             | 类型                             | 说明                                                                |
+| 参数 | 类型 | 说明 |
 | ---------------- | -------------------------------- | ------------------------------------------------------------------- |
-| `method`         | `str`                            | HTTP 方法，如 `"GET"`、`"POST"`                                     |
-| `url`            | `str`                            | 请求地址                                                            |
-| `params`         | `Mapping` 或 `None`              | URL 查询参数                                                        |
-| `json`           | `Any` 或 `None`                  | 请求体 JSON 数据                                                    |
-| `data`           | `bytes` / `str` / `None`         | 原始请求体数据（非 JSON 场景）                                      |
-| `headers`        | `Mapping` 或 `None`              | HTTP 请求头                                                         |
-| `cookies`        | `Mapping` 或 `None`              | HTTP 请求 Cookies                                                   |
-| `credential`     | `Credential` 或 `None`           | 覆盖本次请求的凭证，默认使用客户端凭证                              |
-| `response_model` | `type[ResponseModel]` 或 `None`  | 响应模型类型                                                        |
-| `raw`            | `bool`                           | 校验 HTTP 状态并返回原始载荷快照（`RawPayload`，值语义，无需释放）  |
-| `**options`      |                                  | 透传给底层客户端的参数（`timeout`、`allow_redirects`、`files` 等）  |
-
-!!! note
-
-    `@cgi_endpoint` 包装后的方法返回 `CgiRequest`（或分页请求对象），`_build_http` 返回 `HttpRequest`，两者均继承自 `BaseRequest`。它们都支持直接被 `await` 以触发网络请求并自动完成响应验证和模型解析。
+| `method` | `str` | HTTP 方法，如 `"GET"`、`"POST"` |
+| `url` | `str` | 请求地址 |
+| `params` | `Mapping` 或 `None` | URL 查询参数 |
+| `json` | `Any` 或 `None` | 请求体 JSON 数据 |
+| `data` | `bytes` / `str` / `None` | 原始请求体数据（非 JSON 场景） |
+| `headers` | `Mapping` 或 `None` | HTTP 请求头 |
+| `cookies` | `Mapping` 或 `None` | HTTP 请求 Cookies |
+| `credential` | `Credential` 或 `None` | 覆盖本次请求的凭证，默认使用客户端凭证 |
+| `response_model` | `type[ResponseModel]` 或 `None` | 响应模型类型 |
+| `raw` | `bool` | 校验 HTTP 状态并返回 `RawPayload`（值语义，无需释放） |
+| `**options` | | 透传给底层客户端的参数（`timeout`、`allow_redirects`、`files` 等） |
 
 常见用法：
 
@@ -173,7 +253,7 @@ req = self._build_http("POST", "https://example.com/api", json={"key": "value"})
 # 覆盖凭证
 req = self._build_http("GET", "https://example.com/api", credential=my_credential)
 
-# 返回原始载荷快照而非解析 JSON
+# 返回 RawPayload 而非解析 JSON
 req = self._build_http("GET", "https://example.com/api", raw=True)
 ```
 
@@ -252,7 +332,7 @@ class Singer(Response):
     )
 ```
 
-### 需登录的接口
+### 需登录接口
 
 需要登录的接口通过 `@cgi_endpoint` 的 `require_login=True` 参数校验凭证：
 
@@ -266,10 +346,7 @@ class Singer(Response):
 )
 def get_vip_info(self, *, credential: Credential | None = None) -> CgiRequestData:
     """获取 VIP 信息."""
-    return CgiRequestData(
-        param={},
-        credential=credential,
-    )
+    return CgiRequestData(credential=credential)
 ```
 
 > 若接口需要凭证对象的属性（如 `musicid` 等）来构建请求内联参数，
@@ -343,13 +420,13 @@ def get_related_mv(self, songid: int, last_mvid: str | None = None) -> CgiReques
 
 ### 内置策略速查
 
-| 策略                             |     适用场景 | 关键参数                        |
-|----------------------------------|-------------:|---------------------------------|
-| `PageStrategy`                   |     页码递增 | `page_key`                      |
-| `OffsetStrategy`                 |   偏移量滑窗 | `offset_key` + `page_size_key`  |
-| `CursorStrategy`                 | 响应游标回写 | `cursor_key`                    |
-| `MultiFieldContinuationStrategy` |   多字段续翻 | 自定义 `build_next_params` 函数 |
-| `BatchRefreshStrategy`           |     批次刷新 | `refresh_key`                   |
+| 策略 | 适用场景 | 关键参数 |
+| ---------------------------------- | -------------: | --------------------------------- |
+| `PageStrategy` | 页码递增 | `page_key` |
+| `OffsetStrategy` | 偏移量滑窗 | `offset_key` + `page_size_key` |
+| `CursorStrategy` | 响应游标回写 | `cursor_key` |
+| `MultiFieldContinuationStrategy` | 多字段续翻 | 自定义 `build_next_params` 函数 |
+| `BatchRefreshStrategy` | 批次刷新 | `refresh_key` |
 
 ## 请求签名
 
