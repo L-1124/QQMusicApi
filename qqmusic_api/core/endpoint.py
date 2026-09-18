@@ -61,6 +61,7 @@ class CgiRequestData:
     meta: CgiEndpointMeta[Any] | None = None
     credential: Credential | None = None
     platform: Platform | None = None
+    preserve_bool: bool | None = None
     pager_strategy: PagerStrategy[Any] | None = None
     items_extractor: Callable[[Any], Iterable[Any] | None] | None = None
 
@@ -129,7 +130,7 @@ def cgi_endpoint(
                 response_model=selected.response_model,
                 comm=data.comm,
                 override_comm=data.override_comm,
-                preserve_bool=selected.preserve_bool,
+                preserve_bool=selected.preserve_bool if data.preserve_bool is None else data.preserve_bool,
                 allow_error_codes=selected.allow_error_codes,
                 parse_on_allow=selected.parse_on_allow,
                 disable_parse=selected.disable_parse,
