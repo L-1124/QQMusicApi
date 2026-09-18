@@ -322,12 +322,13 @@ def test_cgi_endpoint_item_paginated():
 
     meta = get_endpoint_meta(SamplePaginatedApi.sample)
     assert isinstance(meta, CgiEndpointMeta)
-    assert meta.item_type is DummyItem
-    assert meta.pager is True
+    assert meta.response_model is DummyPaginatedModel
 
-    req = bound_method(page=1)
+    req = bound_method(page=2)
     assert isinstance(req, ItemPaginatedCgiRequest)
+    assert req.param == {"page": 2}
     assert req.response_model is DummyPaginatedModel
+    assert req.items_extractor is not None
 
 
 def test_cgi_endpoint_paginated():
@@ -361,9 +362,9 @@ def test_cgi_endpoint_paginated():
 
     meta = get_endpoint_meta(SamplePurePaginatedApi.sample)
     assert isinstance(meta, CgiEndpointMeta)
-    assert meta.item_type is None
-    assert meta.pager is True
+    assert meta.response_model is DummyModel
 
+    req = bound_method(page=3)
     req = bound_method(page=1)
     assert isinstance(req, PaginatedCgiRequest)
     assert req.response_model is DummyModel

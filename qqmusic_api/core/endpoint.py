@@ -46,8 +46,6 @@ class CgiEndpointMeta(EndpointMeta[ResultT]):
     allow_error_codes: tuple[int, ...] | Literal["all"] | None = None
     parse_on_allow: bool = False
     disable_parse: bool = False
-    item_type: type[Any] | None = None
-    pager: bool = False
 
 
 @dataclass(frozen=True)
@@ -206,9 +204,10 @@ def cgi_endpoint(
         response_model=response_model,
         sign=sign,
         require_login=require_login,
-        item_type=item_type,
-        pager=pager or (item_type is not None),
     )
+
+    declared_item_type = item_type
+    declared_pager = pager or (item_type is not None)
 
     def decorator(func: Callable[P, CgiRequestData]) -> Callable[P, Any]:
         def wrapped(*args: P.args, **kwargs: P.kwargs) -> Any:
@@ -220,13 +219,13 @@ def cgi_endpoint(
 
             selected = data.meta or meta
 
-            if selected.item_type is not None:
-                item_name = getattr(selected.item_type, "__name__", str(selected.item_type))
+            if declared_item_type is not None:
+                item_name = getattr(declared_item_type, "__name__", str(declared_item_type))
                 if data.pager_strategy is None:
                     raise TypeError(f"端点 {selected.key} 声明了 item_type={item_name}, 但方法未提供 pager_strategy")
                 if data.items_extractor is None:
                     raise TypeError(f"端点 {selected.key} 声明了 item_type={item_name}, 但方法未提供 items_extractor")
-            elif selected.pager:
+            elif declared_pager:
                 if data.pager_strategy is None:
                     raise TypeError(f"端点 {selected.key} 声明了 pager=True, 但方法未提供 pager_strategy")
             elif data.pager_strategy is not None or data.items_extractor is not None:
