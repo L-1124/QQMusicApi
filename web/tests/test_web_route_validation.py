@@ -83,3 +83,19 @@ def test_valid_route_discovers_sdk_params() -> None:
     )
 
     assert validate_routes((route,)) == ()
+
+
+def test_param_docs_unknown_name_rejected() -> None:
+    """测试参数文案覆盖未命中任何参数时会被拒绝."""
+    route = WebRoute(
+        module="search",
+        method="complete",
+        path="/search/complete",
+        methods=(HttpMethod.GET,),
+        response_model=dict,
+        param_docs={"uknown": "写错名字的文案."},
+    )
+
+    errors = validate_routes((route,))
+
+    assert any("文案覆盖未命中任何参数" in error for error in errors)

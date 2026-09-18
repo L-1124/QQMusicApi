@@ -8,7 +8,14 @@ from pydantic import BaseModel, ValidationError
 from qqmusic_api.models.login import QRLoginType
 from qqmusic_api.modules.search import SearchType
 from qqmusic_api.modules.singer import TabType
-from qqmusic_api.modules.song import BaseSongFileType, EncryptedSongFileType, SongFileType
+from qqmusic_api.modules.song import (
+    BaseSongFileType,
+    EncryptedSongFileType,
+    RingSongFileType,
+    SongFileType,
+    SpecialSongFileType,
+)
+from web.src.modules.song import SONG_FILE_TYPE_MAPPING
 from web.src.routing.params import (
     enum_mapping_param,
     int_enum_schema,
@@ -102,3 +109,19 @@ def test_song_file_mapping_accepts_only_stable_integer_values() -> None:
         mapping.parse("mp3_128")
     with pytest.raises(ValidationError):
         _SongFileModel(file_type="songfiletype.mp3_128")
+
+
+def test_song_file_type_public_codes_are_frozen() -> None:
+    """测试公开 file_type 编号是契约: 分组顺序与长度变化会让旧编号指向别的音质."""
+    blocks = (
+        (SongFileType, 17),
+        (EncryptedSongFileType, 13),
+        (SpecialSongFileType, 14),
+        (RingSongFileType, 3),
+    )
+
+    offset = 0
+    for enum_type, size in blocks:
+        block = SONG_FILE_TYPE_MAPPING.members[offset : offset + size]
+        assert [type(member) for member in block] == [enum_type] * size
+        offset += size

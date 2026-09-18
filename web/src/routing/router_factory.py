@@ -276,6 +276,7 @@ def _validate_route(route: WebRoute, path_methods: set[tuple[str, str]]) -> list
     route_params = _resolve_route_params(route)
     errors.extend(_validate_path_params(route, route_params))
     errors.extend(_validate_param_sources(route, route_params))
+    errors.extend(_validate_param_docs(route, route_params))
     errors.extend(_validate_enum_params(route, route_params))
     errors.extend(_validate_sdk_contract(route, route_params))
     errors.extend(_validate_auto_query_params(route, route_params))
@@ -303,6 +304,14 @@ def _validate_param_sources(route: WebRoute, route_params: tuple[ParamOverride, 
     if route.body_model is not None and any(param.source is ParamSource.BODY for param in route_params):
         errors.append(f"body_model 与 BODY 参数不能同时声明: {route.module}.{route.method}")
     return errors
+
+
+def _validate_param_docs(route: WebRoute, route_params: tuple[ParamOverride, ...]) -> list[str]:
+    """校验参数文案覆盖都能命中已解析参数, 避免写错参数名后静默失效."""
+    unknown = set(route.param_docs) - {param.name for param in route_params}
+    if unknown:
+        return [f"参数文案覆盖未命中任何参数: {route.module}.{route.method} {sorted(unknown)!r}"]
+    return []
 
 
 def _validate_enum_params(route: WebRoute, route_params: tuple[ParamOverride, ...]) -> list[str]:

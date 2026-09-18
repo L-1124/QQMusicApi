@@ -2,20 +2,23 @@
 
 from typing import Any
 
-from qqmusic_api.modules.search import SearchApi
+from qqmusic_api.models.search import SearchSelector
+from qqmusic_api.modules.search import SearchApi, SearchType
 
 from ..routing.route_types import PUBLIC_60, PUBLIC_600, WebRoute
-from ._helpers import KEYWORD, SEARCH_BY_TYPE, SEARCH_GENERAL, Q, R
+from ._helpers import Q, R
+
+SEARCH_BY_TYPE = (
+    Q("search_type", SearchType),
+    Q("selectors", list[SearchSelector] | None, description="搜索筛选器, 以 JSON 数组字符串传入."),
+)
 
 ROUTES: tuple[WebRoute, ...] = (
-    R(SearchApi.complete, "/search/complete", params=KEYWORD, cache=PUBLIC_60),
+    R(SearchApi.complete, "/search/complete", cache=PUBLIC_60),
     R(
         SearchApi.general_search,
         "/search/general_search",
         params=(
-            *SEARCH_GENERAL,
-            Q("num", int, 15, "返回数量."),
-            Q("searchid", str | None, None, "搜索 ID."),
             Q(
                 "page_start",
                 dict[str, Any] | None,
@@ -26,7 +29,7 @@ ROUTES: tuple[WebRoute, ...] = (
         cache=PUBLIC_60,
     ),
     R(SearchApi.get_hotkey, "/search/get_hotkey", cache=PUBLIC_600),
-    R(SearchApi.quick_search, "/search/quick_search", params=KEYWORD, cache=PUBLIC_60),
+    R(SearchApi.quick_search, "/search/quick_search", cache=PUBLIC_60),
     R(
         SearchApi.search_by_type,
         "/search/search_by_type",

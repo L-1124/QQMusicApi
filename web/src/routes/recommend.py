@@ -3,7 +3,7 @@
 from qqmusic_api.modules.recommend import RecommendApi
 
 from ..routing.route_types import PUBLIC_60, AuthPolicy, WebRoute
-from ._helpers import Q, R
+from ._helpers import R
 
 ROUTES: tuple[WebRoute, ...] = (
     R(
@@ -15,7 +15,6 @@ ROUTES: tuple[WebRoute, ...] = (
     R(
         RecommendApi.get_radar_recommend,
         "/recommend/get_radar_recommend",
-        params=(Q("page", int, 1, "页码."),),
         cache=PUBLIC_60,
     ),
     R(

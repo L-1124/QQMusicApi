@@ -7,6 +7,7 @@ import pytest
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
+from pydantic import BaseModel, ValidationError
 
 from qqmusic_api.core.exceptions import (
     ApiDataError,
@@ -23,6 +24,7 @@ from qqmusic_api.core.exceptions import (
 from qqmusic_api.modules.search import SearchApi
 from qqmusic_api.modules.song import SongApi
 from web.src.app import _base_api_exception_status_code
+from web.src.modules.song import QuerySongRequest, SongQueryItem, SongUrlItem, SongUrlsRequest
 from web.src.routes import ROUTES
 from web.src.routing.route_types import AuthPolicy
 from web.src.routing.router_factory import _resolve_route, validate_routes
@@ -255,3 +257,18 @@ async def test_negative_cache_fast_fail_matches_upstream_failure_response(app: F
 
     assert upstream.status_code == fast_fail.status_code == 503
     assert upstream.body == fast_fail.body
+
+
+@pytest.mark.parametrize(
+    ("model", "payload"),
+    [
+        (SongUrlsRequest, {"file_info": [SongUrlItem(mid="0039MnYb0qxYAc")] * (SongApi._GET_SONG_URLS_MAX_MID + 1)}),
+        (QuerySongRequest, {"query_info": []}),
+        (SongQueryItem, {"id": 1, "mid": "0039MnYb0qxYAc"}),
+        (SongQueryItem, {}),
+    ],
+)
+def test_song_request_models_reject_invalid_payload(model: type[BaseModel], payload: dict[str, Any]) -> None:
+    """测试歌曲请求模型拒绝越界数量与歧义标识."""
+    with pytest.raises(ValidationError):
+        model(**payload)

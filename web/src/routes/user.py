@@ -3,73 +3,62 @@
 from qqmusic_api.modules.user import UserApi
 
 from ..routing.route_types import AuthPolicy, HttpMethod, WebRoute
-from ._helpers import EUIN, UIN, USER_PAGE, P, Q, R
+from ._helpers import R
 
 ROUTES: tuple[WebRoute, ...] = (
     R(
         UserApi.get_created_songlist,
         "/user/{uin}/created_songlists",
-        params=UIN,
         auth=AuthPolicy.OPTIONAL,
     ),
     R(
         UserApi.get_fans,
         "/user/{euin}/fans",
-        params=(*EUIN, *USER_PAGE),
         auth=AuthPolicy.COOKIE_OR_DEFAULT,
     ),
     R(
         UserApi.get_fav_album,
         "/user/{euin}/fav/albums",
-        params=(*EUIN, *USER_PAGE),
         auth=AuthPolicy.OPTIONAL,
     ),
     R(
         UserApi.get_fav_mv,
         "/user/{euin}/fav/mvs",
-        params=(*EUIN, *USER_PAGE),
         auth=AuthPolicy.COOKIE_OR_DEFAULT,
     ),
     R(
         UserApi.get_fav_song,
         "/user/{euin}/fav/songs",
-        params=(*EUIN, *USER_PAGE),
         auth=AuthPolicy.OPTIONAL,
     ),
     R(
         UserApi.get_fav_songlist,
         "/user/{euin}/fav/songlists",
-        params=(*EUIN, *USER_PAGE),
         auth=AuthPolicy.OPTIONAL,
     ),
     R(
         UserApi.get_follow_singers,
         "/user/{euin}/follow/singers",
-        params=(*EUIN, *USER_PAGE),
         auth=AuthPolicy.COOKIE_OR_DEFAULT,
     ),
     R(
         UserApi.get_follow_user,
         "/user/{euin}/follow/users",
-        params=(*EUIN, *USER_PAGE),
         auth=AuthPolicy.COOKIE_OR_DEFAULT,
     ),
     R(
         UserApi.get_friend,
         "/user/get_friend",
-        params=USER_PAGE,
         auth=AuthPolicy.COOKIE_OR_DEFAULT,
     ),
     R(
         UserApi.get_homepage,
         "/user/{euin}/homepage",
-        params=EUIN,
         auth=AuthPolicy.OPTIONAL,
     ),
     R(
         UserApi.get_music_gene,
         "/user/{euin}/music_gene",
-        params=EUIN,
         auth=AuthPolicy.OPTIONAL,
     ),
     R(UserApi.get_vip_info, "/user/get_vip_info", auth=AuthPolicy.COOKIE_OR_DEFAULT),
@@ -80,7 +69,6 @@ ROUTES: tuple[WebRoute, ...] = (
         "/user/fav/songlists",
         bool,
         methods=(HttpMethod.POST,),
-        params=(Q("songlist_id", int, description="歌单 ID (disstid/pid)."),),
         auth=AuthPolicy.COOKIE_OR_DEFAULT,
         summary="收藏歌单",
         description="收藏他人的公开歌单至当前账号.歌单已在收藏中也返回成功.",
@@ -91,7 +79,6 @@ ROUTES: tuple[WebRoute, ...] = (
         "/user/fav/songlists/{songlist_id}",
         bool,
         methods=(HttpMethod.DELETE,),
-        params=(P("songlist_id", int, "歌单 ID (disstid/pid)."),),
         auth=AuthPolicy.COOKIE_OR_DEFAULT,
         summary="取消收藏歌单",
         description="取消收藏他人的公开歌单.歌单本就不在收藏中也返回成功.",
@@ -100,11 +87,6 @@ ROUTES: tuple[WebRoute, ...] = (
     R(
         UserApi.get_dislike_list,
         "/user/dislikes",
-        params=(
-            Q("cmd", int, 3, "类型: 2=歌手 / 3=歌曲 / 4=风格."),
-            Q("page", int, 1, "页码."),
-            Q("lastid", int, 0, "分页游标."),
-        ),
         auth=AuthPolicy.COOKIE_OR_DEFAULT,
         summary="获取不喜欢列表",
         description="获取用户的不喜欢列表, 支持按类型和分页筛选.",
@@ -115,10 +97,6 @@ ROUTES: tuple[WebRoute, ...] = (
         "/user/dislikes",
         bool,
         methods=(HttpMethod.POST,),
-        params=(
-            Q("id_type", int, description="类型: 1=歌曲 / 2=歌手 / 3=风格."),
-            Q("values", list[int], description="对应的 ID 列表."),
-        ),
         auth=AuthPolicy.COOKIE_OR_DEFAULT,
         summary="添加不喜欢",
         description="添加不喜欢项 (歌曲/歌手/风格).",
@@ -129,10 +107,6 @@ ROUTES: tuple[WebRoute, ...] = (
         "/user/dislikes",
         bool,
         methods=(HttpMethod.DELETE,),
-        params=(
-            Q("id_type", int, description="类型: 1=歌曲 / 2=歌手 / 3=风格."),
-            Q("values", list[int], description="对应的 ID 列表."),
-        ),
         auth=AuthPolicy.COOKIE_OR_DEFAULT,
         summary="取消不喜欢",
         description="取消不喜欢项 (歌曲/歌手/风格).",

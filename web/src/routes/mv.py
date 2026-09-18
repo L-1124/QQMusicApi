@@ -10,7 +10,6 @@ ROUTES: tuple[WebRoute, ...] = (
     R(
         MvApi.get_detail,
         "/mv/get_detail",
-        params=(Q("vids", list[str], description="MV VID 列表."),),
         cache=PUBLIC_300,
     ),
     R(

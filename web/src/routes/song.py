@@ -7,24 +7,23 @@ from qqmusic_api.models.song import (
     GetSongUrlsResponse,
     QuerySongResponse,
 )
-from qqmusic_api.modules.song import SongApi
+from qqmusic_api.modules.song import SongApi, SongFileType
 
 from ..modules.song import (
-    DEFAULT_SONG_FILE_TYPE,
+    SONG_FILE_TYPE_LABEL,
     SONG_FILE_TYPE_MAPPING,
     QuerySongRequest,
     SongUrlsRequest,
 )
 from ..routing.route_types import PUBLIC_60, PUBLIC_300, PUBLIC_600, AuthPolicy, HttpMethod, WebRoute
-from ._helpers import MID, SONG_RELATED_MV_PAGE, SONG_RELATED_SONGLIST_PAGE, SONGID, VALUE, P, Q, R
+from ._helpers import P, Q, R
 
 ROUTES: tuple[WebRoute, ...] = (
     R(SongApi.get_cdn_dispatch, "/song/get_cdn_dispatch"),
-    R(SongApi.get_detail, "/song/{value}/detail", params=VALUE, cache=PUBLIC_300),
+    R(SongApi.get_detail, "/song/{value}/detail", cache=PUBLIC_300),
     R(
         SongApi.get_fav_num,
         "/song/get_fav_num",
-        params=(Q("song_ids", list[int], description="歌曲 ID 列表."),),
         cache=PUBLIC_60,
     ),
     R(
@@ -37,29 +36,26 @@ ROUTES: tuple[WebRoute, ...] = (
         summary="获取歌曲收藏数量",
         description="根据单个歌曲 ID 获取收藏数量.",
     ),
-    R(SongApi.get_labels, "/song/{songid}/labels", params=SONGID, cache=PUBLIC_300),
+    R(SongApi.get_labels, "/song/{songid}/labels", cache=PUBLIC_300),
     R(
         SongApi.get_other_version,
         "/song/{value}/other_versions",
-        params=VALUE,
         cache=PUBLIC_600,
     ),
-    R(SongApi.get_producer, "/song/{value}/producer", params=VALUE, cache=PUBLIC_300),
+    R(SongApi.get_producer, "/song/{value}/producer", cache=PUBLIC_300),
     R(
         SongApi.get_related_mv,
         "/song/{songid}/related_mv",
-        params=(*SONGID, *SONG_RELATED_MV_PAGE),
         cache=PUBLIC_600,
     ),
     R(
         SongApi.get_related_songlist,
         "/song/{songid}/related_songlists",
-        params=(*SONGID, *SONG_RELATED_SONGLIST_PAGE),
         cache=PUBLIC_600,
     ),
-    R(SongApi.has_sheet, "/song/{mid}/has_sheet", params=MID, cache=PUBLIC_300),
-    R(SongApi.get_sheet, "/song/{mid}/sheet", params=MID, cache=PUBLIC_300),
-    R(SongApi.get_similar_song, "/song/{songid}/similar", params=SONGID, cache=PUBLIC_600),
+    R(SongApi.has_sheet, "/song/{mid}/has_sheet", cache=PUBLIC_300),
+    R(SongApi.get_sheet, "/song/{mid}/sheet", cache=PUBLIC_300),
+    R(SongApi.get_similar_song, "/song/{songid}/similar", cache=PUBLIC_600),
     R(
         "song",
         "get_song_urls",
@@ -75,14 +71,8 @@ ROUTES: tuple[WebRoute, ...] = (
         "/song/{mid}/url",
         GetSongUrlsResponse,
         params=(
-            *MID,
-            Q(
-                "file_type",
-                Any,
-                DEFAULT_SONG_FILE_TYPE,
-                "歌曲文件类型.",
-                enum_mapping=SONG_FILE_TYPE_MAPPING,
-            ),
+            P("mid", str, "歌曲 MID."),
+            Q("file_type", Any, SongFileType.MP3_128, SONG_FILE_TYPE_LABEL, enum_mapping=SONG_FILE_TYPE_MAPPING),
             Q("song_type", int | None, None, "歌曲类型."),
             Q("media_mid", str | None, None, "媒体文件 MID."),
         ),
