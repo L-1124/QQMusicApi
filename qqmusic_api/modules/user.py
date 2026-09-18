@@ -81,10 +81,7 @@ class UserApi(ApiModule):
         Args:
             credential: 登录凭证.
         """
-        return CgiRequestData(
-            param={},
-            credential=credential,
-        )
+        return CgiRequestData(credential=credential)
 
     @cgi_endpoint(
         key="user.get_follow_singers",

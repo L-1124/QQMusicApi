@@ -18,7 +18,7 @@ class TopApi(ApiModule):
     )
     def get_category(self) -> CgiRequestData:
         """获取所有排行榜分类."""
-        return CgiRequestData(param={})
+        return CgiRequestData()
 
     @cgi_endpoint(
         key="top.get_detail",

@@ -113,7 +113,6 @@ class LoginApi(ApiModule):
         data = await self._build_cgi(
             module="music.UserInfo.userInfoServer",
             method="GetLoginUserInfo",
-            param={},
             credential=target,
             allow_error_codes=(1000, 104401, 104400),
         )
@@ -190,7 +189,6 @@ class LoginApi(ApiModule):
         await self._build_cgi(
             module="music.login.LoginServer",
             method="Logout",
-            param={},
             credential=credential,
             allow_error_codes=_ERROR_CODE,
             require_login=True,

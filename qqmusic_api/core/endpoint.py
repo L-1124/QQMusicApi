@@ -60,7 +60,7 @@ class HttpEndpointMeta(EndpointMeta[ResultT]):
 class CgiRequestData:
     """模块方法生成的 CGI 请求变量部分."""
 
-    param: dict[str, Any]
+    param: dict[str, Any] = field(default_factory=dict)
     comm: dict[str, Any] | None = None
     override_comm: bool = False
     meta: CgiEndpointMeta[Any] | None = None
