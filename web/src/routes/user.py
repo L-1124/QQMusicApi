@@ -1,112 +1,78 @@
 """用户 Web 路由契约."""
 
-from qqmusic_api.models.songlist import GetSonglistDetailResponse
-from qqmusic_api.models.user import (
-    DislikeListData,
-    UserCreatedSonglistResponse,
-    UserFavAlbumResponse,
-    UserFavMvResponse,
-    UserFavSonglistResponse,
-    UserFriendListResponse,
-    UserHomepageResponse,
-    UserMusicGeneResponse,
-    UserRelationListResponse,
-    UserVipInfoResponse,
-)
+from qqmusic_api.modules.user import UserApi
 
 from ..routing.route_types import AuthPolicy, HttpMethod, WebRoute
 from ._helpers import EUIN, UIN, USER_PAGE, P, Q, R
 
 ROUTES: tuple[WebRoute, ...] = (
     R(
-        "user",
-        "get_created_songlist",
+        UserApi.get_created_songlist,
         "/user/{uin}/created_songlists",
-        UserCreatedSonglistResponse,
         params=UIN,
         auth=AuthPolicy.OPTIONAL,
     ),
     R(
-        "user",
-        "get_fans",
+        UserApi.get_fans,
         "/user/{euin}/fans",
-        UserRelationListResponse,
         params=(*EUIN, *USER_PAGE),
         auth=AuthPolicy.COOKIE_OR_DEFAULT,
     ),
     R(
-        "user",
-        "get_fav_album",
+        UserApi.get_fav_album,
         "/user/{euin}/fav/albums",
-        UserFavAlbumResponse,
         params=(*EUIN, *USER_PAGE),
         auth=AuthPolicy.OPTIONAL,
     ),
     R(
-        "user",
-        "get_fav_mv",
+        UserApi.get_fav_mv,
         "/user/{euin}/fav/mvs",
-        UserFavMvResponse,
         params=(*EUIN, *USER_PAGE),
         auth=AuthPolicy.COOKIE_OR_DEFAULT,
     ),
     R(
-        "user",
-        "get_fav_song",
+        UserApi.get_fav_song,
         "/user/{euin}/fav/songs",
-        GetSonglistDetailResponse,
         params=(*EUIN, *USER_PAGE),
         auth=AuthPolicy.OPTIONAL,
     ),
     R(
-        "user",
-        "get_fav_songlist",
+        UserApi.get_fav_songlist,
         "/user/{euin}/fav/songlists",
-        UserFavSonglistResponse,
         params=(*EUIN, *USER_PAGE),
         auth=AuthPolicy.OPTIONAL,
     ),
     R(
-        "user",
-        "get_follow_singers",
+        UserApi.get_follow_singers,
         "/user/{euin}/follow/singers",
-        UserRelationListResponse,
         params=(*EUIN, *USER_PAGE),
         auth=AuthPolicy.COOKIE_OR_DEFAULT,
     ),
     R(
-        "user",
-        "get_follow_user",
+        UserApi.get_follow_user,
         "/user/{euin}/follow/users",
-        UserRelationListResponse,
         params=(*EUIN, *USER_PAGE),
         auth=AuthPolicy.COOKIE_OR_DEFAULT,
     ),
     R(
-        "user",
-        "get_friend",
+        UserApi.get_friend,
         "/user/get_friend",
-        UserFriendListResponse,
         params=USER_PAGE,
         auth=AuthPolicy.COOKIE_OR_DEFAULT,
     ),
     R(
-        "user",
-        "get_homepage",
+        UserApi.get_homepage,
         "/user/{euin}/homepage",
-        UserHomepageResponse,
         params=EUIN,
         auth=AuthPolicy.OPTIONAL,
     ),
     R(
-        "user",
-        "get_music_gene",
+        UserApi.get_music_gene,
         "/user/{euin}/music_gene",
-        UserMusicGeneResponse,
         params=EUIN,
         auth=AuthPolicy.OPTIONAL,
     ),
-    R("user", "get_vip_info", "/user/get_vip_info", UserVipInfoResponse, auth=AuthPolicy.COOKIE_OR_DEFAULT),
+    R(UserApi.get_vip_info, "/user/get_vip_info", auth=AuthPolicy.COOKIE_OR_DEFAULT),
     # -- 收藏/取消收藏歌单 --
     R(
         "user",
@@ -132,10 +98,8 @@ ROUTES: tuple[WebRoute, ...] = (
     ),
     # -- 不喜欢 --
     R(
-        "user",
-        "get_dislike_list",
+        UserApi.get_dislike_list,
         "/user/dislikes",
-        DislikeListData,
         params=(
             Q("cmd", int, 3, "类型: 2=歌手 / 3=歌曲 / 4=风格."),
             Q("page", int, 1, "页码."),
