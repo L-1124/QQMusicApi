@@ -3,7 +3,7 @@
 from enum import IntEnum
 from typing import Any, Literal, overload
 
-from ..core import CgiRequest, ItemPaginatedCgiRequest, Platform
+from ..core import ItemPaginatedCgiRequest, Platform
 from ..core.endpoint import CgiRequestData, HttpRequestData, cgi_endpoint, http_endpoint
 from ..core.pagination import MultiFieldContinuationStrategy, PageStrategy
 from ..models.search import (
@@ -53,20 +53,27 @@ class SearchType(IntEnum):
 class SearchApi(ApiModule):
     """搜索相关 API."""
 
-    def get_hotkey(self) -> CgiRequest[HotkeyResponse]:
+    @cgi_endpoint(
+        key="search.get_hotkey",
+        module="music.musicsearch.HotkeyService",
+        method="GetHotkeyForQQMusicMobile",
+        response_model=HotkeyResponse,
+    )
+    def get_hotkey(self) -> CgiRequestData:
         """获取热搜词列表.
 
         Returns:
             CgiRequest[HotkeyResponse]: 热搜词列表请求描述符.
         """
-        return self._build_cgi(
-            "music.musicsearch.HotkeyService",
-            "GetHotkeyForQQMusicMobile",
-            {"search_id": get_searchID()},
-            response_model=HotkeyResponse,
-        )
+        return CgiRequestData(param={"search_id": get_searchID()})
 
-    def complete(self, keyword: str) -> CgiRequest[CompleteResponse]:
+    @cgi_endpoint(
+        key="search.complete",
+        module="music.smartboxCgi.SmartBoxCgi",
+        method="GetSmartBoxResult",
+        response_model=CompleteResponse,
+    )
+    def complete(self, keyword: str) -> CgiRequestData:
         """搜索词补全建议.
 
         Args:
@@ -75,16 +82,13 @@ class SearchApi(ApiModule):
         Returns:
             CgiRequest[CompleteResponse]: 补全建议请求描述符.
         """
-        return self._build_cgi(
-            "music.smartboxCgi.SmartBoxCgi",
-            "GetSmartBoxResult",
-            {
+        return CgiRequestData(
+            param={
                 "search_id": get_searchID(),
                 "query": keyword,
                 "num_per_page": 0,
                 "page_idx": 0,
-            },
-            response_model=CompleteResponse,
+            }
         )
 
     @http_endpoint(
@@ -104,6 +108,12 @@ class SearchApi(ApiModule):
         """
         return HttpRequestData(params={"key": keyword})
 
+    @cgi_endpoint(
+        key="search.general_search",
+        module="music.adaptor.SearchAdaptor",
+        method="do_search_v2",
+        response_model=GeneralSearchResponse,
+    )
     def general_search(
         self,
         keyword: str,
@@ -113,7 +123,7 @@ class SearchApi(ApiModule):
         page_start: dict[str, Any] | None = None,
         *,
         highlight: bool = True,
-    ):
+    ) -> CgiRequestData:
         """综合搜索.
 
         Args:
@@ -136,11 +146,8 @@ class SearchApi(ApiModule):
         if page_start is not None:
             param["page_start"] = page_start
 
-        return self._build_cgi(
-            "music.adaptor.SearchAdaptor",
-            "do_search_v2",
-            param,
-            response_model=GeneralSearchResponse,
+        return CgiRequestData(
+            param=param,
             pager_strategy=MultiFieldContinuationStrategy[GeneralSearchResponse](
                 lambda params, response: {
                     **params,
