@@ -6,9 +6,8 @@ from qqmusic_api.models.search import (
     CompleteResponse,
     GeneralSearchResponse,
     HotkeyResponse,
-    QuickSearchResponse,
-    SearchByTypeResponse,
 )
+from qqmusic_api.modules.search import SearchApi
 
 from ..routing.route_types import PUBLIC_60, PUBLIC_600, WebRoute
 from ._helpers import KEYWORD, SEARCH_BY_TYPE, SEARCH_GENERAL, Q, R
@@ -34,12 +33,10 @@ ROUTES: tuple[WebRoute, ...] = (
         cache=PUBLIC_60,
     ),
     R("search", "get_hotkey", "/search/get_hotkey", HotkeyResponse, cache=PUBLIC_600),
-    R("search", "quick_search", "/search/quick_search", QuickSearchResponse, params=KEYWORD, cache=PUBLIC_60),
+    R(SearchApi.quick_search, "/search/quick_search", params=KEYWORD, cache=PUBLIC_60),
     R(
-        "search",
-        "search_by_type",
+        SearchApi.search_by_type,
         "/search/search_by_type",
-        SearchByTypeResponse,
         params=SEARCH_BY_TYPE,
         cache=PUBLIC_60,
     ),

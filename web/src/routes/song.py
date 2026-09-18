@@ -11,12 +11,12 @@ from qqmusic_api.models.song import (
     GetRelatedSonglistResponse,
     GetSheetResponse,
     GetSimilarSongResponse,
-    GetSongDetailResponse,
     GetSongLabelsResponse,
     GetSongUrlsResponse,
     HasSheetMusicResponse,
     QuerySongResponse,
 )
+from qqmusic_api.modules.song import SongApi
 
 from ..modules.song import (
     DEFAULT_SONG_FILE_TYPE,
@@ -29,7 +29,7 @@ from ._helpers import MID, SONG_RELATED_MV_PAGE, SONG_RELATED_SONGLIST_PAGE, SON
 
 ROUTES: tuple[WebRoute, ...] = (
     R("song", "get_cdn_dispatch", "/song/get_cdn_dispatch", GetCdnDispatchResponse),
-    R("song", "get_detail", "/song/{value}/detail", GetSongDetailResponse, params=VALUE, cache=PUBLIC_300),
+    R(SongApi.get_detail, "/song/{value}/detail", params=VALUE, cache=PUBLIC_300),
     R(
         "song",
         "get_fav_num",

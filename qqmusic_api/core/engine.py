@@ -2,36 +2,21 @@
 
 from collections.abc import AsyncGenerator, Sequence
 from contextlib import asynccontextmanager
-from dataclasses import dataclass
-from typing import Any, Protocol, TypeAlias
+from dataclasses import dataclass, field
+from typing import Any, Generic, Literal, Protocol, TypeAlias, TypeVar
 
 import anyio
-from typing_extensions import sentinel
+from typing_extensions import Self, sentinel
 
 from ..models.request import Credential
-from .exceptions import ApiDataError
-from .request import BaseRequest
-from .transport import PreparedRequest, RawStream, StreamingTransport, Transport
-from .versioning import Platform, VersionPolicy
+from .exceptions import ApiDataError, NetworkError
+from .request import BaseRequest, CgiRequest, HttpRequest
+from .transport import DEFAULT_MAX_CONCURRENCY, PreparedRequest, RawStream, StreamingTransport, Transport
+from .versioning import DEFAULT_VERSION_POLICY, Platform, VersionPolicy
 
-IndexedRequest: TypeAlias = "Sequence[ScopedCall]"
-
+ResultT = TypeVar("ResultT")
 MISSING = sentinel("MISSING")
-
-
-@dataclass
-class ClientDefaults:
-    """客户端级默认运行时状态.
-
-    Attributes:
-        credential: 全局默认凭证.
-        platform: 全局默认请求平台.
-        version_policy: 版本策略规则.
-    """
-
-    credential: Credential
-    platform: Platform
-    version_policy: VersionPolicy
+CLOSE_CLEANUP_BUDGET_SECONDS = 5.0
 
 
 @dataclass(frozen=True)
@@ -43,23 +28,49 @@ class RequestScope:
         platform: 本次请求使用的平台.
     """
 
-    credential: Credential
-    platform: Platform
+    credential: Credential = field(default_factory=Credential)
+    platform: Platform = Platform.ANDROID
+
+
+@dataclass(frozen=True)
+class RequestCall(Generic[ResultT]):
+    """单次批量请求条目, 显式携带纯请求规范与请求身份.
+
+    Attributes:
+        request: 纯请求规范.
+        scope: 本次请求使用的身份.
+    """
+
+    request: BaseRequest[ResultT]
+    scope: RequestScope
 
 
 @dataclass(frozen=True)
 class ScopedCall:
-    """单个请求的执行条目.
+    """内部索引化的执行条目.
 
     Attributes:
-        index: 原始索引.
-        request: 请求描述符, 原样传递.
+        index: 原始调用序列索引.
+        request: 纯请求规范.
         scope: 本次请求使用的身份.
     """
 
     index: int
     request: BaseRequest[Any]
     scope: RequestScope
+
+
+IndexedRequest: TypeAlias = Sequence[ScopedCall]
+
+
+@dataclass(eq=False)
+class _Operation:
+    """正在执行的操作跟踪对象."""
+
+    owner_task_id: int
+    scope: Any = None
+    done: anyio.Event = field(default_factory=anyio.Event)
+    cancelled_by_close: bool = False
 
 
 class CgiExecuting(Protocol):
@@ -102,7 +113,7 @@ class HttpExecuting(Protocol):
 
 
 class RequestEngine:
-    """统一请求调度引擎."""
+    """统一请求调度与运行时生命周期引擎."""
 
     def __init__(
         self,
@@ -110,136 +121,258 @@ class RequestEngine:
         cgi_executor: CgiExecuting,
         http_executor: HttpExecuting,
         transport: Transport,
-        defaults: ClientDefaults,
+        version_policy: VersionPolicy = DEFAULT_VERSION_POLICY,
     ) -> None:
         """初始化请求引擎."""
         self._cgi = cgi_executor
         self._http = http_executor
         self._transport = transport
-        self._defaults = defaults
+        self._version_policy = version_policy
+        self._close_state: Literal["open", "closing", "closed"] = "open"
+        self._close_lock = anyio.Lock()
+        self._operations: set[_Operation] = set()
 
-    def _resolve_calls(self, requests: Sequence[BaseRequest[Any]]) -> list[ScopedCall]:
-        """同步解析所有请求的凭证与平台身份."""
-        default_scope = RequestScope(
-            credential=self._defaults.credential,
-            platform=self._defaults.platform,
+    @property
+    def transport(self) -> Transport:
+        """底层的 Transport 实例."""
+        return self._transport
+
+    @property
+    def version_policy(self) -> VersionPolicy:
+        """请求使用的版本策略."""
+        return self._version_policy
+
+    @classmethod
+    def create(
+        cls,
+        *,
+        device_path: str | None = None,
+        max_concurrency: int = DEFAULT_MAX_CONCURRENCY,
+        transport: Transport | None = None,
+        version_policy: VersionPolicy = DEFAULT_VERSION_POLICY,
+    ) -> Self:
+        """构造具备生产依赖的 RequestEngine 实例."""
+        from ..utils.android_session import AndroidSessionManager
+        from ..utils.device import DeviceManager
+        from ..utils.qimei import QimeiManager
+        from .executor import CgiExecutor, HttpExecutor
+        from .transport import NiquestsTransport
+
+        real_transport = transport or NiquestsTransport(max_concurrency=max_concurrency)
+        device_store = DeviceManager(device_path)
+        profile = version_policy.get_profile(Platform.ANDROID)
+        qimei_manager = QimeiManager(
+            device_store=device_store,
+            version_profile=profile,
+            transport=real_transport,
+            cache_store=device_store.cache_store,
         )
-        calls: list[ScopedCall] = []
-        for index, request in enumerate(requests):
-            if not isinstance(request, BaseRequest):
-                raise TypeError(f"不支持的请求类型: {type(request)}")
-            if getattr(request, "credential", None) is not None or getattr(request, "platform", None) is not None:
-                scope = RequestScope(
-                    credential=getattr(request, "credential", None) or self._defaults.credential,
-                    platform=getattr(request, "platform", None) or self._defaults.platform,
-                )
-            else:
-                scope = default_scope
-            calls.append(ScopedCall(index=index, request=request, scope=scope))
-        return calls
-
-    async def execute(self, request: BaseRequest[Any]) -> Any:
-        """执行单个请求描述符, 未知请求类型抛出 TypeError."""
-        from .request import CgiRequest, HttpRequest
-
-        call = self._resolve_calls([request])[0]
-        if isinstance(call.request, CgiRequest):
-            return await self._cgi.execute(call)
-        if isinstance(call.request, HttpRequest):
-            return await self._http.execute(call)
-        raise TypeError(f"不支持的请求类型: {type(call.request)}")
+        android_session = AndroidSessionManager(
+            device_store=device_store,
+            qimei_manager=qimei_manager,
+            version_policy=version_policy,
+            transport=real_transport,
+            cache_store=device_store.cache_store,
+        )
+        cgi_executor = CgiExecutor(
+            android_session=android_session,
+            device_store=device_store,
+            qimei_manager=qimei_manager,
+            version_policy=version_policy,
+            transport=real_transport,
+            max_concurrency=max_concurrency,
+        )
+        http_executor = HttpExecutor(
+            device_store=device_store,
+            version_policy=version_policy,
+            transport=real_transport,
+            max_concurrency=max_concurrency,
+        )
+        return cls(
+            cgi_executor=cgi_executor,
+            http_executor=http_executor,
+            transport=real_transport,
+            version_policy=version_policy,
+        )
 
     @asynccontextmanager
-    async def open_stream(self, request: BaseRequest[Any]) -> AsyncGenerator[RawStream, None]:
-        """准备流式响应租约.
+    async def _operation(self) -> AsyncGenerator[None, None]:
+        """登记一个在途请求操作并监听关闭取消."""
+        async with self._close_lock:
+            if self._close_state != "open":
+                raise RuntimeError("Engine 已关闭或正在关闭, 不能发起新操作")
+            operation = _Operation(owner_task_id=anyio.get_current_task().id)
+            self._operations.add(operation)
+        try:
+            with anyio.CancelScope() as scope:
+                operation.scope = scope
+                yield
+            if operation.cancelled_by_close:
+                raise RuntimeError("操作已被 close 取消")
+        finally:
+            self._operations.discard(operation)
+            operation.done.set()
 
-        流式响应持有底层连接, 仅能在返回的作用域内消费.
+    async def close(self) -> None:
+        """关闭引擎并释放全部网络与传输资源."""
+        async with self._close_lock:
+            if self._close_state == "closed":
+                return
+            current_task_id = anyio.get_current_task().id
+            if any(operation.owner_task_id == current_task_id for operation in self._operations):
+                raise RuntimeError("不能在途操作中关闭客户端或引擎")
+            self._close_state = "closing"
 
-        Args:
-            request: HTTP 请求描述符.
+            operations = tuple(self._operations)
+            for operation in operations:
+                operation.cancelled_by_close = True
+                if operation.scope is not None:
+                    operation.scope.cancel()
 
-        Returns:
-            异步上下文管理器, 进入后产出 RawStream.
+            with anyio.CancelScope(shield=True):
+                with anyio.move_on_after(CLOSE_CLEANUP_BUDGET_SECONDS):
+                    for operation in operations:
+                        await operation.done.wait()
 
-        Raises:
-            TypeError: 请求类型不支持流式, 或传输实现无流式能力.
-            NetworkError: 建流期间发生网络错误.
-            TimeoutNetworkError: 建流超时.
-        """
-        from .request import HttpRequest
+                try:
+                    await self._transport.close()
+                except Exception as exc:
+                    raise NetworkError(f"关闭传输失败: {exc}") from exc
+
+            self._close_state = "closed"
+
+    async def execute(self, request: BaseRequest[ResultT], scope: RequestScope) -> ResultT:
+        """显式使用指定身份执行单个请求描述符."""
+        async with self._operation():
+            call = ScopedCall(index=0, request=request, scope=scope)
+            if isinstance(request, CgiRequest):
+                return await self._cgi.execute(call)
+            if isinstance(request, HttpRequest):
+                return await self._http.execute(call)
+            raise TypeError(f"不支持的请求类型: {type(request)}")
+
+    @asynccontextmanager
+    async def open_stream(
+        self,
+        request: HttpRequest[Any],
+        scope: RequestScope,
+    ) -> AsyncGenerator[RawStream, None]:
+        """打开流式响应租约."""
         from .transport import TransportError, to_network_error
 
-        call = self._resolve_calls([request])[0]
-        if not isinstance(call.request, HttpRequest):
-            raise TypeError(f"流式读取仅支持 HTTP 请求描述符: {type(call.request)}")
-        prepared = await self._http.prepare(call)
-        transport = self._transport
-        if not isinstance(transport, StreamingTransport):
-            raise TypeError("当前传输实现不支持流式读取")
+        async with self._operation():
+            if not isinstance(request, HttpRequest):
+                raise TypeError(f"流式读取仅支持 HTTP 请求规范: {type(request)}")
+            call = ScopedCall(index=0, request=request, scope=scope)
+            prepared = await self._http.prepare(call)
+            transport = self._transport
+            if not isinstance(transport, StreamingTransport):
+                raise TypeError("当前传输实现不支持流式读取")
 
-        try:
-            async with transport.open_stream(prepared) as stream:
-                yield stream
-        except TransportError as exc:
-            raise to_network_error(exc) from exc
+            try:
+                async with transport.open_stream(prepared) as stream:
+                    yield stream
+            except TransportError as exc:
+                raise to_network_error(exc) from exc
 
     async def gather(
         self,
-        requests: Sequence[BaseRequest[Any]],
+        calls: Sequence[RequestCall[Any]],
         *,
         batch_size: int = 20,
         return_exceptions: bool = False,
     ) -> list[Any]:
-        """并发执行多个请求并按输入顺序返回结果.
-
-        Raises:
-            ValueError: `batch_size` <= 0.
-            TypeError: 存在不支持的请求类型.
-            ApiDataError: 内部依赖的结果未能完整回填.
-        """
+        """并发执行多个已绑定身份的请求并按原始顺序恢复结果."""
         if batch_size <= 0:
             raise ValueError("batch_size 必须大于 0")
-        if not requests:
-            return []
 
-        from .request import CgiRequest, HttpRequest
+        async with self._operation():
+            if not calls:
+                return []
 
-        calls = self._resolve_calls(requests)
-        cgi_calls: list[ScopedCall] = []
-        http_calls: list[ScopedCall] = []
-        for call in calls:
-            if isinstance(call.request, CgiRequest):
-                cgi_calls.append(call)
-            elif isinstance(call.request, HttpRequest):
-                http_calls.append(call)
-            else:
-                raise TypeError(f"不支持的请求类型: {type(call.request)}")
+            cgi_calls: list[ScopedCall] = []
+            http_calls: list[ScopedCall] = []
+            for index, item in enumerate(calls):
+                if not isinstance(item, RequestCall):
+                    raise TypeError(f"不支持的调用条目类型: {type(item)}")
+                scoped = ScopedCall(index=index, request=item.request, scope=item.scope)
+                if isinstance(item.request, CgiRequest):
+                    cgi_calls.append(scoped)
+                elif isinstance(item.request, HttpRequest):
+                    http_calls.append(scoped)
+                else:
+                    raise TypeError(f"不支持的请求类型: {type(item.request)}")
 
-        results: list[Any] = [MISSING] * len(calls)
+            results: list[Any] = [MISSING] * len(calls)
 
-        async def _run_cgi() -> None:
-            for index, value in await self._cgi.execute_many(
-                cgi_calls,
-                batch_size=batch_size,
-                return_exceptions=return_exceptions,
-            ):
-                results[index] = value
+            async def _run_cgi() -> None:
+                for index, value in await self._cgi.execute_many(
+                    cgi_calls,
+                    batch_size=batch_size,
+                    return_exceptions=return_exceptions,
+                ):
+                    results[index] = value
 
-        async def _run_http() -> None:
-            for index, value in await self._http.execute_many(
-                http_calls,
-                return_exceptions=return_exceptions,
-            ):
-                results[index] = value
+            async def _run_http() -> None:
+                for index, value in await self._http.execute_many(
+                    http_calls,
+                    return_exceptions=return_exceptions,
+                ):
+                    results[index] = value
 
-        async with anyio.create_task_group() as task_group:
-            if cgi_calls:
-                task_group.start_soon(_run_cgi)
-            if http_calls:
-                task_group.start_soon(_run_http)
+            async with anyio.create_task_group() as task_group:
+                if cgi_calls:
+                    task_group.start_soon(_run_cgi)
+                if http_calls:
+                    task_group.start_soon(_run_http)
 
-        missing = [index for index, result in enumerate(results) if result is MISSING]
-        if missing:
-            raise ApiDataError(f"缺少以下索引结果: {missing}")
+            missing = [index for index, result in enumerate(results) if result is MISSING]
+            if missing:
+                raise ApiDataError(f"缺少以下索引结果: {missing}")
 
-        return results
+            return results
+
+
+class ScopedRequestExecutor:
+    """绑定执行作用域的引擎执行器, 满足 RequestExecutor 协议."""
+
+    def __init__(self, engine: RequestEngine, scope: RequestScope) -> None:
+        """绑定请求引擎与执行作用域."""
+        self._engine = engine
+        self._scope = scope
+
+    @property
+    def credential(self) -> Credential:
+        """返回绑定作用域的凭证."""
+        return self._scope.credential
+
+    @property
+    def platform(self) -> Platform:
+        """返回绑定作用域的平台."""
+        return self._scope.platform
+
+    @property
+    def version_policy(self) -> VersionPolicy:
+        """返回所属引擎的版本策略."""
+        return self._engine.version_policy
+
+    async def execute(self, request: BaseRequest[ResultT]) -> ResultT:
+        """使用请求覆盖值或绑定作用域执行请求."""
+        req_platform = getattr(request, "platform", None)
+        req_credential = getattr(request, "credential", None)
+        return await self._engine.execute(
+            request,
+            RequestScope(
+                credential=req_credential or self.credential,
+                platform=req_platform or self.platform,
+            ),
+        )
+
+
+__all__ = [
+    "RequestCall",
+    "RequestEngine",
+    "RequestScope",
+    "ScopedCall",
+    "ScopedRequestExecutor",
+]

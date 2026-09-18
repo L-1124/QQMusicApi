@@ -1,6 +1,17 @@
 """core 模块."""
 
 from .client import Client
+from .endpoint import (
+    CgiEndpointMeta,
+    CgiRequestData,
+    EndpointMeta,
+    HttpEndpointMeta,
+    HttpRequestData,
+    cgi_endpoint,
+    get_endpoint_meta,
+    http_endpoint,
+)
+from .engine import RequestCall, RequestEngine, RequestScope
 from .exceptions import (
     ApiDataError,
     ApiException,
@@ -32,14 +43,19 @@ __all__ = [
     "BaseApiException",
     "BaseRequest",
     "CgiApiException",
+    "CgiEndpointMeta",
     "CgiRequest",
+    "CgiRequestData",
     "Client",
     "CredentialExpiredError",
     "CredentialInvalidError",
     "CredentialRefreshError",
+    "EndpointMeta",
     "GlobalApiError",
     "HTTPError",
+    "HttpEndpointMeta",
     "HttpRequest",
+    "HttpRequestData",
     "ItemPaginatedCgiRequest",
     "LoginAccountRestrictedError",
     "LoginAuthExpiredError",
@@ -52,8 +68,14 @@ __all__ = [
     "RatelimitedError",
     "RawPayload",
     "RawStream",
+    "RequestCall",
+    "RequestEngine",
+    "RequestScope",
     "StreamingTransport",
     "TimeoutNetworkError",
     "VersionPolicy",
     "VersionProfile",
+    "cgi_endpoint",
+    "get_endpoint_meta",
+    "http_endpoint",
 ]

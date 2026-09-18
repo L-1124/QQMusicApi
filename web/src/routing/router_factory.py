@@ -1,5 +1,11 @@
 """类型化 Web 路由注册工厂."""
 
+__all__ = [
+    "include_routes",
+    "make_endpoint",
+    "validate_routes",
+]
+
 import dataclasses
 import inspect
 import re
@@ -10,27 +16,18 @@ from typing import Annotated, Any, cast, get_args, get_origin
 from fastapi import Depends, FastAPI, Path, Query, Request
 from pydantic import BaseModel
 
-from qqmusic_api import Client, Credential
-from qqmusic_api.modules.album import AlbumApi
-from qqmusic_api.modules.comment import CommentApi
-from qqmusic_api.modules.login import LoginApi
-from qqmusic_api.modules.lyric import LyricApi
-from qqmusic_api.modules.mv import MvApi
-from qqmusic_api.modules.recommend import RecommendApi
-from qqmusic_api.modules.search import SearchApi
-from qqmusic_api.modules.singer import SingerApi
-from qqmusic_api.modules.song import SongApi
-from qqmusic_api.modules.songlist import SonglistApi
-from qqmusic_api.modules.top import TopApi
-from qqmusic_api.modules.user import UserApi
+from qqmusic_api import Credential, Platform
+from qqmusic_api.core.endpoint import get_endpoint_meta
+from qqmusic_api.core.engine import RequestEngine
 
 from ..core.auth import credential_from_cookies
 from ..core.cache import CacheBackend
-from ..core.deps import cache_dependency, client_dependency
+from ..core.deps import cache_dependency, engine_dependency
 from ..core.response import ApiResponse
 from .adapter_registry import get_adapter
 from .docstrings import MethodDocs, load_method_docs
 from .executor import collect_param_values, execute_route
+from .modules import MODULE_TYPES
 from .params import (
     _is_json_query_annotation,
     build_param_model,
@@ -41,20 +38,6 @@ from .params import (
 )
 from .route_types import COOKIE_SECURITY_REQUIREMENT, AuthPolicy, ParamOverride, ParamSource, RouteContext, WebRoute
 
-_MODULE_CLASSES: dict[str, type[Any]] = {
-    "album": AlbumApi,
-    "comment": CommentApi,
-    "lyric": LyricApi,
-    "login": LoginApi,
-    "mv": MvApi,
-    "recommend": RecommendApi,
-    "search": SearchApi,
-    "singer": SingerApi,
-    "song": SongApi,
-    "songlist": SonglistApi,
-    "top": TopApi,
-    "user": UserApi,
-}
 credential_dependency = Depends(credential_from_cookies)
 
 
@@ -126,11 +109,12 @@ def make_endpoint(route: WebRoute) -> tuple[Callable[..., Any], MethodDocs]:
             params["body"] = kwargs["body"]
         context = RouteContext(
             request=kwargs["request"],
-            client=kwargs["client"],
+            engine=kwargs["engine"],
             cache=kwargs["cache"],
             route=route,
             params=params,
             credential=kwargs.get("credential"),
+            platform=Platform.ANDROID,
         )
         return await execute_route(context)
 
@@ -241,10 +225,10 @@ def _build_endpoint_signature(
     params.extend(
         [
             inspect.Parameter(
-                "client",
+                "engine",
                 inspect.Parameter.POSITIONAL_OR_KEYWORD,
-                default=client_dependency,
-                annotation=Client,
+                default=engine_dependency,
+                annotation=RequestEngine,
             ),
             inspect.Parameter(
                 "cache",
@@ -269,6 +253,14 @@ def _build_endpoint_signature(
 def _validate_route(route: WebRoute, path_methods: set[tuple[str, str]]) -> list[str]:
     errors: list[str] = []
     key = f"{route.module}.{route.method}"
+    if route.endpoint is not None:
+        try:
+            endpoint_meta = get_endpoint_meta(route.endpoint)
+        except TypeError:
+            errors.append(f"Web 路由 endpoint 未声明元数据: {key}")
+        else:
+            if endpoint_meta.key != key:
+                errors.append(f"Web 路由目标与 endpoint key 不一致: {key} != {endpoint_meta.key}")
     for method in route.methods:
         path_method = (route.path, method.value)
         if path_method in path_methods:
@@ -343,7 +335,7 @@ def _validate_sdk_contract(route: WebRoute, route_params: tuple[ParamOverride, .
     key = f"{route.module}.{route.method}"
     method = _resolve_method(route)
     if method is None:
-        return [f"Client 缺少模块或方法: {key}"]
+        return [f"模块缺少方法: {key}"]
     signature = inspect.signature(method)
     hidden = {param.name for param in route.param_overrides if not param.forward}
     sdk_params = {name for name in signature.parameters if name not in {"self", "credential"} and name not in hidden}
@@ -396,7 +388,9 @@ def _is_supported_query_annotation(annotation: Any, *, explicit: bool = False) -
 
 
 def _resolve_method(route: WebRoute) -> Any | None:
-    module_cls = _MODULE_CLASSES.get(route.module)
+    if route.endpoint is not None:
+        return route.endpoint
+    module_cls = MODULE_TYPES.get(route.module)
     if module_cls is None:
         return None
     return getattr(module_cls, route.method, None)

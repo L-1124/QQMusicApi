@@ -88,8 +88,8 @@ class LoginApi(ApiModule):
         Returns:
             bool: 是否已过期.
         """
-        target = credential or self._client.credential
-        if self._client.platform == Platform.WEB:
+        target = credential or self._executor.credential
+        if self._executor.platform == Platform.WEB:
             resp = await self._build_http(
                 "GET",
                 "https://c6.y.qq.com/rsc/fcgi-bin/fcg_get_profile_homepage.fcg",
@@ -131,7 +131,7 @@ class LoginApi(ApiModule):
         Returns:
             Credential: 刷新后的新凭证对象.
         """
-        target = credential or self._client.credential
+        target = credential or self._executor.credential
         match target.login_type:
             case 1:
                 param = {
@@ -178,9 +178,12 @@ class LoginApi(ApiModule):
             allow_error_codes=_ERROR_CODE,
         )
         try:
-            return Credential.model_validate(self._validate_result(data))
+            refreshed = Credential.model_validate(self._validate_result(data))
         except LoginError as exc:
             raise CredentialRefreshError(message=exc.message, code=exc.code, data=exc.data) from exc
+        if credential is None and self._client is not None:
+            self._client.credential = refreshed
+        return refreshed
 
     async def logout(self, credential: Credential | None = None) -> None:
         """登出当前账号."""
@@ -192,7 +195,7 @@ class LoginApi(ApiModule):
             allow_error_codes=_ERROR_CODE,
             require_login=True,
         )
-        if credential is None:
+        if credential is None and self._client is not None:
             self._client.credential = Credential()
 
     async def get_qrcode(self, login_type: QRLoginType) -> QR:
@@ -402,7 +405,10 @@ class LoginApi(ApiModule):
             allow_error_codes=_ERROR_CODE,
         )
 
-        return Credential.model_validate(self._validate_result(data))
+        credential = Credential.model_validate(self._validate_result(data))
+        if self._client is not None:
+            self._client.credential = credential
+        return credential
 
     async def _get_qq_qr(self) -> QR:
         """获取 QQ 授权二维码."""
@@ -465,7 +471,7 @@ class LoginApi(ApiModule):
             method="CreateQRCode",
             param={"tmeAppID": "qqmusic", **self._build_version_params()},
             comm={"ct": 23, "cv": 0},
-            platform=Platform.ANDROID if self._client.platform == Platform.WEB else None,
+            platform=Platform.ANDROID if self._executor.platform == Platform.WEB else None,
         )
 
         if data is None:

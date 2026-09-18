@@ -7,11 +7,10 @@ from typing import TYPE_CHECKING
 from xml.sax.saxutils import escape
 
 from ..models.request import CommonParams, Credential
-from ..utils.common import hash33
-from ..utils.device import Device
 
 if TYPE_CHECKING:
     from ..utils.android_session import AndroidSession
+    from ..utils.device import Device
 
 
 class Platform(str, Enum):
@@ -39,7 +38,7 @@ class VersionProfile:
 class VersionPolicy:
     """请求版本策略.
 
-    版本策略在 Client 生命周期内固定; 公参按次生成, 不持有
+    版本策略在 RequestEngine 生命周期内固定; 公参按次生成, 不持有
     全局可变缓存.
     """
 
@@ -137,7 +136,7 @@ class VersionPolicy:
 
         return {key: str(value) for key, value in params.model_dump(by_alias=True, exclude_none=True).items()}
 
-    def get_user_agent(self, platform: Platform, device: Device) -> str:
+    def get_user_agent(self, platform: Platform, device: "Device") -> str:
         """根据平台获取 UA.
 
         Args:
@@ -167,6 +166,8 @@ class VersionPolicy:
             计算后的 g_tk.
         """
         if credential.musickey:
+            from ..utils.common import hash33
+
             return hash33(credential.musickey, 5381)
         return 5381
 

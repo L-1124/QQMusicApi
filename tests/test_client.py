@@ -34,12 +34,18 @@ class DummyModel(BaseModel):
 
 def _cgi_request(client: Client, param: dict[str, Any] | None = None, **kwargs: Any) -> CgiRequest[Any]:
     """构造测试用 CGI 请求描述符."""
-    return CgiRequest(_client=client, module="test", method="test", param=param or {}, **kwargs)
+    return CgiRequest(
+        _executor=client,
+        module="test",
+        method="test",
+        param=param or {},
+        **kwargs,
+    )
 
 
 def _http_request(client: Client, url: str = "https://example.com", **kwargs: Any) -> HttpRequest[Any]:
     """构造测试用 HTTP 请求描述符."""
-    return HttpRequest(_client=client, method="GET", url=url, **kwargs)
+    return HttpRequest(_executor=client, method="GET", url=url, **kwargs)
 
 
 @pytest_asyncio.fixture
@@ -175,7 +181,7 @@ async def test_close_from_active_stream_is_rejected_without_closing_transport(st
     transport.stream_leases.append(lease)
 
     async with stub_client.stream(_http_request(stub_client)):
-        with anyio.fail_after(1), pytest.raises(RuntimeError, match="在途操作内"):
+        with anyio.fail_after(1), pytest.raises(RuntimeError, match="在途操作"):
             await stub_client.close()
         assert transport.close_calls == 0
 
@@ -207,7 +213,7 @@ async def test_stream_lease_releases_on_body_error():
     lease = transport.stream_leases[0]
     client = Client(platform=Platform.WEB, transport=transport)
     with pytest.raises(TimeoutNetworkError, match="读取超时"):
-        async with client.stream(HttpRequest(_client=client, method="GET", url="https://example.com")) as raw_stream:
+        async with client.stream(_http_request(client)) as raw_stream:
             await anext(raw_stream.iter_chunks(2))
     assert lease.exited
 
@@ -227,12 +233,12 @@ async def test_stream_rejects_non_streaming_transport():
 
     client = Client(platform=Platform.WEB, transport=cast("Any", PlainTransport()))
     with pytest.raises(TypeError, match="流式"):
-        async with client.stream(HttpRequest(_client=client, method="GET", url="https://example.com")):
+        async with client.stream(_http_request(client)):
             pass
 
 
 def cast_transport(client: Client) -> StubTransport:
     """以桩类型取回客户端注入的传输实例."""
-    transport = client._transport
+    transport = client._engine.transport
     assert isinstance(transport, StubTransport)
     return transport

@@ -114,7 +114,7 @@ R(
 
 字段说明:
 
-* `module`: `Client` 上的模块属性名。
+* `module`: Web 模块映射中注册的 SDK 模块名。
 * `method`: modules 层方法名。
 * `path`: Web 路由路径，Path 参数使用 `{name}`。
 * `response_model`: 响应模型类。

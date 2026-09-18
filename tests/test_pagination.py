@@ -186,7 +186,7 @@ def _cgi_client() -> MockClient:
 def _cgi_request() -> PaginatedCgiRequest:
     """构造基于页码策略的两页 CGI 测试请求."""
     return PaginatedCgiRequest(
-        _client=cast("Any", _cgi_client()),
+        _executor=cast("Any", _cgi_client()),
         module="test",
         method="test",
         param={"page": 1},

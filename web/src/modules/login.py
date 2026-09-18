@@ -200,20 +200,22 @@ def _build_qrcode_placeholder(identifier: str, login_type: QRLoginType) -> QR:
 @adapter("login", "check_expired")
 async def check_expired_adapter(context: RouteContext) -> bool:
     """检查登录凭证是否过期."""
-    return await context.client.login.check_expired(context.credential)
+    credential = context.credential or Credential()
+    return await context.execute_module("login", "check_expired", credential)
 
 
 @adapter("login", "refresh_credential")
 async def refresh_credential_adapter(context: RouteContext) -> Credential:
     """刷新登录凭证."""
-    return await context.client.login.refresh_credential(context.credential)
+    credential = context.credential or Credential()
+    return await context.execute_module("login", "refresh_credential", credential)
 
 
 @adapter("login", "qrcode")
 async def qrcode_adapter(context: RouteContext) -> QRCodeData:
     """获取登录二维码."""
     login_type = _validate_web_qr_login_type(context.params["login_type"])
-    qrcode = await context.client.login.get_qrcode(login_type)
+    qrcode = await context.execute_module("login", "get_qrcode", login_type)
     return _serialize_qrcode(qrcode)
 
 
@@ -222,7 +224,7 @@ async def qrcode_status_adapter(context: RouteContext) -> QRCodeStatusData:
     """检查二维码登录状态."""
     login_type = _validate_web_qr_login_type(context.params["login_type"])
     qrcode = _build_qrcode_placeholder(context.params["identifier"], login_type)
-    result = await context.client.login.check_qrcode(qrcode)
+    result = await context.execute_module("login", "check_qrcode", qrcode)
     return _serialize_qrcode_status(result, qrcode)
 
 
@@ -230,7 +232,7 @@ async def qrcode_status_adapter(context: RouteContext) -> QRCodeStatusData:
 async def phone_authcode_adapter(context: RouteContext) -> PhoneAuthCodeData:
     """发送手机验证码."""
     query = _validate_model(SendAuthcodeRequest, dict(context.params))
-    result = await context.client.login.send_authcode(query.phone_value(), query.country_code)
+    result = await context.execute_module("login", "send_authcode", query.phone_value(), query.country_code)
     return _serialize_phone_authcode(result)
 
 
@@ -238,7 +240,7 @@ async def phone_authcode_adapter(context: RouteContext) -> PhoneAuthCodeData:
 async def phone_authorize_adapter(context: RouteContext) -> Credential:
     """使用手机验证码登录."""
     query = _validate_model(PhoneAuthorizeRequest, dict(context.params))
-    return await context.client.login.phone_authorize(query.phone_value(), query.auth_code)
+    return await context.execute_module("login", "phone_authorize", query.phone_value(), query.auth_code)
 
 
 def _validate_model(model_type: type[BaseModel], data: dict[str, Any]) -> Any:

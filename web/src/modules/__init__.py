@@ -1,12 +1,10 @@
 """Web 模块级路由适配."""
 
-from . import comment, login, mv, singer, song, songlist
+import importlib
+import pkgutil
 
-__all__ = [
-    "comment",
-    "login",
-    "mv",
-    "singer",
-    "song",
-    "songlist",
-]
+__all__ = []
+
+for _, name, _ in pkgutil.iter_modules(__path__):
+    importlib.import_module(f".{name}", __package__)
+    __all__.append(name)

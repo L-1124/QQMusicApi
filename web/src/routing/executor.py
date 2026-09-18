@@ -1,5 +1,6 @@
 """Web 路由执行器."""
 
+import dataclasses
 import inspect
 import logging
 from typing import Any, Protocol, runtime_checkable
@@ -22,17 +23,6 @@ from .route_types import AuthPolicy, RouteContext
 logger = logging.getLogger(__name__)
 
 _VALIDATION_ERROR_TYPES = (KeyError, TypeError, ValueError)
-_CREDENTIAL_REQUIRED_CACHE: dict[tuple[str, str], bool] = {}
-
-
-def _requires_credential(client: Any, module_name: str, method_name: str) -> bool:
-    key = (module_name, method_name)
-    if key not in _CREDENTIAL_REQUIRED_CACHE:
-        module = getattr(client, module_name)
-        bound_method = getattr(module, method_name)
-        sig = inspect.signature(bound_method)
-        _CREDENTIAL_REQUIRED_CACHE[key] = "credential" in sig.parameters
-    return _CREDENTIAL_REQUIRED_CACHE[key]
 
 
 @runtime_checkable
@@ -93,25 +83,16 @@ async def execute_route(context: RouteContext) -> Any:
 
 
 async def _invoke_route(context: RouteContext, params: dict[str, Any], resolved_credential: Credential | None) -> Any:
+    scoped_context = dataclasses.replace(
+        context,
+        params=params,
+        credential=resolved_credential,
+    )
     if context.route.adapter is not None:
-        adapter_context = RouteContext(
-            request=context.request,
-            client=context.client,
-            cache=context.cache,
-            route=context.route,
-            params=params,
-            credential=resolved_credential,
-        )
-        result = context.route.adapter(adapter_context)
+        result = context.route.adapter(scoped_context)
     else:
-        if resolved_credential is not None and _requires_credential(
-            context.client, context.route.module, context.route.method
-        ):
-            params["credential"] = resolved_credential
-
-        module = getattr(context.client, context.route.module)
-        bound_method = getattr(module, context.route.method)
-        result = bound_method(**params)
+        endpoint = context.route.endpoint or context.route.method
+        return await scoped_context.execute_module(context.route.module, endpoint, **params)
     if inspect.isawaitable(result):
         return await result
     return result
@@ -142,9 +123,10 @@ async def _resolve_credential(context: RouteContext, *, strict: bool = True) -> 
     logger.debug("解析凭证, 初始 musicid: %s", credential.musicid)
     resolved = await configured_credential_for_api(
         context.request,
-        context.client,
+        context.engine,
         f"{context.route.module}.{context.route.method}",
         credential,
+        platform=context.platform,
     )
     if not credential_has_login(resolved):
         if strict:
@@ -163,7 +145,7 @@ async def _refresh_credential(context: RouteContext, credential: Credential) -> 
         raise CredentialExpiredError("登录凭证已失效", code=0)
     try:
         logger.info("开始刷新凭证 %s", credential.musicid)
-        refreshed = await refresh_and_store(context.client, store, credential)
+        refreshed = await refresh_and_store(context.engine, store, credential, platform=context.platform)
         logger.info("凭证 %s 刷新成功", credential.musicid)
         return refreshed
     except Exception as exc:

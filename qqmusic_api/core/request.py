@@ -2,7 +2,7 @@
 
 from collections.abc import Callable, Generator, Iterable
 from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING, Any, Generic, TypedDict, TypeVar
+from typing import Any, Generic, Protocol, TypedDict, TypeVar
 
 from niquests.typing import (
     AsyncBodyType,
@@ -23,10 +23,7 @@ from typing_extensions import Self
 from ..models.request import Credential
 from .pagination import ItemPaginatedMixin, ItemT_co, PaginatedMixin
 from .response import AllowErrorCodes, RawPayload, ResponseModel
-from .versioning import Platform
-
-if TYPE_CHECKING:
-    from .client import Client
+from .versioning import Platform, VersionPolicy
 
 ResultT = TypeVar("ResultT")
 CgiRequestResultT = TypeVar("CgiRequestResultT", bound=BaseModel | dict[str, Any])
@@ -46,6 +43,29 @@ __all__ = [
 ]
 
 
+class RequestExecutor(Protocol):
+    """执行绑定请求描述符所需的最小接口."""
+
+    @property
+    def credential(self) -> Credential:
+        """返回默认凭证."""
+        ...
+
+    @property
+    def platform(self) -> Platform:
+        """返回默认平台."""
+        ...
+
+    @property
+    def version_policy(self) -> VersionPolicy:
+        """返回请求使用的版本策略."""
+        ...
+
+    async def execute(self, request: "BaseRequest[ResultT]") -> ResultT:
+        """执行请求并返回解析结果."""
+        ...
+
+
 @dataclass(kw_only=True)
 class BaseRequest(Generic[ResultT]):
     """请求描述符基类.
@@ -53,30 +73,27 @@ class BaseRequest(Generic[ResultT]):
     该基类封装了由客户端执行请求时所需的元数据与行为契约.
 
     Attributes:
-        _client: 请求执行的客户端实例, 用于调度请求.
+        _executor: 请求绑定的执行器, 用于调度请求.
         response_model: 期望的响应模型类型, 支持 Pydantic BaseModel.
     """
 
-    _client: "Client"
+    _executor: RequestExecutor
     response_model: type[BaseModel] | None = None
 
     def __await__(self) -> Generator[Any, Any, ResultT]:
-        """将自身作为载体, 委派给 Client 进行多态调度执行."""
-        return self._client.execute(self).__await__()
+        """将自身委派给绑定的请求执行器."""
+        return self._executor.execute(self).__await__()
 
 
 class CgiRequestOptions(TypedDict, total=False):
     """CGI 请求专用的可选配置."""
 
-    comm: dict[str, Any] | None
-    override_comm: bool
-    preserve_bool: bool
-    allow_error_codes: AllowErrorCodes | None
-    parse_on_allow: bool
-    credential: Credential | None
-    platform: Platform | None
     sign: bool
     require_login: bool
+    allow_error_codes: AllowErrorCodes | None
+    parse_on_allow: bool
+    override_comm: bool
+    preserve_bool: bool
 
 
 @dataclass(kw_only=True)

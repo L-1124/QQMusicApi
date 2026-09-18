@@ -1,5 +1,6 @@
 """Web 路由类型化契约定义."""
 
+import inspect
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 from enum import Enum
@@ -8,12 +9,14 @@ from typing import Any, Generic, Literal, TypeVar
 from fastapi import Request
 from pydantic import BaseModel
 
-from qqmusic_api import Client, Credential
+from qqmusic_api import Credential, Platform
+from qqmusic_api.core.engine import RequestEngine, RequestScope, ScopedRequestExecutor
+from qqmusic_api.modules._base import ApiModule
 
 from ..core.cache import CacheBackend
+from .modules import create_module
 
 EnumT = TypeVar("EnumT", bound=Enum)
-
 COOKIE_SECURITY_REQUIREMENT = {"MusicId": [], "MusicKey": []}
 
 
@@ -150,6 +153,7 @@ class WebRoute:
     description: str | None = None
     param_docs: Mapping[str, str] = field(default_factory=dict)
     adapter: Callable[["RouteContext"], Awaitable[Any] | Any] | None = None
+    endpoint: Callable[..., Any] | None = None
     tags: tuple[str, ...] = ()
 
     @property
@@ -163,11 +167,42 @@ class RouteContext:
     """传递给显式 Web 路由适配器的运行时上下文."""
 
     request: Request
-    client: Client
+    engine: RequestEngine
     cache: CacheBackend
     route: WebRoute
     params: Mapping[str, Any]
     credential: Credential | None = None
+    platform: Platform = Platform.ANDROID
+
+    async def execute_module(
+        self,
+        module: str | type[ApiModule],
+        method: str | Callable[..., Any],
+        /,
+        *args: Any,
+        **kwargs: Any,
+    ) -> Any:
+        """在当前请求作用域内通过 RequestEngine 执行模块方法.
+
+        Raises:
+            TypeError: 目标方法未返回可执行的请求描述符.
+        """
+        scope = RequestScope(
+            credential=self.credential or Credential(),
+            platform=self.platform,
+        )
+        executor = ScopedRequestExecutor(self.engine, scope)
+        instance = create_module(module, executor)
+        if isinstance(method, str):
+            bound_method = getattr(instance, method)
+            result = bound_method(*args, **kwargs)
+        else:
+            result = method(instance, *args, **kwargs)
+        if not inspect.isawaitable(result):
+            owner = module if isinstance(module, str) else module.__name__
+            name = method if isinstance(method, str) else getattr(method, "__name__", repr(method))
+            raise TypeError(f"路由目标 {owner}.{name} 未返回请求描述符, 实际为 {type(result).__name__}")
+        return await result
 
 
 PUBLIC_60 = CachePolicy(ttl=60)

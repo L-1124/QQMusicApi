@@ -16,14 +16,18 @@ from starlette.middleware.base import RequestResponseEndpoint
 from starlette.responses import Response
 
 import qqmusic_api
-from qqmusic_api import Client
+from qqmusic_api.core.engine import RequestEngine
 from qqmusic_api.core.exceptions import (
+    ApiDataError,
     BaseApiException,
     CredentialExpiredError,
     CredentialInvalidError,
     CredentialRefreshError,
+    HTTPError,
     LoginError,
+    NetworkError,
     RatelimitedError,
+    TimeoutNetworkError,
 )
 
 from . import modules  # noqa: F401
@@ -43,8 +47,11 @@ logger = logging.getLogger(__name__)
 _ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
     400: {"model": ErrorResponse},
     401: {"model": ErrorResponse},
-    429: {"model": ErrorResponse},
     422: {"model": ErrorResponse},
+    429: {"model": ErrorResponse},
+    502: {"model": ErrorResponse},
+    503: {"model": ErrorResponse},
+    504: {"model": ErrorResponse},
 }
 
 
@@ -75,7 +82,31 @@ def _base_api_exception_status_code(exc: BaseApiException) -> int:
         return 401
     if isinstance(exc, LoginError):
         return 400
+    if isinstance(exc, TimeoutNetworkError):
+        return 504
+    if isinstance(exc, NetworkError):
+        return 503
+    if isinstance(exc, (HTTPError, ApiDataError)):
+        return 502
     return 400
+
+
+async def _cleanup_services(services: WebServices) -> None:
+    """安全释放 Web 服务中的全部已分配资源."""
+    try:
+        await services.cache.close()
+    except Exception:
+        logger.exception("关闭缓存异常")
+    if services.credential_store is not None:
+        try:
+            services.credential_store.close()
+        except Exception:
+            logger.exception("关闭凭证存储异常")
+    try:
+        if services.engine is not None:
+            await services.engine.close()
+    except Exception:
+        logger.exception("关闭请求引擎异常")
 
 
 @asynccontextmanager
@@ -83,9 +114,9 @@ async def _lifespan(app: FastAPI):
     logger.info("Web 应用启动中...")
     services: WebServices = app.state.services
     try:
-        logger.info("初始化 SDK Client...")
-        services.client = Client(device_path=settings.client.device_path)
-        logger.debug("SDK Client 初始化完成")
+        logger.info("初始化 RequestEngine...")
+        services.engine = RequestEngine.create(device_path=settings.client.device_path)
+        logger.debug("RequestEngine 初始化完成")
 
         logger.debug("配置全局凭证设置...")
         services.credential_config = settings.credential
@@ -98,31 +129,20 @@ async def _lifespan(app: FastAPI):
         services.credential_store.sync_accounts(load_account_configs(ACCOUNT_CONFIG_FILE))
 
         logger.info("执行启动凭证健康检查...")
-        await startup_credential_health_check(services.client, services.credential_store)
+        await startup_credential_health_check(services.require_engine, services.credential_store)
 
         logger.info("Web 应用启动完成")
     except Exception:
         logger.exception("Web 应用启动失败")
+        await _cleanup_services(services)
         raise
 
-    yield
-
-    logger.info("Web 应用关闭中...")
     try:
-        await services.cache.close()
-    except Exception:
-        logger.exception("关闭缓存异常")
-    try:
-        if services.credential_store is not None:
-            services.credential_store.close()
-    except Exception:
-        logger.exception("关闭凭证存储异常")
-    try:
-        if services.client is not None:
-            await services.client.close()
-    except Exception:
-        logger.exception("关闭 SDK Client 异常")
-    logger.info("Web 应用关闭完成")
+        yield
+    finally:
+        logger.info("Web 应用关闭中...")
+        await _cleanup_services(services)
+        logger.info("Web 应用关闭完成")
 
 
 def _configure_cors(app: FastAPI) -> None:

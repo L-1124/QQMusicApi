@@ -1,8 +1,24 @@
 """Web 路由注册测试."""
 
+import pytest
 from fastapi import FastAPI
 from fastapi.routing import APIRoute
 
+from qqmusic_api.core.exceptions import (
+    ApiDataError,
+    BaseApiException,
+    CredentialExpiredError,
+    CredentialInvalidError,
+    CredentialRefreshError,
+    HTTPError,
+    LoginError,
+    NetworkError,
+    RatelimitedError,
+    TimeoutNetworkError,
+)
+from qqmusic_api.modules.search import SearchApi
+from qqmusic_api.modules.song import SongApi
+from web.src.app import _base_api_exception_status_code
 from web.src.routes import ROUTES
 from web.src.routing.route_types import AuthPolicy
 from web.src.routing.router_factory import _resolve_route, validate_routes
@@ -126,6 +142,13 @@ def test_representative_route_parameters_are_registered(app: FastAPI) -> None:
     assert "requestBody" in schema["paths"]["/song/get_song_urls"]["post"]
 
 
+def test_pilot_routes_reference_sdk_endpoints() -> None:
+    """测试试点路由直接引用 SDK 端点并复用响应模型."""
+    endpoints = {route.endpoint for route in RESOLVED_ROUTES if route.endpoint is not None}
+
+    assert {SongApi.get_detail, SearchApi.quick_search, SearchApi.search_by_type} <= endpoints
+
+
 def test_song_file_type_uses_integer_mapping_with_description(app: FastAPI) -> None:
     """测试歌曲文件类型使用整数映射并列出说明."""
     schema = app.openapi()
@@ -146,3 +169,22 @@ def test_adapter_routes_use_chinese_docs_not_route_keys(app: FastAPI) -> None:
     ]
     assert all(summary for summary in all_summaries)
     assert not any("." in summary for summary in all_summaries)
+
+
+@pytest.mark.parametrize(
+    ("exception", "expected_status"),
+    [
+        (CredentialInvalidError("invalid"), 401),
+        (CredentialExpiredError(code=1000), 401),
+        (CredentialRefreshError(code=1000), 401),
+        (RatelimitedError(code=2001), 429),
+        (LoginError(code=20261), 400),
+        (HTTPError("upstream", 500), 502),
+        (ApiDataError("invalid payload"), 502),
+        (NetworkError("network"), 503),
+        (TimeoutNetworkError("timeout"), 504),
+    ],
+)
+def test_sdk_exceptions_map_to_stable_http_status(exception: BaseApiException, expected_status: int) -> None:
+    """测试 SDK 公共异常映射为稳定的 HTTP 状态码."""
+    assert _base_api_exception_status_code(exception) == expected_status
