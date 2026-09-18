@@ -45,7 +45,6 @@ class CgiEndpointMeta(EndpointMeta[ResultT]):
     preserve_bool: bool = False
     allow_error_codes: tuple[int, ...] | Literal["all"] | None = None
     parse_on_allow: bool = False
-    disable_parse: bool = False
 
 
 @dataclass(frozen=True)
@@ -242,7 +241,6 @@ def cgi_endpoint(
                 preserve_bool=selected.preserve_bool if data.preserve_bool is None else data.preserve_bool,
                 allow_error_codes=selected.allow_error_codes,
                 parse_on_allow=selected.parse_on_allow,
-                disable_parse=selected.disable_parse,
                 credential=data.credential,
                 platform=data.platform or selected.platform,
                 sign=selected.sign,

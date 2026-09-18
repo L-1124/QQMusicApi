@@ -115,8 +115,6 @@ class CgiRequest(BaseRequest[CgiRequestResultT]):
         require_login: 请求是否需要凭证.
         platform: 可选的平台标识, 优先于客户端的全局平台设置.
         sign: 指示该请求是否需要签名处理.
-        disable_parse: 解析策略开关: 为 True 时跳过模型转换, 直接返回
-            内层 data 原始字典.
     """
 
     module: str
@@ -131,7 +129,6 @@ class CgiRequest(BaseRequest[CgiRequestResultT]):
     sign: bool = False
     allow_error_codes: AllowErrorCodes | None = None
     parse_on_allow: bool = False
-    disable_parse: bool = False
 
 
 class HttpRequestOptions(TypedDict, total=False):

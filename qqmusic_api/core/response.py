@@ -188,7 +188,6 @@ def parse_cgi_item(
     *,
     allow_error_codes: AllowErrorCodes | None = None,
     parse_on_allow: bool = False,
-    disable_parse: bool = False,
     response_model: type[BaseModel] | None = None,
 ) -> Any:
     """解析单个 CGI 子响应并处理业务异常.
@@ -199,7 +198,6 @@ def parse_cgi_item(
         raw: CGI 子响应字典.
         allow_error_codes: 允许不抛出异常的特定错误码.
         parse_on_allow: 命中允许码时是否仍尝试模型解析.
-        disable_parse: 是否跳过模型解析直接返回原始数据.
         response_model: 期望的响应模型类型.
 
     Returns:
@@ -226,8 +224,6 @@ def parse_cgi_item(
             raise exc_type(code=code, data=data)
         raise CgiApiException(code=code, data=data)
 
-    if disable_parse:
-        return data
     return build_result(data, response_model)
 
 

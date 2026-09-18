@@ -10,9 +10,8 @@
 ### 单请求
 
 ```text
-模块方法
-  -> self._build_cgi(...) / self._build_http(...)
-  -> BaseRequest 描述符
+模块方法 (返回 CgiRequestData 或内部调用 _build_http)
+  -> 装饰器拦截并生成 BaseRequest 描述符
   -> await request
   -> Client.execute(request)
   -> Engine 确定请求身份 (不可变凭证与平台 scope)
@@ -25,9 +24,8 @@
 ### 批量并发请求
 
 ```text
-多个模块方法
-  -> self._build_cgi(...)
-  -> BaseRequest 描述符列表
+多个被 @cgi_endpoint 装饰的模块方法
+  -> 内部生成 BaseRequest 描述符列表
     -> Client.gather(requests)
     -> Engine 确定全部执行条目的身份并按协议分区
     -> CGI 条目按快照身份 (平台, 完整凭证, comm, 签名) 自动分组
@@ -50,18 +48,20 @@
 ```python
 # qqmusic_api/modules/foo.py
 from ._base import ApiModule
+from ..core.endpoint import cgi_endpoint, CgiRequestData
 
 
 class FooApi(ApiModule):
     """Foo 相关 API."""
 
-    def get_something(self, id: int):
+    @cgi_endpoint(
+        key="foo.get_something",
+        module="music.foo.Svc",
+        method="GetSomething",
+    )
+    def get_something(self, id: int) -> CgiRequestData:
         """获取某项数据."""
-        return self._build_cgi(
-            module="music.foo.Svc",
-            method="GetSomething",
-            param={"id": id},
-        )
+        return CgiRequestData(param={"id": id})
 ```
 
 ```python
@@ -73,24 +73,31 @@ class Client:
     @cached_property
     def foo(self) -> "FooApi":
         from ..modules.foo import FooApi
+
         return FooApi(self)
 ```
 
 ### 添加新的请求方法
 
-API 方法返回 `BaseRequest` 描述符对象，并不立即发起请求。对于标准 CGI 风格的 RPC 请求，使用 `self._build_cgi(...)` 工厂方法构建：
+API 方法返回 `BaseRequest` 描述符对象，并不立即发起请求。对于标准 CGI 风格的 RPC 请求，应当使用 `@cgi_endpoint` 装饰器声明路由契约，并在方法体中返回 `CgiRequestData` 装载运行时参数：
 
 ```python
-def get_detail(self, song_id: int):
+from ..core.endpoint import cgi_endpoint, CgiRequestData
+
+
+@cgi_endpoint(
+    key="song.get_detail",  # 端点唯一标识
+    module="music.songDetail",  # 接口所属模块
+    method="GetDetail",  # 方法名
+)
+def get_detail(self, song_id: int) -> CgiRequestData:
     """获取歌曲详情."""
-    return self._build_cgi(
-        module="music.songDetail",  # 接口所属模块
-        method="GetDetail",  # 方法名
+    return CgiRequestData(
         param={"songid": song_id},  # 业务参数
     )
 ```
 
-对于非标准 CGI 接口（如直接 GET 请求、获取网页或二维码），使用 `self._build_http(...)`：
+对于非标准 CGI 接口（如直接 GET 请求、获取网页或二维码），则使用原生的 `self._build_http(...)`：
 
 ```python
 async def quick_search(self, keyword: str) -> dict[str, Any]:
@@ -103,22 +110,34 @@ async def quick_search(self, keyword: str) -> dict[str, Any]:
     return resp["data"]
 ```
 
-### `_build_cgi` 参数说明
+### `@cgi_endpoint` 声明参数说明
+
+`@cgi_endpoint` 装饰器用于在定义期静态声明端点的核心契约：
 
 | 参数             | 类型                        | 说明                                                                                                        |
 |------------------|-----------------------------|-------------------------------------------------------------------------------------------------------------|
-| `module`         | `str`                       | 接口所属模块名                                                                                              |
-| `method`         | `str`                       | 方法名                                                                                                      |
-| `param`          | `dict`                      | 业务参数                                                                                                    |
+| `key`            | `str`                       | 端点唯一标识符（如 `"song.get_detail"`）                                                                    |
+| `module`         | `str`                       | 接口所属 CGI 模块名                                                                                         |
+| `method`         | `str`                       | CGI 方法名                                                                                                  |
 | `response_model` | `type[BaseModel]` 或 `None` | 响应模型，为 None 时返回原始 dict                                                                           |
+| `item_type`      | `type` 或 `None`            | （仅分页）数据项模型，声明后推导为 `ItemPaginatedCgiRequest`                                                |
+| `pager`          | `bool`                      | （仅分页）是否为分页端点，若 `item_type` 已填则无需填此项                                                   |
+| `sign`           | `bool`                      | 是否对请求进行签名                                                                                          |
+| `require_login`  | `bool`                      | 是否在执行时强制校验用户登录态                                                                              |
+| `platform`       | `Platform` 或 `None`        | 强制指定该接口使用的目标平台                                                                                |
+
+### `CgiRequestData` 运行时参数说明
+
+在被 `@cgi_endpoint` 装饰的函数体内返回，用于承载每次调用的动态参数：
+
+| 参数             | 类型                        | 说明                                                                                                        |
+|------------------|-----------------------------|-------------------------------------------------------------------------------------------------------------|
+| `param`          | `dict`                      | 请求体的业务参数 `param` 字段                                                                               |
 | `comm`           | `dict` 或 `None`            | 附加的公共参数                                                                                              |
 | `override_comm`  | `bool`                      | 为 True 时 `comm` 完全替代自动生成的参数；为 False 时合并                                                   |
 | `credential`     | `Credential` 或 `None`      | 覆盖本次请求的凭证                                                                                          |
-| `platform`       | `Platform` 或 `None`        | 覆盖本次请求的平台                                                                                          |
-| `preserve_bool`  | `bool`                      | 是否保留布尔值原样（默认转为 0/1 整型）                                                                     |
-| `sign`           | `bool`                      | 是否对请求进行签名                                                                                          |
-| `require_login`  | `bool`                      | 是否在执行时强制校验用户登录态                                                                              |
-| `pager_strategy` | `PagerStrategy` 或 `None`   | 分页策略，提供后返回 `PaginatedCgiRequest`；可链式调用 `.with_extractor()` 提升为 `ItemPaginatedCgiRequest` |
+| `pager_strategy` | `PagerStrategy` 或 `None`   | 分页策略，必须与装饰器的分页声明匹配                                                                        |
+| `items_extractor`| `Callable` 或 `None`        | （仅声明了 item_type 时需要）从单页响应对象中提取目标列表的闭包                                             |
 
 ### `_build_http` 参数说明
 
@@ -140,7 +159,7 @@ async def quick_search(self, keyword: str) -> dict[str, Any]:
 
 !!! note
 
-    `_build_cgi` 返回 `CgiRequest`，`_build_http` 返回 `HttpRequest`，两者均继承自 `BaseRequest`。它们都支持直接被 `await` 以触发网络请求并自动完成响应验证和模型解析。
+    `@cgi_endpoint` 包装后的方法返回 `CgiRequest`（或分页请求对象），`_build_http` 返回 `HttpRequest`，两者均继承自 `BaseRequest`。它们都支持直接被 `await` 以触发网络请求并自动完成响应验证和模型解析。
 
 常见用法：
 
@@ -235,18 +254,21 @@ class Singer(Response):
 
 ### 需登录的接口
 
-需要登录的接口通过 `_build_cgi` 的 `require_login` 参数校验凭证：
+需要登录的接口通过 `@cgi_endpoint` 的 `require_login=True` 参数校验凭证：
 
 ```python
-def get_vip_info(self, *, credential: Credential | None = None):
+@cgi_endpoint(
+    key="user.get_vip_info",
+    module="VipLogin.VipLoginInter",
+    method="vip_login_base",
+    response_model=UserVipInfoResponse,
+    require_login=True,
+)
+def get_vip_info(self, *, credential: Credential | None = None) -> CgiRequestData:
     """获取 VIP 信息."""
-    return self._build_cgi(
-        module="VipLogin.VipLoginInter",
-        method="vip_login_base",
+    return CgiRequestData(
         param={},
         credential=credential,
-        response_model=UserVipInfoResponse,
-        require_login=True,
     )
 ```
 
@@ -257,25 +279,28 @@ def get_vip_info(self, *, credential: Credential | None = None):
 
 ### 连续翻页
 
-通过 `pager_strategy` 声明连续翻页能力，建议配合显示 Generic 标注（形如
-`OffsetStrategy[GetSonglistDetailResponse]`）以确保静态类型检查与类型推断的准确性，并通过 `.with_extractor()`
-链式调用绑定实体数据项的提取逻辑：
+通过返回的 `CgiRequestData(pager_strategy=...)` 声明连续翻页能力，建议为策略配合显式的 Generic 标注（形如 `OffsetStrategy[GetSonglistDetailResponse]`）以确保静态类型推断。
+若要提取特定类型的数据条目流，请在 `@cgi_endpoint(item_type=...)` 中声明目标类型，并在 `CgiRequestData` 中同时提供 `items_extractor`：
 
 ```python
 from ..core.pagination import OffsetStrategy
 
 
-def get_detail(self, songlist_id: int, num: int = 10, page: int = 1):
+@cgi_endpoint(
+    key="songlist.get_detail",
+    module="music.srfDissInfo.DissInfo",
+    method="CgiGetDiss",
+    response_model=GetSonglistDetailResponse,
+    item_type=Song,
+)
+def get_detail(self, songlist_id: int, num: int = 10, page: int = 1) -> CgiRequestData:
     """获取歌单详情."""
-    return self._build_cgi(
-        module="music.srfDissInfo.DissInfo",
-        method="CgiGetDiss",
+    return CgiRequestData(
         param={
             "disstid": songlist_id,
             "song_begin": num * (page - 1),
             "song_num": num,
         },
-        response_model=GetSonglistDetailResponse,
         pager_strategy=OffsetStrategy[GetSonglistDetailResponse](
             offset_key="song_begin",
             page_size_key="song_num",
@@ -283,7 +308,8 @@ def get_detail(self, songlist_id: int, num: int = 10, page: int = 1):
             total_extractor=lambda response: response.total,
             count_extractor=lambda response: len(response.songs),
         ),
-    ).with_extractor(lambda response: response.songs)
+        items_extractor=lambda response: response.songs,
+    )
 ```
 
 ### 批次刷新 (Batch Refresh)
@@ -295,19 +321,24 @@ from ..core.pagination import BatchRefreshStrategy
 from ..models.base import MV
 
 
-def get_related_mv(self, songid: int, last_mvid: str | None = None):
+@cgi_endpoint(
+    key="song.get_related_mv",
+    module="MvService.MvInfoProServer",
+    method="GetSongRelatedMv",
+    response_model=GetRelatedMvResponse,
+    item_type=RelatedMv,
+)
+def get_related_mv(self, songid: int, last_mvid: str | None = None) -> CgiRequestData:
     """获取歌曲相关 MV."""
-    return self._build_cgi(
-        module="MvService.MvInfoProServer",
-        method="GetSongRelatedMv",
+    return CgiRequestData(
         param={"songid": str(songid), "songtype": 1, "lastmvid": last_mvid or 0},
-        response_model=GetRelatedMvResponse,
         pager_strategy=BatchRefreshStrategy[GetRelatedMvResponse](
             refresh_key="lastmvid",
             cursor_extractor=lambda response: response.mv[-1].id if response.mv else None,
             has_more_extractor=lambda response: bool(response.has_more),
         ),
-    ).with_extractor(lambda response: response.mv)
+        items_extractor=lambda response: response.mv,
+    )
 ```
 
 ### 内置策略速查
@@ -322,16 +353,19 @@ def get_related_mv(self, songid: int, last_mvid: str | None = None):
 
 ## 请求签名
 
-部分接口需要对请求体进行签名。通过 `sign=True` 启用：
+部分接口需要对请求体进行签名。通过 `@cgi_endpoint` 的 `sign=True` 启用：
 
 ```python
-def get_sheet(self, mid: str):
+@cgi_endpoint(
+    key="song.get_sheet",
+    module="music.mir.SheetMusicSvr",
+    method="GetMoreSheetMusic",
+    sign=True,
+)
+def get_sheet(self, mid: str) -> CgiRequestData:
     """获取曲谱."""
-    return self._build_cgi(
-        module="music.mir.SheetMusicSvr",
-        method="GetMoreSheetMusic",
+    return CgiRequestData(
         param={"songMid": mid},
-        sign=True,
     )
 ```
 
@@ -343,7 +377,7 @@ def get_sheet(self, mid: str):
 
 ```python
 # 合并到自动生成的 comm 中（默认行为）
-self._build_cgi(
+CgiRequestData(
     ...,
     comm={"extra_key": "value"},
 )
@@ -354,7 +388,7 @@ self._build_cgi(
 使用 `override_comm=True` 完全替代自动生成的参数：
 
 ```python
-self._build_cgi(
+CgiRequestData(
     ...,
     comm={
         "g_tk": 5381,

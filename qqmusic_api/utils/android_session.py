@@ -157,7 +157,7 @@ class AndroidSessionManager:
         item = items[0]
         if item is None:
             raise ApiDataError("Android Session 响应格式异常, 缺少 req_0")
-        data = parse_cgi_item(item, disable_parse=True)
+        data = parse_cgi_item(item)
         if not isinstance(data, dict) or not isinstance(data.get("session"), dict):
             raise ApiDataError("Android Session 响应格式异常, 缺少会话字段")
         return await self._publish(data["session"])
