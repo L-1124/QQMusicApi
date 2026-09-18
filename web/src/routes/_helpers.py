@@ -1,7 +1,7 @@
 """Web 路由声明辅助函数与共享参数."""
 
 from collections.abc import Awaitable, Callable
-from typing import Any
+from typing import Any, overload
 
 from pydantic import BaseModel
 
@@ -47,7 +47,41 @@ def P(name: str, annotation: Any, description: str | None = None) -> ParamOverri
     return ParamOverride(name=name, source=ParamSource.PATH, annotation=annotation, description=description)
 
 
+@overload
 def R(
+    module: str,
+    method: str,
+    path: str,
+    response_model: type | None = None,
+    *,
+    params: tuple[ParamOverride, ...] = (),
+    methods: tuple[HttpMethod, ...] = (HttpMethod.GET,),
+    auth: AuthPolicy = AuthPolicy.NONE,
+    cache: CachePolicy | None = None,
+    adapter: Callable[[RouteContext], Awaitable[Any] | Any] | None = None,
+    body_model: type[BaseModel] | None = None,
+    summary: str | None = None,
+    description: str | None = None,
+) -> WebRoute: ...
+
+
+@overload
+def R(
+    module: Callable[..., Any],
+    method: str,
+    *,
+    params: tuple[ParamOverride, ...] = (),
+    methods: tuple[HttpMethod, ...] = (HttpMethod.GET,),
+    auth: AuthPolicy = AuthPolicy.NONE,
+    cache: CachePolicy | None = None,
+    adapter: Callable[[RouteContext], Awaitable[Any] | Any] | None = None,
+    body_model: type[BaseModel] | None = None,
+    summary: str | None = None,
+    description: str | None = None,
+) -> WebRoute: ...
+
+
+def R(  # type: ignore[inconsistent-overload]
     module: str | Callable[..., Any],
     method: str,
     path: str | None = None,
@@ -70,10 +104,9 @@ def R(
         endpoint = module
         path = method
         endpoint_key = get_endpoint_meta(endpoint).key
-        try:
-            module, method = endpoint_key.split(".", 1)
-        except ValueError as exc:
-            raise ValueError(f"endpoint key 无法映射 Web 路由: {endpoint_key}") from exc
+        module, sep, method = endpoint_key.partition(".")
+        if not sep or not module or not method:
+            raise ValueError(f"endpoint key 必须是 'module.method' 格式以映射 Web 路由: {endpoint_key!r}")
     if path is None:
         raise ValueError(f"Web 路由缺少路径: {module}.{method}")
     resolved_response_model = response_model
