@@ -14,7 +14,13 @@ from qqmusic_api.core.endpoint import (
     get_endpoint_meta,
     http_endpoint,
 )
-from qqmusic_api.core.request import CgiRequest, HttpRequest
+from qqmusic_api.core.pagination import OffsetStrategy
+from qqmusic_api.core.request import (
+    CgiRequest,
+    HttpRequest,
+    ItemPaginatedCgiRequest,
+    PaginatedCgiRequest,
+)
 from qqmusic_api.core.response import RawPayload
 from qqmusic_api.core.versioning import DEFAULT_VERSION_POLICY, Platform
 from qqmusic_api.models.request import Credential
@@ -42,6 +48,19 @@ class DummyModel(BaseModel):
 
     code: int = 0
     name: str = "test"
+
+
+class DummyItem(BaseModel):
+    """用于测试的分页条目桩."""
+
+    id: int = 1
+
+
+class DummyPaginatedModel(BaseModel):
+    """用于测试的分页响应模型桩."""
+
+    code: int = 0
+    items: list[DummyItem] = []
 
 
 def _module_client(credential: Credential | None = None):
@@ -268,3 +287,211 @@ def test_http_endpoint_meta_override():
     assert req_override.method == "POST"
     assert req_override.url == "https://api.example.com/override"
     assert req_override.raw is True
+
+
+def test_cgi_endpoint_item_paginated():
+    """验证 cgi_endpoint 传入 item_type 时生成 ItemPaginatedCgiRequest 类型签名与请求实例."""
+
+    @cgi_endpoint(
+        key="custom.sample_item_paginated",
+        module="mod",
+        method="met",
+        response_model=DummyPaginatedModel,
+        item_type=DummyItem,
+    )
+    def sample_paginated(self, page: int = 1) -> CgiRequestData:
+        """条目分页示例方法."""
+        return CgiRequestData(
+            param={"page": page},
+            pager_strategy=OffsetStrategy[DummyPaginatedModel](
+                offset_key="page",
+                page_size=10,
+                count_extractor=lambda r: len(r.items),
+            ),
+            items_extractor=lambda r: r.items,
+        )
+
+    class SamplePaginatedApi(ApiModule):
+        """测试条目分页端点模块."""
+
+        sample = sample_paginated
+
+    bound_method = SamplePaginatedApi(_module_client()).sample
+    sig = inspect.signature(bound_method)
+    assert sig.return_annotation == ItemPaginatedCgiRequest[DummyPaginatedModel, DummyItem]
+
+    meta = get_endpoint_meta(SamplePaginatedApi.sample)
+    assert isinstance(meta, CgiEndpointMeta)
+    assert meta.item_type is DummyItem
+    assert meta.pager is True
+
+    req = bound_method(page=1)
+    assert isinstance(req, ItemPaginatedCgiRequest)
+    assert req.response_model is DummyPaginatedModel
+
+
+def test_cgi_endpoint_paginated():
+    """验证 cgi_endpoint 传入 pager=True 时生成 PaginatedCgiRequest 类型签名与请求实例."""
+
+    @cgi_endpoint(
+        key="custom.sample_pure_paginated",
+        module="mod",
+        method="met",
+        response_model=DummyModel,
+        pager=True,
+    )
+    def sample_pure_paginated(self, page: int = 1) -> CgiRequestData:
+        """纯分页示例方法."""
+        return CgiRequestData(
+            param={"page": page},
+            pager_strategy=OffsetStrategy[DummyModel](
+                offset_key="page",
+                page_size=10,
+            ),
+        )
+
+    class SamplePurePaginatedApi(ApiModule):
+        """测试纯分页端点模块."""
+
+        sample = sample_pure_paginated
+
+    bound_method = SamplePurePaginatedApi(_module_client()).sample
+    sig = inspect.signature(bound_method)
+    assert sig.return_annotation == PaginatedCgiRequest[DummyModel]
+
+    meta = get_endpoint_meta(SamplePurePaginatedApi.sample)
+    assert isinstance(meta, CgiEndpointMeta)
+    assert meta.item_type is None
+    assert meta.pager is True
+
+    req = bound_method(page=1)
+    assert isinstance(req, PaginatedCgiRequest)
+    assert req.response_model is DummyModel
+
+
+def test_cgi_endpoint_validation_missing_pager_strategy():
+    """验证声明 item_type 或 pager 但未提供 pager_strategy 时抛出 TypeError."""
+
+    @cgi_endpoint(
+        key="custom.missing_pager",
+        module="mod",
+        method="met",
+        response_model=DummyModel,
+        pager=True,
+    )
+    def sample_missing(self) -> CgiRequestData:
+        """缺失分页策略方法."""
+        return CgiRequestData(param={})
+
+    class SampleApi(ApiModule):
+        """测试模块."""
+
+        sample = sample_missing
+
+    bound = SampleApi(_module_client()).sample
+    with pytest.raises(TypeError, match="未提供 pager_strategy"):
+        bound()
+
+
+def test_cgi_endpoint_validation_missing_items_extractor():
+    """验证声明 item_type 但未提供 items_extractor 时抛出 TypeError."""
+
+    @cgi_endpoint(
+        key="custom.missing_extractor",
+        module="mod",
+        method="met",
+        response_model=DummyPaginatedModel,
+        item_type=DummyItem,
+    )
+    def sample_missing_ext(self) -> CgiRequestData:
+        """缺失条目提取器方法."""
+        return CgiRequestData(
+            param={},
+            pager_strategy=OffsetStrategy[DummyPaginatedModel](offset_key="page", page_size=10),
+        )
+
+    class SampleApi(ApiModule):
+        """测试模块."""
+
+        sample = sample_missing_ext
+
+    bound = SampleApi(_module_client()).sample
+    with pytest.raises(TypeError, match="未提供 items_extractor"):
+        bound()
+
+
+def test_cgi_endpoint_validation_pager_with_items_extractor():
+    """验证声明 pager=True 且方法体提供 items_extractor 时成功返回 ItemPaginatedCgiRequest."""
+
+    @cgi_endpoint(
+        key="custom.pager_with_ext",
+        module="mod",
+        method="met",
+        response_model=DummyPaginatedModel,
+        pager=True,
+    )
+    def sample_pager_ext(self) -> CgiRequestData:
+        """纯分页提供提取器方法."""
+        return CgiRequestData(
+            param={},
+            pager_strategy=OffsetStrategy[DummyPaginatedModel](offset_key="page", page_size=10),
+            items_extractor=lambda r: r.items,
+        )
+
+    class SampleApi(ApiModule):
+        """测试模块."""
+
+        sample = sample_pager_ext
+
+    bound = SampleApi(_module_client()).sample
+    req = bound()
+    assert isinstance(req, ItemPaginatedCgiRequest)
+
+
+def test_cgi_endpoint_validation_unannounced_pagination():
+    """验证未声明分页但方法体返回分页策略时抛出 TypeError."""
+
+    @cgi_endpoint(
+        key="custom.unannounced_pagination",
+        module="mod",
+        method="met",
+        response_model=DummyModel,
+    )
+    def sample_unannounced(self) -> CgiRequestData:
+        """未声明分页方法."""
+        return CgiRequestData(
+            param={},
+            pager_strategy=OffsetStrategy[DummyModel](offset_key="page", page_size=10),
+        )
+
+    class SampleApi(ApiModule):
+        """测试模块."""
+
+        sample = sample_unannounced
+
+    bound = SampleApi(_module_client()).sample
+    with pytest.raises(TypeError, match="未声明 item_type 或 pager=True"):
+        bound()
+
+
+def test_endpoint_invalid_return_type_validation():
+    """验证 endpoint 方法返回非 RequestData 类型时抛出明确 TypeError."""
+
+    @cgi_endpoint(
+        key="custom.invalid_return",
+        module="mod",
+        method="met",
+        response_model=DummyModel,
+    )
+    def sample_invalid_cgi(self) -> CgiRequestData:
+        """错误返回类型方法."""
+        return {"param": {}}  # type: ignore[return-value]
+
+    class SampleApi(ApiModule):
+        """测试模块."""
+
+        sample = sample_invalid_cgi
+
+    bound = SampleApi(_module_client()).sample
+    with pytest.raises(TypeError, match="必须返回 CgiRequestData"):
+        bound()

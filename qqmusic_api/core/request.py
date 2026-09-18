@@ -209,7 +209,7 @@ class PaginatedCgiRequest(CgiRequest[CgiRequestResultT], PaginatedMixin[CgiReque
 
 
 @dataclass(kw_only=True)
-class ItemPaginatedCgiRequest(CgiRequest[CgiRequestResultT], ItemPaginatedMixin[CgiRequestResultT, ItemT_co]):
+class ItemPaginatedCgiRequest(PaginatedCgiRequest[CgiRequestResultT], ItemPaginatedMixin[CgiRequestResultT, ItemT_co]):
     """声明了跨页数据项提取能力的连续翻页请求描述符.
 
     通过组合 CgiRequest 与 ItemPaginatedMixin, 同时具备网络请求、翻页调度与条目流式展开能力.
