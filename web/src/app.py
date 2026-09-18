@@ -31,9 +31,9 @@ from qqmusic_api.core.exceptions import (
 )
 
 from . import modules  # noqa: F401
-from .core.auth import startup_credential_health_check
 from .core.cache import MemoryBackend, RedisBackend
 from .core.config import SecurityConfig, settings
+from .core.credential_pool import CredentialPool
 from .core.credential_store import ACCOUNT_CONFIG_FILE, CredentialStore, load_account_configs
 from .core.deps import WebServices
 from .core.response import ErrorResponse, error_response
@@ -97,11 +97,11 @@ async def _cleanup_services(services: WebServices) -> None:
         await services.cache.close()
     except Exception:
         logger.exception("关闭缓存异常")
-    if services.credential_store is not None:
+    if services.credential_pool is not None:
         try:
-            services.credential_store.close()
+            services.credential_pool.close()
         except Exception:
-            logger.exception("关闭凭证存储异常")
+            logger.exception("关闭凭证池异常")
     try:
         if services.engine is not None:
             await services.engine.close()
@@ -121,15 +121,16 @@ async def _lifespan(app: FastAPI):
         logger.debug("配置全局凭证设置...")
         services.credential_config = settings.credential
 
-        logger.info(f"初始化凭证存储: {settings.credential.store.path}")
-        services.credential_store = CredentialStore(settings.credential.store.path)
-        services.credential_store.initialize()
+        logger.info(f"初始化共享凭证池: {settings.credential.store.path}")
+        credential_store = CredentialStore(settings.credential.store.path)
+        credential_store.initialize()
+        services.credential_pool = CredentialPool(credential_store)
 
         logger.info("同步账号种子配置...")
-        services.credential_store.sync_accounts(load_account_configs(ACCOUNT_CONFIG_FILE))
+        services.credential_pool.sync_accounts(load_account_configs(ACCOUNT_CONFIG_FILE))
 
         logger.info("执行启动凭证健康检查...")
-        await startup_credential_health_check(services.require_engine, services.credential_store)
+        await services.credential_pool.health_check(services.require_engine)
 
         logger.info("Web 应用启动完成")
     except Exception:

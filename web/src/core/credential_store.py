@@ -117,31 +117,64 @@ class CredentialStore:
         logger.debug("凭证获取成功: musicid %s", musicid)
         return credential
 
-    def update(self, credential: Credential) -> None:
-        """保存刷新后的 Credential 并标记为有效."""
+    def seed(self, credential: Credential) -> None:
+        """写入或覆盖单个账号种子行, 允许创建新行.
+
+        Note:
+            该入口用于独立写入单行; ``sync_accounts`` 走单事务批量路径, 直接复用内部 ``_upsert``.
+        """
         if not credential_has_login(credential):
             raise ValueError("Credential 缺少 musicid 或 musickey")
-        logger.debug("更新凭证: musicid %s", credential.musicid)
+        logger.debug("写入账号种子: musicid %s", credential.musicid)
         with self._lock:
             connection = self._connect()
             with connection:
                 self._upsert(credential)
-                connection.execute(
-                    "UPDATE credentials SET valid = 1 WHERE musicid = ?",
-                    (credential.musicid,),
-                )
-        logger.info("凭证已更新并标记为有效: musicid %s", credential.musicid)
 
-    def mark_invalid(self, musicid: int) -> None:
-        """标记账号为无效."""
+    def apply_refresh(self, credential: Credential) -> bool:
+        """用刷新结果覆盖池内已有行并保持有效, 不创建新行.
+
+        Returns:
+            是否命中已有行; 未命中时返回 False 且不产生任何写入.
+        """
+        if not credential_has_login(credential):
+            raise ValueError("Credential 缺少 musicid 或 musickey")
+        with self._lock:
+            connection = self._connect()
+            with connection:
+                cursor = connection.execute(
+                    """
+                    UPDATE credentials
+                    SET credential_json = ?, updated_at = ?, valid = 1
+                    WHERE musicid = ?
+                    """,
+                    (
+                        credential.model_dump_json(by_alias=True),
+                        int(time.time()),
+                        credential.musicid,
+                    ),
+                )
+        if cursor.rowcount == 0:
+            logger.warning("刷新结果未命中池内行, 已忽略: musicid %s", credential.musicid)
+            return False
+        logger.info("凭证已刷新并保持有效: musicid %s", credential.musicid)
+        return True
+
+    def mark_invalid_row(self, musicid: int) -> bool:
+        """将池内已有行标记为无效, 不使用 musicid 创建新行.
+
+        Returns:
+            是否命中已有行.
+        """
         logger.warning("标记凭证为无效: musicid %s", musicid)
         with self._lock:
             connection = self._connect()
-            connection.execute(
+            cursor = connection.execute(
                 "UPDATE credentials SET valid = 0 WHERE musicid = ?",
                 (musicid,),
             )
             connection.commit()
+        return cursor.rowcount > 0
 
     def get_all_musicids(self) -> list[int]:
         """返回全部已知 musicid."""

@@ -15,6 +15,8 @@ from qqmusic_api.models.song import GetSongUrlsResponse
 from qqmusic_api.modules.song import SongFileType
 from web.src.app import _cleanup_services
 from web.src.core.cache import MemoryBackend
+from web.src.core.config import CredentialConfig
+from web.src.core.credential_pool import CredentialPool
 from web.src.core.credential_store import CredentialStore
 from web.src.core.deps import WebServices, get_engine
 from web.src.routes import ROUTES
@@ -85,6 +87,7 @@ def _route_context(
     cache: MemoryBackend | None = None,
     credential: Credential | None = None,
     credential_store: CredentialStore | None = None,
+    credential_config: CredentialConfig | None = None,
 ) -> RouteContext:
     """构造绑定引擎桩的路由上下文."""
     app = FastAPI()
@@ -92,7 +95,8 @@ def _route_context(
     app.state.services = WebServices(
         cache=route_cache,
         engine=cast("RequestEngine", engine),
-        credential_store=credential_store,
+        credential_pool=CredentialPool(credential_store) if credential_store is not None else None,
+        credential_config=credential_config,
     )
     request = Request({"type": "http", "method": "GET", "path": route.path, "headers": [], "app": app})
     return RouteContext(
@@ -107,8 +111,9 @@ def _route_context(
 
 def _song_url_context(
     engine: RecordingEngine,
-    credential: Credential,
+    credential: Credential | None,
     credential_store: CredentialStore | None = None,
+    credential_config: CredentialConfig | None = None,
 ) -> RouteContext:
     """构造单曲链接路由上下文."""
     return _route_context(
@@ -122,6 +127,7 @@ def _song_url_context(
         },
         credential=credential,
         credential_store=credential_store,
+        credential_config=credential_config,
     )
 
 
@@ -287,8 +293,8 @@ async def test_cached_route_skips_engine_after_first_result() -> None:
 
 
 @pytest.mark.asyncio
-async def test_expired_credential_refreshes_store_and_retries_route(tmp_path: Path) -> None:
-    """测试凭证过期后刷新状态库并使用新凭证重试路由."""
+async def test_expired_pool_credential_refreshes_store_and_retries_route(tmp_path: Path) -> None:
+    """测试池凭证过期后刷新状态库并使用新凭证重试路由."""
     old_credential = Credential(musicid=12345, musickey="old-key", refresh_token="refresh-token")
     refreshed_data = {
         "musicid": 12345,
@@ -304,8 +310,8 @@ async def test_expired_credential_refreshes_store_and_retries_route(tmp_path: Pa
     )
     store = CredentialStore(str(tmp_path / "credentials.sqlite3"))
     store.initialize()
-    store.update(old_credential)
-    context = _song_url_context(engine, old_credential, store)
+    store.seed(old_credential)
+    context = _song_url_context(engine, None, store, CredentialConfig(enabled=True))
 
     await execute_route(context)
 
@@ -322,8 +328,30 @@ async def test_expired_credential_refreshes_store_and_retries_route(tmp_path: Pa
 
 
 @pytest.mark.asyncio
+async def test_caller_credential_is_never_refreshed_nor_written_back(tmp_path: Path) -> None:
+    """测试调用方自带凭证过期时不刷新共享池也不写回状态库."""
+    credential = Credential(musicid=12345, musickey="old-key", refresh_token="refresh-token")
+    engine = ScriptedEngine([CredentialExpiredError(code=1000)])
+    store = CredentialStore(str(tmp_path / "credentials.sqlite3"))
+    store.initialize()
+    store.seed(credential)
+    context = _song_url_context(engine, credential, store, CredentialConfig(enabled=True))
+
+    with pytest.raises(CredentialExpiredError):
+        await execute_route(context)
+
+    assert [request.module if isinstance(request, CgiRequest) else "" for request, _ in engine.calls] == [
+        "music.vkey.GetVkey"
+    ]
+    stored = store.get(12345)
+    assert stored is not None
+    assert stored.musickey == "old-key"
+    store.close()
+
+
+@pytest.mark.asyncio
 async def test_failed_credential_refresh_marks_store_invalid(tmp_path: Path) -> None:
-    """测试凭证刷新失败时标记状态库记录无效并返回过期异常."""
+    """测试池凭证刷新失败时标记状态库记录无效并返回过期异常."""
     credential = Credential(musicid=12345, musickey="old-key", refresh_token="refresh-token")
     engine = ScriptedEngine(
         [
@@ -333,8 +361,8 @@ async def test_failed_credential_refresh_marks_store_invalid(tmp_path: Path) -> 
     )
     store = CredentialStore(str(tmp_path / "credentials.sqlite3"))
     store.initialize()
-    store.update(credential)
-    context = _song_url_context(engine, credential, store)
+    store.seed(credential)
+    context = _song_url_context(engine, None, store, CredentialConfig(enabled=True))
 
     with pytest.raises(CredentialExpiredError):
         await execute_route(context)

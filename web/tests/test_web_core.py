@@ -4,8 +4,8 @@ import asyncio
 
 import pytest
 
-from web.src.core.auth import _credential_refresh_lock, _credential_refresh_locks
 from web.src.core.cache import MemoryBackend
+from web.src.core.credential_pool import _credential_refresh_lock, _credential_refresh_locks
 from web.src.core.security import AccessPolicy, InMemoryConcurrencyLimiter, InMemoryRateLimiter
 
 # Credential refresh lock

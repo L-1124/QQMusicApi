@@ -9,7 +9,7 @@ from qqmusic_api.core.engine import RequestEngine
 
 from .cache import CacheBackend
 from .config import CredentialConfig
-from .credential_store import CredentialStore
+from .credential_pool import CredentialPool
 
 if TYPE_CHECKING:
     from .security import SecurityServices
@@ -23,7 +23,7 @@ class WebServices:
     security: "SecurityServices | None" = field(default=None)
     engine: RequestEngine | None = None
     credential_config: CredentialConfig | None = None
-    credential_store: CredentialStore | None = None
+    credential_pool: CredentialPool | None = None
 
     @property
     def require_engine(self) -> RequestEngine:
@@ -56,9 +56,9 @@ def get_credential_config(request: Request) -> CredentialConfig | None:
     return get_web_services(request).credential_config
 
 
-def get_credential_store(request: Request) -> CredentialStore | None:
-    """获取当前请求绑定的凭证存储."""
-    return get_web_services(request).credential_store
+def get_credential_pool(request: Request) -> CredentialPool | None:
+    """获取当前请求绑定的共享凭证池."""
+    return get_web_services(request).credential_pool
 
 
 def get_security_services(request: Request) -> "SecurityServices | None":
