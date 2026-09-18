@@ -1,11 +1,7 @@
 """评论 Web 路由契约."""
 
-from qqmusic_api.models.comment import (
-    AddCommentResponse,
-    CommentCountResponse,
-    CommentListResponse,
-    MomentCommentResponse,
-)
+from qqmusic_api.models.comment import AddCommentResponse
+from qqmusic_api.modules.comment import CommentApi
 
 from ..modules.comment import AddCommentBody
 from ..routing.route_types import PUBLIC_60, AuthPolicy, HttpMethod, WebRoute
@@ -13,42 +9,32 @@ from ._helpers import BIZ_ID, COMMENT_BIZ_PARAMS, COMMENT_LIST_PAGE, COMMENT_MOM
 
 ROUTES: tuple[WebRoute, ...] = (
     R(
-        "comment",
-        "get_comment_count",
+        CommentApi.get_comment_count,
         "/song/{biz_id}/comments/count",
-        CommentCountResponse,
         params=(*BIZ_ID, *COMMENT_BIZ_PARAMS),
         cache=PUBLIC_60,
     ),
     R(
-        "comment",
-        "get_hot_comments",
+        CommentApi.get_hot_comments,
         "/song/{biz_id}/comments/hot",
-        CommentListResponse,
         params=(*BIZ_ID, *COMMENT_LIST_PAGE, *COMMENT_BIZ_PARAMS),
         cache=PUBLIC_60,
     ),
     R(
-        "comment",
-        "get_moment_comments",
+        CommentApi.get_moment_comments,
         "/song/{biz_id}/comments/moments",
-        MomentCommentResponse,
         params=(*BIZ_ID, *COMMENT_MOMENT_PAGE, *COMMENT_BIZ_PARAMS),
         cache=PUBLIC_60,
     ),
     R(
-        "comment",
-        "get_new_comments",
+        CommentApi.get_new_comments,
         "/song/{biz_id}/comments/new",
-        CommentListResponse,
         params=(*BIZ_ID, *COMMENT_LIST_PAGE, *COMMENT_BIZ_PARAMS),
         cache=PUBLIC_60,
     ),
     R(
-        "comment",
-        "get_recommend_comments",
+        CommentApi.get_recommend_comments,
         "/song/{biz_id}/comments/recommended",
-        CommentListResponse,
         params=(*BIZ_ID, *COMMENT_LIST_PAGE, *COMMENT_BIZ_PARAMS),
         cache=PUBLIC_60,
     ),

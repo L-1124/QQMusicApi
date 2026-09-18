@@ -3,6 +3,7 @@
 import pytest
 
 from qqmusic_api import Client
+from qqmusic_api.core import ItemPaginatedCgiRequest
 from qqmusic_api.models.comment import CommentBizType
 
 
@@ -61,6 +62,7 @@ async def test_get_moment_comments(client: Client) -> None:
 async def test_get_hot_comments_paginate(client: Client) -> None:
     """测试热评列表支持手动逐页拉取."""
     req = client.comment.get_hot_comments(102065756, page_num=1, page_size=5)
+    assert isinstance(req, ItemPaginatedCgiRequest)
     pages = [page async for page in req.paginate(limit=2)]
 
     assert len(pages) == 2
@@ -71,6 +73,7 @@ async def test_get_hot_comments_paginate(client: Client) -> None:
 async def test_get_moment_comments_paginate(client: Client) -> None:
     """测试时刻评论游标分页能力."""
     req = client.comment.get_moment_comments(102065756, page_size=5)
+    assert isinstance(req, ItemPaginatedCgiRequest)
     pages = [page async for page in req.paginate(limit=2)]
 
     assert len(pages) == 2

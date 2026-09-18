@@ -2,6 +2,7 @@
 
 from typing import Any
 
+from ..core.endpoint import CgiRequestData, cgi_endpoint
 from ..core.pagination import (
     CursorStrategy,
     MultiFieldContinuationStrategy,
@@ -45,12 +46,18 @@ def _build_comment_pager_strategy() -> MultiFieldContinuationStrategy[CommentLis
 class CommentApi(ApiModule):
     """评论 API."""
 
+    @cgi_endpoint(
+        key="comment.get_comment_count",
+        module="music.globalComment.CommentCountSrv",
+        method="GetCmCount",
+        response_model=CommentCountResponse,
+    )
     def get_comment_count(
         self,
         biz_id: int,
         biz_type: int | CommentBizType = CommentBizType.SONG,
         biz_sub_type: int | None = None,
-    ):
+    ) -> CgiRequestData:
         """获取歌曲评论数量.
 
         Args:
@@ -69,13 +76,14 @@ class CommentApi(ApiModule):
             req_data["biz_sub_type"] = 2
 
         data = {"request": req_data}
-        return self._build_cgi(
-            "music.globalComment.CommentCountSrv",
-            "GetCmCount",
-            data,
-            response_model=CommentCountResponse,
-        )
+        return CgiRequestData(param=data)
 
+    @cgi_endpoint(
+        key="comment.get_hot_comments",
+        module="music.globalComment.CommentRead",
+        method="GetHotCommentList",
+        response_model=CommentListResponse,
+    )
     def get_hot_comments(
         self,
         biz_id: int,
@@ -84,7 +92,7 @@ class CommentApi(ApiModule):
         last_comment_seq_no: str = "",
         biz_type: int | CommentBizType = CommentBizType.SONG,
         biz_sub_type: int | None = None,
-    ):
+    ) -> CgiRequestData:
         """获取歌曲热评.
 
         Args:
@@ -107,14 +115,18 @@ class CommentApi(ApiModule):
         }
         if biz_sub_type is not None:
             params["BizSubType"] = biz_sub_type
-        return self._build_cgi(
-            "music.globalComment.CommentRead",
-            "GetHotCommentList",
-            params,
-            response_model=CommentListResponse,
+        return CgiRequestData(
+            param=params,
             pager_strategy=_build_comment_pager_strategy(),
-        ).with_extractor(lambda r: r.comments)
+            items_extractor=lambda r: r.comments,
+        )
 
+    @cgi_endpoint(
+        key="comment.get_new_comments",
+        module="music.globalComment.CommentRead",
+        method="GetNewCommentList",
+        response_model=CommentListResponse,
+    )
     def get_new_comments(
         self,
         biz_id: int,
@@ -123,7 +135,7 @@ class CommentApi(ApiModule):
         last_comment_seq_no: str = "",
         biz_type: int | CommentBizType = CommentBizType.SONG,
         biz_sub_type: int | None = None,
-    ):
+    ) -> CgiRequestData:
         """获取歌曲最新评论.
 
         Args:
@@ -147,14 +159,18 @@ class CommentApi(ApiModule):
         }
         if biz_sub_type is not None:
             params["BizSubType"] = biz_sub_type
-        return self._build_cgi(
-            "music.globalComment.CommentRead",
-            "GetNewCommentList",
-            params,
-            response_model=CommentListResponse,
+        return CgiRequestData(
+            param=params,
             pager_strategy=_build_comment_pager_strategy(),
-        ).with_extractor(lambda r: r.comments)
+            items_extractor=lambda r: r.comments,
+        )
 
+    @cgi_endpoint(
+        key="comment.get_recommend_comments",
+        module="music.globalComment.CommentRead",
+        method="GetRecCommentList",
+        response_model=CommentListResponse,
+    )
     def get_recommend_comments(
         self,
         biz_id: int,
@@ -163,7 +179,7 @@ class CommentApi(ApiModule):
         last_comment_seq_no: str = "",
         biz_type: int | CommentBizType = CommentBizType.SONG,
         biz_sub_type: int | None = None,
-    ):
+    ) -> CgiRequestData:
         """获取歌曲推荐评论.
 
         Args:
@@ -187,14 +203,18 @@ class CommentApi(ApiModule):
         }
         if biz_sub_type is not None:
             params["BizSubType"] = biz_sub_type
-        return self._build_cgi(
-            "music.globalComment.CommentRead",
-            "GetRecCommentList",
-            params,
-            response_model=CommentListResponse,
+        return CgiRequestData(
+            param=params,
             pager_strategy=_build_comment_pager_strategy(),
-        ).with_extractor(lambda r: r.comments)
+            items_extractor=lambda r: r.comments,
+        )
 
+    @cgi_endpoint(
+        key="comment.get_moment_comments",
+        module="music.globalComment.SongTsComment",
+        method="GetSongTsCmList",
+        response_model=MomentCommentResponse,
+    )
     def get_moment_comments(
         self,
         biz_id: int,
@@ -202,7 +222,7 @@ class CommentApi(ApiModule):
         last_comment_seq_no: str = "",
         biz_type: int | CommentBizType = CommentBizType.SONG,
         biz_sub_type: int | None = None,
-    ):
+    ) -> CgiRequestData:
         """获取歌曲时刻评论.
 
         Args:
@@ -222,18 +242,23 @@ class CommentApi(ApiModule):
         }
         if biz_sub_type is not None:
             params["BizSubType"] = biz_sub_type
-        return self._build_cgi(
-            "music.globalComment.SongTsComment",
-            "GetSongTsCmList",
-            params,
-            response_model=MomentCommentResponse,
+        return CgiRequestData(
+            param=params,
             pager_strategy=CursorStrategy[MomentCommentResponse](
                 cursor_key="LastPos",
                 has_more_extractor=lambda response: response.has_more == 1,
                 cursor_extractor=lambda response: response.next_pos,
             ),
-        ).with_extractor(lambda r: r.comments)
+            items_extractor=lambda r: r.comments,
+        )
 
+    @cgi_endpoint(
+        key="comment.add_comment",
+        module="music.globalComment.CommentWriteServer",
+        method="AddComment",
+        response_model=AddCommentResponse,
+        require_login=True,
+    )
     def add_comment(
         self,
         biz_id: int,
@@ -242,7 +267,7 @@ class CommentApi(ApiModule):
         biz_type: int | CommentBizType = CommentBizType.SONG,
         biz_sub_type: int | None = None,
         credential: Credential | None = None,
-    ):
+    ) -> CgiRequestData:
         """添加评论.
 
         Args:
@@ -263,13 +288,9 @@ class CommentApi(ApiModule):
         if biz_sub_type is not None:
             req_data["BizSubType"] = biz_sub_type
 
-        return self._build_cgi(
-            "music.globalComment.CommentWriteServer",
-            "AddComment",
-            req_data,
+        return CgiRequestData(
+            param=req_data,
             credential=credential,
-            response_model=AddCommentResponse,
-            require_login=True,
         )
 
     async def delete_comment(
