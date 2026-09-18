@@ -3,17 +3,8 @@
 from typing import Any
 
 from qqmusic_api.models.song import (
-    GetCdnDispatchResponse,
     GetFavNumResponse,
-    GetOtherVersionResponse,
-    GetProducerResponse,
-    GetRelatedMvResponse,
-    GetRelatedSonglistResponse,
-    GetSheetResponse,
-    GetSimilarSongResponse,
-    GetSongLabelsResponse,
     GetSongUrlsResponse,
-    HasSheetMusicResponse,
     QuerySongResponse,
 )
 from qqmusic_api.modules.song import SongApi
@@ -28,13 +19,11 @@ from ..routing.route_types import PUBLIC_60, PUBLIC_300, PUBLIC_600, AuthPolicy,
 from ._helpers import MID, SONG_RELATED_MV_PAGE, SONG_RELATED_SONGLIST_PAGE, SONGID, VALUE, P, Q, R
 
 ROUTES: tuple[WebRoute, ...] = (
-    R("song", "get_cdn_dispatch", "/song/get_cdn_dispatch", GetCdnDispatchResponse),
+    R(SongApi.get_cdn_dispatch, "/song/get_cdn_dispatch"),
     R(SongApi.get_detail, "/song/{value}/detail", params=VALUE, cache=PUBLIC_300),
     R(
-        "song",
-        "get_fav_num",
+        SongApi.get_fav_num,
         "/song/get_fav_num",
-        GetFavNumResponse,
         params=(Q("song_ids", list[int], description="歌曲 ID 列表."),),
         cache=PUBLIC_60,
     ),
@@ -48,35 +37,29 @@ ROUTES: tuple[WebRoute, ...] = (
         summary="获取歌曲收藏数量",
         description="根据单个歌曲 ID 获取收藏数量.",
     ),
-    R("song", "get_labels", "/song/{songid}/labels", GetSongLabelsResponse, params=SONGID, cache=PUBLIC_300),
+    R(SongApi.get_labels, "/song/{songid}/labels", params=SONGID, cache=PUBLIC_300),
     R(
-        "song",
-        "get_other_version",
+        SongApi.get_other_version,
         "/song/{value}/other_versions",
-        GetOtherVersionResponse,
         params=VALUE,
         cache=PUBLIC_600,
     ),
-    R("song", "get_producer", "/song/{value}/producer", GetProducerResponse, params=VALUE, cache=PUBLIC_300),
+    R(SongApi.get_producer, "/song/{value}/producer", params=VALUE, cache=PUBLIC_300),
     R(
-        "song",
-        "get_related_mv",
+        SongApi.get_related_mv,
         "/song/{songid}/related_mv",
-        GetRelatedMvResponse,
         params=(*SONGID, *SONG_RELATED_MV_PAGE),
         cache=PUBLIC_600,
     ),
     R(
-        "song",
-        "get_related_songlist",
+        SongApi.get_related_songlist,
         "/song/{songid}/related_songlists",
-        GetRelatedSonglistResponse,
         params=(*SONGID, *SONG_RELATED_SONGLIST_PAGE),
         cache=PUBLIC_600,
     ),
-    R("song", "has_sheet", "/song/{mid}/has_sheet", HasSheetMusicResponse, params=MID, cache=PUBLIC_300),
-    R("song", "get_sheet", "/song/{mid}/sheet", GetSheetResponse, params=MID, cache=PUBLIC_300),
-    R("song", "get_similar_song", "/song/{songid}/similar", GetSimilarSongResponse, params=SONGID, cache=PUBLIC_600),
+    R(SongApi.has_sheet, "/song/{mid}/has_sheet", params=MID, cache=PUBLIC_300),
+    R(SongApi.get_sheet, "/song/{mid}/sheet", params=MID, cache=PUBLIC_300),
+    R(SongApi.get_similar_song, "/song/{songid}/similar", params=SONGID, cache=PUBLIC_600),
     R(
         "song",
         "get_song_urls",
