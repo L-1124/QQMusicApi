@@ -51,15 +51,12 @@ async def configured_credential_for_api(
     logger.debug("API %s 尝试使用共享凭证池", api_key)
     for pooled in await run_sync(pool.acquire):
         logger.debug("API %s 检查池凭证 %s", api_key, pooled.musicid)
-        if await pool.is_expired(pooled, engine, platform=platform):
-            logger.debug("API %s 池凭证 %s 已过期, 准备刷新", api_key, pooled.musicid)
-            refreshed = await pool.ensure_fresh(pooled, engine, platform=platform)
-            if refreshed is None:
-                logger.debug("API %s 池凭证 %s 刷新失败, 尝试下一个", api_key, pooled.musicid)
-                continue
-            pooled = refreshed
-        logger.info("API %s 使用共享池凭证 (musicid: %s)", api_key, pooled.musicid)
-        return pooled
+        usable = await pool.ensure_usable(pooled, engine, platform=platform)
+        if usable is None:
+            logger.debug("API %s 池凭证 %s 不可用, 尝试下一个", api_key, pooled.musicid)
+            continue
+        logger.info("API %s 使用共享池凭证 (musicid: %s)", api_key, usable.musicid)
+        return usable
 
     logger.warning("API %s 没有可用的共享池凭证, 使用 Cookie 凭证", api_key)
     return CallerCredential(credential=cookie_credential)

@@ -1,5 +1,6 @@
 """Web 引擎服务依赖与模块执行测试."""
 
+import time
 from pathlib import Path
 from typing import Any, cast
 
@@ -16,7 +17,7 @@ from qqmusic_api.modules.song import SongFileType
 from web.src.app import _cleanup_services
 from web.src.core.cache import MemoryBackend
 from web.src.core.config import CredentialConfig
-from web.src.core.credential_pool import CredentialPool
+from web.src.core.credential_pool import CredentialPool, PoolCredential
 from web.src.core.credential_store import CredentialStore
 from web.src.core.deps import WebServices, get_engine
 from web.src.routes import ROUTES
@@ -368,4 +369,61 @@ async def test_failed_credential_refresh_marks_store_invalid(tmp_path: Path) -> 
         await execute_route(context)
 
     assert list(store.random_credentials()) == []
+    store.close()
+
+
+@pytest.mark.asyncio
+async def test_pool_credential_without_local_expiry_is_refreshed_under_lock(tmp_path: Path) -> None:
+    """测试本地无法判定过期的池凭证在锁内完成 API 校验与刷新, 且后续请求不重复校验."""
+    seeded = Credential(
+        musicid=12345,
+        musickey="old-key",
+        refresh_token="refresh-token",
+        musickey_create_time=1,
+        key_expires_in=0,
+    )
+    refreshed_data = {
+        "musicid": 12345,
+        "musickey": "new-key",
+        "refresh_token": "new-refresh-token",
+        "musickey_create_time": int(time.time()),
+        "key_expires_in": 3600,
+    }
+    engine = ScriptedEngine([{"code": 1000}, refreshed_data, GetSongUrlsResponse(), GetSongUrlsResponse()])
+    store = CredentialStore(str(tmp_path / "credentials.sqlite3"))
+    store.initialize()
+    store.seed(seeded)
+    config = CredentialConfig(enabled=True)
+
+    await execute_route(_song_url_context(engine, None, store, config))
+    await execute_route(_song_url_context(engine, None, store, config))
+
+    assert [request.module if isinstance(request, CgiRequest) else "" for request, _ in engine.calls] == [
+        "music.UserInfo.userInfoServer",
+        "music.login.LoginServer",
+        "music.vkey.GetVkey",
+        "music.vkey.GetVkey",
+    ]
+    assert engine.calls[2][1].credential.musickey == "new-key"
+    store.close()
+
+
+@pytest.mark.asyncio
+async def test_pool_refresh_reuses_credential_rotated_by_peer(tmp_path: Path) -> None:
+    """测试池凭证已被其他请求刷新时不再用过期快照重复登录."""
+    stale = Credential(musicid=12345, musickey="old-key", refresh_token="refresh-token")
+    engine = ScriptedEngine([{"musicid": 12345, "musickey": "new-key", "refresh_token": "new-refresh-token"}])
+    store = CredentialStore(str(tmp_path / "credentials.sqlite3"))
+    store.initialize()
+    store.seed(stale)
+    pool = CredentialPool(store)
+    item = PoolCredential(credential=stale, musicid=12345)
+
+    first = await pool.refresh(item, cast("RequestEngine", engine))
+    second = await pool.refresh(item, cast("RequestEngine", engine))
+
+    assert first is not None
+    assert second is not None
+    assert second.credential.musickey == "new-key"
+    assert len(engine.calls) == 1
     store.close()

@@ -94,48 +94,62 @@ class CredentialPool:
             for credential in self._store.random_credentials()
         )
 
-    async def is_expired(
-        self,
-        item: PoolCredential,
-        engine: RequestEngine,
-        platform: Platform = Platform.ANDROID,
-    ) -> bool:
-        """判断池凭证是否过期, 本地信息不足时通过 API 验证."""
-        candidate = item.credential
-        if credential_needs_refresh(candidate):
-            logger.debug("凭证 %s 需要刷新 (本地校验)", candidate.musicid)
-            return True
-        if candidate.musickey_create_time > 0 and candidate.key_expires_in <= 0:
-            try:
-                expired = await _login_api(engine, candidate, platform).check_expired(candidate)
-                logger.debug("凭证 %s API 过期检查结果: %s", candidate.musicid, expired)
-                return expired
-            except Exception as exc:
-                logger.warning("凭证 %s API 过期检查异常: %s", candidate.musicid, exc, exc_info=True)
-                return True
-        return False
-
-    async def ensure_fresh(
+    async def ensure_usable(
         self,
         item: PoolCredential,
         engine: RequestEngine,
         platform: Platform = Platform.ANDROID,
     ) -> PoolCredential | None:
-        """选取池凭证时确保其最新: 本地判定无需刷新则直接复用池内最新行."""
+        """选取池凭证并确保可用: 过期判定与刷新在同一把锁内完成.
+
+        Note:
+            本地信息不足的凭证需要 API 校验才能判定过期. 若把校验放在锁外, 并发请求会各自
+            校验、各自刷新, 锁守不住任何东西, 且刷新用的是各自的过期快照.
+
+        Returns:
+            可用的池凭证; 池内行已不存在或刷新失败时返回 None.
+        """
         async with _credential_refresh_lock(item.musicid):
             latest = await run_sync(self._store.get, item.musicid)
-            current = latest or item.credential
-            if not credential_needs_refresh(current):
-                logger.debug("凭证 %s 无需刷新", current.musicid)
-                return PoolCredential(credential=current, musicid=current.musicid)
-            logger.info("开始刷新池凭证 %s", current.musicid)
+            if latest is None:
+                logger.debug("池内凭证 %s 已不存在, 跳过", item.musicid)
+                return None
+            if not await self._needs_refresh(latest, engine, platform):
+                logger.debug("凭证 %s 无需刷新", latest.musicid)
+                return PoolCredential(credential=latest, musicid=latest.musicid)
+            logger.info("开始刷新池凭证 %s", latest.musicid)
             try:
-                refreshed = await self._refresh_and_store(engine, current, platform)
+                refreshed = await self._refresh_and_store(engine, latest, platform)
             except Exception:
                 logger.warning("池凭证 %s 刷新失败", item.musicid, exc_info=True)
                 return None
             logger.info("池凭证 %s 刷新成功", refreshed.musicid)
             return PoolCredential(credential=refreshed, musicid=refreshed.musicid)
+
+    async def _needs_refresh(
+        self,
+        credential: Credential,
+        engine: RequestEngine,
+        platform: Platform,
+    ) -> bool:
+        """判断池凭证是否需要刷新, 本地信息不足时通过 API 校验.
+
+        Note:
+            校验异常时不据此判定过期: 交给请求本身决定, 避免上游抖动时触发刷新风暴, 并把
+            正常凭证误标为无效.
+        """
+        if credential_needs_refresh(credential):
+            logger.debug("凭证 %s 需要刷新 (本地校验)", credential.musicid)
+            return True
+        if credential.musickey_create_time > 0 and credential.key_expires_in <= 0:
+            try:
+                expired = await _login_api(engine, credential, platform).check_expired(credential)
+            except Exception as exc:
+                logger.warning("凭证 %s API 过期检查异常: %s", credential.musicid, exc, exc_info=True)
+                return False
+            logger.debug("凭证 %s API 过期检查结果: %s", credential.musicid, expired)
+            return expired
+        return False
 
     async def refresh(
         self,
@@ -145,10 +159,18 @@ class CredentialPool:
     ) -> PoolCredential | None:
         """请求回报凭证过期时无条件刷新池凭证.
 
+        Note:
+            锁内先比对池内最新凭证: 已被其他请求刷新则直接复用, 避免用过期快照重复登录
+            (旧快照的 refresh_token 可能已失效, 重复刷新失败还会把新凭证误标为无效).
+
         Returns:
             刷新后的池凭证; 刷新失败时置无效并返回 None.
         """
         async with _credential_refresh_lock(item.musicid):
+            latest = await run_sync(self._store.get, item.musicid)
+            if latest is not None and latest.musickey != item.credential.musickey:
+                logger.info("池凭证 %s 已被其他请求刷新, 复用池内最新凭证", item.musicid)
+                return PoolCredential(credential=latest, musicid=latest.musicid)
             logger.info("开始刷新池凭证 %s", item.musicid)
             try:
                 refreshed = await self._refresh_and_store(engine, item.credential, platform)
