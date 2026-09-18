@@ -1,16 +1,15 @@
 """MV Web 路由契约."""
 
-from qqmusic_api.models.mv import GetMvDetailResponse, GetMvUrlsResponse
+from qqmusic_api.models.mv import GetMvUrlsResponse
+from qqmusic_api.modules.mv import MvApi
 
 from ..routing.route_types import PUBLIC_300, WebRoute
 from ._helpers import P, Q, R
 
 ROUTES: tuple[WebRoute, ...] = (
     R(
-        "mv",
-        "get_detail",
+        MvApi.get_detail,
         "/mv/get_detail",
-        GetMvDetailResponse,
         params=(Q("vids", list[str], description="MV VID 列表."),),
         cache=PUBLIC_300,
     ),

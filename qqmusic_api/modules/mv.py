@@ -1,5 +1,6 @@
 """MV 相关 API."""
 
+from ..core.endpoint import CgiRequestData, cgi_endpoint
 from ..core.pagination import OffsetStrategy
 from ..models.mv import GetMvDetailResponse, GetMvListResponse, GetMvUrlsResponse
 from ..utils.common import get_guid
@@ -9,15 +10,19 @@ from ._base import ApiModule
 class MvApi(ApiModule):
     """MV 相关 API."""
 
-    def get_detail(self, vids: list[str]):
+    @cgi_endpoint(
+        key="mv.get_detail",
+        module="video.VideoDataServer",
+        method="get_video_info_batch",
+        response_model=GetMvDetailResponse,
+    )
+    def get_detail(self, vids: list[str]) -> CgiRequestData:
         """获取 MV 详细信息.
 
         Args:
             vids: 视频 VID 列表.
         """
-        return self._build_cgi(
-            module="video.VideoDataServer",
-            method="get_video_info_batch",
+        return CgiRequestData(
             param={
                 "vidlist": vids,
                 "required": [
@@ -45,18 +50,21 @@ class MvApi(ApiModule):
                     "related_songs",
                 ],
             },
-            response_model=GetMvDetailResponse,
         )
 
-    def get_mv_urls(self, vids: list[str]):
+    @cgi_endpoint(
+        key="mv.get_mv_urls",
+        module="music.stream.MvUrlProxy",
+        method="GetMvUrls",
+        response_model=GetMvUrlsResponse,
+    )
+    def get_mv_urls(self, vids: list[str]) -> CgiRequestData:
         """获取 MV 播放链接.
 
         Args:
             vids: 视频 VID 列表.
         """
-        return self._build_cgi(
-            module="music.stream.MvUrlProxy",
-            method="GetMvUrls",
+        return CgiRequestData(
             param={
                 "vids": vids,
                 "request_type": 10003,
@@ -67,9 +75,14 @@ class MvApi(ApiModule):
                 "use_new_domain": 1,
                 "use_ipv6": 1,
             },
-            response_model=GetMvUrlsResponse,
         )
 
+    @cgi_endpoint(
+        key="mv.get_mv_list",
+        module="MvService.MvInfoProServer",
+        method="GetAllocMvInfo",
+        response_model=GetMvListResponse,
+    )
     def get_mv_list(
         self,
         area: int = 15,
@@ -77,7 +90,7 @@ class MvApi(ApiModule):
         order: int = 0,
         num: int = 10,
         page: int = 1,
-    ):
+    ) -> CgiRequestData:
         """获取 MV 分类列表.
 
         Args:
@@ -87,15 +100,13 @@ class MvApi(ApiModule):
             num: 每页返回数量.
             page: 页码, 从 1 开始.
         """
-        return self._build_cgi(
-            module="MvService.MvInfoProServer",
-            method="GetAllocMvInfo",
+        return CgiRequestData(
             param={"area": area, "version": version, "order": order, "start": num * (page - 1), "size": num},
-            response_model=GetMvListResponse,
             pager_strategy=OffsetStrategy[GetMvListResponse](
                 offset_key="start",
                 page_size_key="size",
                 total_extractor=lambda r: r.total,
                 count_extractor=lambda r: len(r.items),
             ),
-        ).with_extractor(lambda r: r.items)
+            items_extractor=lambda r: r.items,
+        )
