@@ -15,6 +15,7 @@ from qqmusic_api.core.endpoint import (
     http_endpoint,
 )
 from qqmusic_api.core.request import CgiRequest, HttpRequest
+from qqmusic_api.core.response import RawPayload
 from qqmusic_api.core.versioning import DEFAULT_VERSION_POLICY, Platform
 from qqmusic_api.models.request import Credential
 from qqmusic_api.models.search import QuickSearchResponse, SearchByTypeResponse
@@ -109,7 +110,7 @@ def test_http_endpoint_decorator():
     @http_endpoint(
         key="custom.sample_http_test",
         method="POST",
-        url_template="https://api.example.com/{user_id}/info",
+        url="https://api.example.com/{user_id}/info",
         response_model=DummyModel,
     )
     def sample_http(self, user_id: int) -> HttpRequestData:
@@ -126,6 +127,7 @@ def test_http_endpoint_decorator():
     assert meta.key == "custom.sample_http_test"
     assert isinstance(meta, HttpEndpointMeta)
     assert meta.method == "POST"
+    assert meta.url == "https://api.example.com/{user_id}/info"
 
     request = bound_method(456)
     assert isinstance(request, HttpRequest)
@@ -194,3 +196,75 @@ def test_quick_search_and_search_by_type():
     assert type_req.param["query"] == "周杰伦"
     assert type_req.param["num_per_page"] == 20
     assert type_req.param["page_num"] == 2
+
+
+def test_http_endpoint_raw_mode():
+    """验证 http_endpoint 装饰器支持 raw 模式与 RawPayload 响应类型."""
+
+    @http_endpoint(
+        key="custom.sample_raw_test",
+        method="GET",
+        url="https://api.example.com/raw/{file_id}",
+        response_model=RawPayload,
+    )
+    def sample_raw(self, file_id: str) -> HttpRequestData:
+        """Raw HTTP 示例方法."""
+        return HttpRequestData(path_params={"file_id": file_id})
+
+    class SampleRawApi(ApiModule):
+        """测试 Raw HTTP 端点模块."""
+
+        sample = sample_raw
+
+    bound_method = SampleRawApi(_module_client()).sample
+    meta = get_endpoint_meta(SampleRawApi.sample)
+    assert meta.key == "custom.sample_raw_test"
+    assert isinstance(meta, HttpEndpointMeta)
+    assert meta.url == "https://api.example.com/raw/{file_id}"
+    assert meta.raw is True
+    assert meta.response_model is RawPayload
+
+    request = bound_method("abc123")
+    assert isinstance(request, HttpRequest)
+    assert request.method == "GET"
+    assert request.url == "https://api.example.com/raw/abc123"
+    assert request.raw is True
+    assert request.response_model is RawPayload
+
+
+def test_http_endpoint_meta_override():
+    """验证 HttpRequestData 的 meta 属性支持动态覆写 HTTP 端点元数据."""
+    custom_meta = HttpEndpointMeta(
+        key="custom.override_meta",
+        method="POST",
+        url="https://api.example.com/override",
+        response_model=DummyModel,
+        raw=True,
+    )
+
+    @http_endpoint(
+        key="custom.default_meta",
+        method="GET",
+        url="https://api.example.com/default",
+        response_model=DummyModel,
+    )
+    def sample_dynamic(self, *, override: bool = False) -> HttpRequestData:
+        """动态元数据示例方法."""
+        return HttpRequestData(meta=custom_meta if override else None)
+
+    class SampleDynamicApi(ApiModule):
+        """测试动态 HTTP 端点模块."""
+
+        sample = sample_dynamic
+
+    bound_method = SampleDynamicApi(_module_client()).sample
+
+    req_default = bound_method(override=False)
+    assert req_default.method == "GET"
+    assert req_default.url == "https://api.example.com/default"
+    assert req_default.raw is False
+
+    req_override = bound_method(override=True)
+    assert req_override.method == "POST"
+    assert req_override.url == "https://api.example.com/override"
+    assert req_override.raw is True

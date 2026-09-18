@@ -90,7 +90,7 @@ class SearchApi(ApiModule):
     @http_endpoint(
         key="search.quick_search",
         method="GET",
-        url_template="https://c.y.qq.com/splcloud/fcgi-bin/smartbox_new.fcg",
+        url="https://c.y.qq.com/splcloud/fcgi-bin/smartbox_new.fcg",
         response_model=QuickSearchResponse,
     )
     def quick_search(self, keyword: str) -> HttpRequestData:

@@ -47,7 +47,7 @@ class HttpEndpointMeta(EndpointMeta[ResultT]):
     """HTTP 端点的固定请求属性."""
 
     method: str = "GET"
-    url_template: str = ""
+    url: str = ""
     raw: bool = False
 
 
@@ -76,6 +76,7 @@ class HttpRequestData:
     json: Any | None = None
     data: Any | None = None
     credential: Credential | None = None
+    meta: HttpEndpointMeta[Any] | None = None
     options: dict[str, Any] = field(default_factory=dict)
 
 
@@ -148,16 +149,19 @@ def cgi_endpoint(
 def http_endpoint(
     key: str,
     method: str,
-    url_template: str,
+    url: str,
     *,
     response_model: type[HttpResultT],
+    raw: bool | None = None,
 ) -> Callable[[Callable[P, HttpRequestData]], Callable[P, HttpRequest[HttpResultT]]]:
     """声明 HTTP 端点并将请求变量绑定到模块执行器."""
+    is_raw = (response_model is RawPayload) if raw is None else raw
     meta = HttpEndpointMeta(
         key=key,
         method=method,
-        url_template=url_template,
+        url=url,
         response_model=response_model,
+        raw=is_raw,
     )
 
     def decorator(func: Callable[P, HttpRequestData]) -> Callable[P, HttpRequest[HttpResultT]]:
@@ -165,21 +169,22 @@ def http_endpoint(
             if not args:
                 raise TypeError("HTTP endpoint 必须作为 ApiModule 实例方法调用")
             data = func(*args, **kwargs)
+            selected = data.meta or meta
             module_instance: Any = args[0]
-            url = meta.url_template.format(**(data.path_params or {}))
+            resolved_url = selected.url.format(**(data.path_params or {}))
             return cast(
                 "HttpRequest[HttpResultT]",
                 module_instance._build_http(
-                    meta.method,
-                    url,
+                    selected.method,
+                    resolved_url,
                     params=data.params,
                     json=data.json,
                     data=data.data,
                     headers=data.headers,
                     cookies=data.cookies,
                     credential=data.credential,
-                    response_model=meta.response_model,
-                    raw=meta.raw,
+                    response_model=selected.response_model,
+                    raw=selected.raw,
                     **data.options,
                 ),
             )
