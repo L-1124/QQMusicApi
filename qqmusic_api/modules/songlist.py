@@ -1,6 +1,7 @@
 """歌单相关 API."""
 
 from ..core import CgiApiException
+from ..core.endpoint import CgiRequestData, cgi_endpoint
 from ..core.pagination import OffsetStrategy
 from ..models.request import Credential
 from ..models.songlist import CreateDeleteSonglistResp, GetSonglistDetailResponse
@@ -24,6 +25,12 @@ def _build_songlist_oper_param(
 class SonglistApi(ApiModule):
     """歌单相关 API."""
 
+    @cgi_endpoint(
+        key="songlist.get_detail",
+        module="music.srfDissInfo.DissInfo",
+        method="CgiGetDiss",
+        response_model=GetSonglistDetailResponse,
+    )
     def get_detail(
         self,
         songlist_id: int,
@@ -34,7 +41,7 @@ class SonglistApi(ApiModule):
         onlysong: bool = False,
         tag: bool = True,
         userinfo: bool = True,
-    ):
+    ) -> CgiRequestData:
         """获取歌单详细信息和歌曲原始数据.
 
         Args:
@@ -46,9 +53,7 @@ class SonglistApi(ApiModule):
             tag: 是否返回标签信息.
             userinfo: 是否返回用户信息.
         """
-        return self._build_cgi(
-            module="music.srfDissInfo.DissInfo",
-            method="CgiGetDiss",
+        return CgiRequestData(
             param={
                 "disstid": songlist_id,
                 "dirid": dirid,
@@ -59,7 +64,6 @@ class SonglistApi(ApiModule):
                 "orderlist": True,
                 "onlysonglist": onlysong,
             },
-            response_model=GetSonglistDetailResponse,
             pager_strategy=OffsetStrategy[GetSonglistDetailResponse](
                 offset_key="song_begin",
                 page_size_key="song_num",
@@ -67,9 +71,17 @@ class SonglistApi(ApiModule):
                 total_extractor=lambda r: r.total,
                 count_extractor=lambda response: len(response.songs),
             ),
-        ).with_extractor(lambda r: r.songs)
+            items_extractor=lambda r: r.songs,
+        )
 
-    def create(self, dirname: str, *, credential: Credential | None = None):
+    @cgi_endpoint(
+        key="songlist.create",
+        module="music.musicasset.PlaylistBaseWrite",
+        method="AddPlaylist",
+        response_model=CreateDeleteSonglistResp,
+        require_login=True,
+    )
+    def create(self, dirname: str, *, credential: Credential | None = None) -> CgiRequestData:
         """创建歌单.
 
         Note:
@@ -79,16 +91,19 @@ class SonglistApi(ApiModule):
             dirname: 歌单名称.
             credential: 登录凭证.
         """
-        return self._build_cgi(
-            module="music.musicasset.PlaylistBaseWrite",
-            method="AddPlaylist",
+        return CgiRequestData(
             param={"dirName": dirname},
             credential=credential,
-            require_login=True,
-            response_model=CreateDeleteSonglistResp,
         )
 
-    def delete(self, dirid: int, *, credential: Credential | None = None):
+    @cgi_endpoint(
+        key="songlist.delete",
+        module="music.musicasset.PlaylistBaseWrite",
+        method="DelPlaylist",
+        response_model=CreateDeleteSonglistResp,
+        require_login=True,
+    )
+    def delete(self, dirid: int, *, credential: Credential | None = None) -> CgiRequestData:
         """删除歌单.
 
         Note:
@@ -98,13 +113,9 @@ class SonglistApi(ApiModule):
             dirid: 歌单目录 ID.
             credential: 登录凭证.
         """
-        return self._build_cgi(
-            module="music.musicasset.PlaylistBaseWrite",
-            method="DelPlaylist",
+        return CgiRequestData(
             param={"dirId": dirid},
             credential=credential,
-            require_login=True,
-            response_model=CreateDeleteSonglistResp,
         )
 
     async def add_songs(

@@ -1,6 +1,6 @@
 """歌单 Web 路由契约."""
 
-from qqmusic_api.models.songlist import CreateDeleteSonglistResp, GetSonglistDetailResponse
+from qqmusic_api.modules.songlist import SonglistApi
 
 from ..routing.route_types import AuthPolicy, HttpMethod, WebRoute
 from ._helpers import SONGLIST_DETAIL_OPTIONS, SONGLIST_ID, Q, R
@@ -21,10 +21,8 @@ ROUTES: tuple[WebRoute, ...] = (
         auth=AuthPolicy.COOKIE_OR_DEFAULT,
     ),
     R(
-        "songlist",
-        "create",
+        SonglistApi.create,
         "/songlist/create",
-        CreateDeleteSonglistResp,
         methods=(HttpMethod.POST,),
         params=(Q("dirname", str, description="歌单名称."),),
         auth=AuthPolicy.COOKIE_OR_DEFAULT,
@@ -44,19 +42,15 @@ ROUTES: tuple[WebRoute, ...] = (
         auth=AuthPolicy.COOKIE_OR_DEFAULT,
     ),
     R(
-        "songlist",
-        "delete",
+        SonglistApi.delete,
         "/songlist/delete",
-        CreateDeleteSonglistResp,
         methods=(HttpMethod.DELETE,),
         params=(Q("dirid", int, description="歌单目录 ID."),),
         auth=AuthPolicy.COOKIE_OR_DEFAULT,
     ),
     R(
-        "songlist",
-        "get_detail",
+        SonglistApi.get_detail,
         "/songlist/{songlist_id}/detail",
-        GetSonglistDetailResponse,
         params=(*SONGLIST_ID, *SONGLIST_DETAIL_OPTIONS),
     ),
 )

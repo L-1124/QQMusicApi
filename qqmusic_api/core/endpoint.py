@@ -101,6 +101,8 @@ def cgi_endpoint(
     *,
     response_model: type[CgiResultT],
     platform: Platform | None = None,
+    sign: bool = False,
+    require_login: bool = False,
 ) -> Callable[[Callable[P, CgiRequestData]], Callable[P, CgiRequest[CgiResultT]]]:
     """声明 CGI 端点并将请求变量绑定到模块执行器."""
     meta = CgiEndpointMeta(
@@ -109,6 +111,8 @@ def cgi_endpoint(
         method=method,
         platform=platform,
         response_model=response_model,
+        sign=sign,
+        require_login=require_login,
     )
 
     def decorator(func: Callable[P, CgiRequestData]) -> Callable[P, CgiRequest[CgiResultT]]:
