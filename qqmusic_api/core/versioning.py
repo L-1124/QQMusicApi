@@ -30,7 +30,7 @@ class VersionProfile:
     v: int | None = None
     platform: str | None = None
     ua_version: int | None = None
-    qimei_app_version: str = "14.9.0.8"
+    qimei_app_version: str = "20.9.0.8"
     qimei_sdk_version: str = "1.2.13.6"
 
 
@@ -175,10 +175,10 @@ class VersionPolicy:
 DEFAULT_VERSION_POLICY = VersionPolicy(
     android=VersionProfile(
         ct=11,
-        cv=14090008,
-        v=14090008,
-        ua_version=14090008,
-        qimei_app_version="14.9.0.8",
+        cv=20_090_008,
+        v=20_090_008,
+        ua_version=20_090_008,
+        qimei_app_version="20.9.0.8",
         qimei_sdk_version="1.2.13.6",
     ),
     desktop=VersionProfile(
