@@ -21,7 +21,6 @@ from ..models.singer import (
     SingerDetailResponse,
     SingerIndexPageResponse,
     SingerMvListResponse,
-    SingerNameSpecialDisplayResponse,
     SingerSongListResponse,
     SingerTypeListResponse,
     VideoBrief,
@@ -223,27 +222,6 @@ class SingerApi(ApiModule):
         """
         return CgiRequestData(
             param={"SingerMid": mid},
-        )
-
-    @cgi_endpoint(
-        key="singer.get_name_special_display",
-        module="music.UnifiedHomepage.UnifiedHomepageSrv",
-        method="GetHomepageHeader",
-        platform=Platform.ANDROID,
-        response_model=SingerNameSpecialDisplayResponse,
-    )
-    def get_name_special_display(self, mid: str) -> CgiRequestData:
-        """获取歌手名称透明 PNG 展示信息.
-
-        返回歌手名称、展示类型、图片地址和重叠比例.
-        无名称图片时, 返回 display_type=0 和空 pic_file.
-
-        Args:
-            mid: 歌手 MID.
-        """
-        return CgiRequestData(
-            param={"SingerMid": mid},
-            comm={"cv": 20_080_000, "v": 20_080_000},
         )
 
     @cgi_endpoint(

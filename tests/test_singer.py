@@ -2,8 +2,6 @@
 
 from urllib.parse import urlparse
 
-import pytest
-
 from qqmusic_api import Client
 from qqmusic_api.modules.singer import AreaType, GenreType, IndexType, SexType, TabType
 
@@ -51,28 +49,17 @@ async def test_get_singer_list_index_with_params(client: Client) -> None:
 async def test_get_info(client: Client) -> None:
     """测试获取歌手主页基本信息模型."""
     result = await client.singer.get_info(mid="0025NhlN2yWrP4")
+    assert result.status == 0
     assert result.singer.mid == "0025NhlN2yWrP4"
+    assert result.singer.name == "周杰伦"
     assert result.base_info.name
-
-
-@pytest.mark.parametrize(
-    ("mid", "name", "display_type"),
-    [("000qrPik2w6lDr", "Taylor Swift", 2), ("001BLpXF2DyJe2", "林俊杰", 0)],
-)
-async def test_get_name_special_display(client: Client, mid: str, name: str, display_type: int) -> None:
-    """测试真实歌手名称图片与无特殊展示的返回结果."""
-    result = await client.singer.get_name_special_display(mid)
-
-    assert result.name == name
-    assert result.display_type == display_type
-    assert isinstance(result.signature_name_overlap_ratio, float)
-    if display_type == 2:
-        url = urlparse(result.pic_file)
-        assert url.scheme == "https"
-        assert url.netloc
-        assert url.path.endswith(".png")
-    else:
-        assert result.pic_file == ""
+    if special := result.singer.name_special_display:
+        assert special.display_type in (0, 1, 2)
+        assert isinstance(special.signature_name_overlap_ratio, float)
+        if special.pic_file:
+            url = urlparse(special.pic_file)
+            assert url.scheme in ("http", "https")
+            assert url.netloc
 
 
 async def test_get_tab_detail_wiki(client: Client) -> None:

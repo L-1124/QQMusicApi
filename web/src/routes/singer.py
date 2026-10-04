@@ -41,11 +41,6 @@ ROUTES: tuple[WebRoute, ...] = (
     ),
     R(SingerApi.get_info, "/singer/{mid}/info", cache=PUBLIC_300),
     R(
-        SingerApi.get_name_special_display,
-        "/singer/{mid}/name-special-display",
-        cache=PUBLIC_600,
-    ),
-    R(
         SingerApi.get_mv_list,
         "/singer/{mid}/mvs",
         cache=PUBLIC_600,

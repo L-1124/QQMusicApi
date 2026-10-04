@@ -125,6 +125,22 @@ class HomepageBaseInfo(Response):
     user_type: int = Field(default=0, validation_alias="UserType")
 
 
+class SingerNameSpecialDisplay(Response):
+    """歌手名称特殊展示信息.
+
+    Attributes:
+        display_type: 展示类型 (0: 默认文本展示, 1: 签名模式, 2: 艺术字模式).
+        pic_file: 特殊展示图片地址, 无图片时为空字符串.
+        signature_name_overlap_ratio: 签名与名称重叠比例.
+        name: 歌手名称.
+    """
+
+    display_type: int = Field(default=0, validation_alias="DisplayType")
+    pic_file: str = Field(default="", validation_alias="PicFile")
+    signature_name_overlap_ratio: float = Field(default=0.0, validation_alias="SignatureNameOverlapRatio")
+    name: str = Field(default="", validation_alias="Name")
+
+
 class HomepageSinger(Response):
     """歌手主页歌手信息.
 
@@ -135,6 +151,7 @@ class HomepageSinger(Response):
         type: 歌手类型.
         singer_pic: 歌手图片地址.
         singer_pmid: 歌手图片标识.
+        name_special_display: 歌手名称特殊展示信息.
     """
 
     id: int = Field(default=-1, validation_alias=AliasChoices("SingerID", "singerID", "singer_id"))
@@ -143,6 +160,10 @@ class HomepageSinger(Response):
     type: int = Field(default=-1, validation_alias=AliasChoices("SingerType", "type"))
     singer_pic: str = Field(default="", validation_alias="SingerPic")
     singer_pmid: str = Field(default="", validation_alias="SingerPMid")
+    name_special_display: SingerNameSpecialDisplay | None = Field(
+        default=None,
+        validation_alias=AliasChoices("SingerNameSpecialDisplay", "singerNameSpecialDisplay"),
+    )
 
 
 class TabMeta(Response):
@@ -246,31 +267,6 @@ class HomepageTabDetailResponse(Response):
     video_tab: Annotated[list[VideoBrief], NoneToEmptyList] = Field(
         default_factory=list, json_schema_extra={"jsonpath": "$.VideoTab.VideoList[*]"}
     )
-
-
-class SingerNameSpecialDisplayResponse(Response):
-    """歌手名称特殊展示信息.
-
-    Attributes:
-        display_type: 展示类型, 2 表示名称图片, 0 表示无特殊展示.
-        pic_file: 透明 PNG 地址, 无名称图片时为空字符串.
-        signature_name_overlap_ratio: 上游返回的签名与名称重叠比例.
-        name: 歌手名称.
-    """
-
-    display_type: int = Field(
-        default=0,
-        json_schema_extra={"jsonpath": "$.Info.Singer.SingerNameSpecialDisplay.DisplayType"},
-    )
-    pic_file: str = Field(
-        default="",
-        json_schema_extra={"jsonpath": "$.Info.Singer.SingerNameSpecialDisplay.PicFile"},
-    )
-    signature_name_overlap_ratio: float = Field(
-        default=0.0,
-        json_schema_extra={"jsonpath": "$.Info.Singer.SingerNameSpecialDisplay.SignatureNameOverlapRatio"},
-    )
-    name: str = Field(default="", json_schema_extra={"jsonpath": "$.Info.Singer.Name"})
 
 
 class HomepageHeaderResponse(Response):
