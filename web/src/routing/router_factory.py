@@ -10,8 +10,8 @@ import dataclasses
 import inspect
 import re
 from collections.abc import Callable
-from enum import Enum, IntEnum
-from typing import Annotated, Any, cast, get_args, get_origin
+from enum import IntEnum
+from typing import Annotated, Any, get_args, get_origin
 
 from fastapi import Depends, FastAPI, Path, Query, Request
 from pydantic import BaseModel
@@ -70,7 +70,7 @@ def include_routes(app: FastAPI, routes: tuple[WebRoute, ...]) -> None:
             route.path,
             endpoint,
             methods=[method.value for method in route.methods],
-            tags=cast("list[Enum | str]", list(route.tags or (route.module,))),
+            tags=[route.module],
             summary=summary,
             description=description,
             response_model=ApiResponse[actual_response_model],
@@ -269,8 +269,6 @@ def _validate_route(route: WebRoute, path_methods: set[tuple[str, str]]) -> list
     if route.cache is not None:
         if route.cache.ttl <= 0:
             errors.append(f"缓存 ttl 必须大于 0: {key}")
-        if route.cache.scope != "public":
-            errors.append(f"ttl 缓存路由必须声明 public scope: {key}")
         if route.auth is not AuthPolicy.NONE:
             errors.append(f"认证路由不能使用 public 缓存: {key}")
     route_params = _resolve_route_params(route)

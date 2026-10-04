@@ -1,7 +1,7 @@
 """Web 路由声明辅助函数."""
 
 from collections.abc import Awaitable, Callable, Mapping
-from typing import Any, overload
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -43,43 +43,7 @@ def P(name: str, annotation: Any, description: str | None = None) -> ParamOverri
     return ParamOverride(name=name, source=ParamSource.PATH, annotation=annotation, description=description)
 
 
-@overload
 def R(
-    module: str,
-    method: str,
-    path: str,
-    response_model: type | None = None,
-    *,
-    params: tuple[ParamOverride, ...] = (),
-    methods: tuple[HttpMethod, ...] = (HttpMethod.GET,),
-    auth: AuthPolicy = AuthPolicy.NONE,
-    cache: CachePolicy | None = None,
-    adapter: Callable[[RouteContext], Awaitable[Any] | Any] | None = None,
-    body_model: type[BaseModel] | None = None,
-    summary: str | None = None,
-    description: str | None = None,
-    param_docs: Mapping[str, str] | None = None,
-) -> WebRoute: ...
-
-
-@overload
-def R(
-    module: Callable[..., Any],
-    method: str,
-    *,
-    params: tuple[ParamOverride, ...] = (),
-    methods: tuple[HttpMethod, ...] = (HttpMethod.GET,),
-    auth: AuthPolicy = AuthPolicy.NONE,
-    cache: CachePolicy | None = None,
-    adapter: Callable[[RouteContext], Awaitable[Any] | Any] | None = None,
-    body_model: type[BaseModel] | None = None,
-    summary: str | None = None,
-    description: str | None = None,
-    param_docs: Mapping[str, str] | None = None,
-) -> WebRoute: ...
-
-
-def R(  # type: ignore[inconsistent-overload]
     module: str | Callable[..., Any],
     method: str,
     path: str | None = None,

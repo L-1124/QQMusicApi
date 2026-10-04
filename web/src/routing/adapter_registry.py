@@ -49,8 +49,3 @@ def get_adapter(module: str, method: str) -> AdapterFn | None:
         已注册的 Adapter 函数, 或 None.
     """
     return _REGISTRY.get(f"{module}.{method}")
-
-
-def registered_adapters() -> dict[str, AdapterFn]:
-    """返回所有已注册 Adapter 的只读副本."""
-    return dict(_REGISTRY)

@@ -4,7 +4,7 @@ import inspect
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Generic, Literal, TypeVar
+from typing import Any, Generic, TypeVar
 
 from fastapi import Request
 from pydantic import BaseModel
@@ -51,7 +51,6 @@ class CachePolicy:
     """公开响应缓存策略."""
 
     ttl: int
-    scope: Literal["public"] = "public"
 
 
 @dataclass(frozen=True)
@@ -154,7 +153,6 @@ class WebRoute:
     param_docs: Mapping[str, str] = field(default_factory=dict)
     adapter: Callable[["RouteContext"], Awaitable[Any] | Any] | None = None
     endpoint: Callable[..., Any] | None = None
-    tags: tuple[str, ...] = ()
 
     @property
     def params(self) -> tuple[ParamOverride, ...]:
