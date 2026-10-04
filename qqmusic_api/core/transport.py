@@ -11,7 +11,13 @@ from niquests import AsyncSession, AsyncTokenBucketLimiter, RetryConfiguration
 from niquests import PreparedRequest as NiquestsPreparedRequest
 from niquests.exceptions import RequestException, Timeout
 from niquests.models import Response
-from niquests.typing import AsyncHookType, ProxyType, TLSClientCertType, TLSVerifyType
+from niquests.typing import (
+    AsyncHookType,
+    ProxyType,
+    TimeoutType,
+    TLSClientCertType,
+    TLSVerifyType,
+)
 
 from .exceptions import NetworkError, TimeoutNetworkError
 
@@ -321,6 +327,7 @@ class NiquestsTransport:
         rate: float = 10,
         capacity: float = 50,
         connect_retries: int = 2,
+        timeout: TimeoutType = (10, 60),
         proxies: ProxyType | None = None,
         cert: TLSClientCertType | None = None,
         verify: TLSVerifyType | None = None,
@@ -350,6 +357,7 @@ class NiquestsTransport:
         self.cert = cert
         self.verify = verify
         self.hooks = hooks
+        self.timeout = timeout
         self._max_concurrency = max_concurrency
         self._capacity = _CapacityLimiter(max_concurrency)
         self._closed = False
@@ -406,10 +414,12 @@ class NiquestsTransport:
         try:
             for position, request in enumerate(chunk):
                 try:
+                    kwargs = dict(request.kwargs)
+                    kwargs.setdefault("timeout", self.timeout)
                     response = await self._client.request(
                         request.method,
                         request.url,
-                        **dict(request.kwargs),
+                        **kwargs,
                         proxies=self.proxies,
                         hooks=self.hooks,
                         cert=self.cert,
@@ -480,10 +490,12 @@ class NiquestsTransport:
         response: Response | None = None
         try:
             try:
+                stream_kwargs = dict(request.kwargs)
+                stream_kwargs.setdefault("timeout", self.timeout)
                 response = await self._client.request(
                     request.method,
                     request.url,
-                    **dict(request.kwargs),
+                    **stream_kwargs,
                     stream=True,
                     proxies=self.proxies,
                     hooks=self.hooks,
