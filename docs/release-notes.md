@@ -1,4 +1,30 @@
 
+## [[0.8.1](https://github.com/L-1124/QQMusicApi/compare/v0.8.0..v0.8.1)] - 2026-10-04
+
+### Bug 修复
+
+* **(core)** 为传输层增加默认请求超时 ([86a2716](https://github.com/L-1124/QQMusicApi/commit/86a2716eddde166edcacfe511d4b9f2090f6a2bd)) by [@L-1124](https://github.com/L-1124)
+* **(web)** 手机验证码路由改为 POST 提交 ([b714255](https://github.com/L-1124/QQMusicApi/commit/b714255b2a9dbef535e709659fd029b49856bbf6)) by [@L-1124](https://github.com/L-1124)
+* **(web)** 参数校验失败响应返回错误详情 ([dee7e18](https://github.com/L-1124/QQMusicApi/commit/dee7e187c26a45b973759f56c7445da635e04740)) by [@L-1124](https://github.com/L-1124)
+
+### 功能更新
+
+* **(core)** 新增 Credential.is_valid 并收编登录态判断 ([415b3ae](https://github.com/L-1124/QQMusicApi/commit/415b3aef6e3f3b7fc5092653f22c1ce0d5dc31d5)) by [@L-1124](https://github.com/L-1124)
+* **(core)** 补充 py.typed 类型标记 ([2136321](https://github.com/L-1124/QQMusicApi/commit/2136321cf19796e0738f6b91243a650dd99f76a2)) by [@L-1124](https://github.com/L-1124)
+
+### 功能重构
+
+* **(web)** 复用 Credential.is_valid 移除重复登录态判断 ([f8ec18d](https://github.com/L-1124/QQMusicApi/commit/f8ec18dcf9a559988ff141972b704861a3a5ef5e)) by [@L-1124](https://github.com/L-1124)
+
+### 文档更新
+
+* 修正刷新凭证示例与 Web 服务启动说明 ([83e743b](https://github.com/L-1124/QQMusicApi/commit/83e743b52219471ddb399e21d6a003273f2c0bd2)) by [@L-1124](https://github.com/L-1124)
+
+### 贡献者
+
+* @L-1124
+* @github-actions[bot]
+
 ## [[0.8.0](https://github.com/L-1124/QQMusicApi/compare/v0.7.3..v0.8.0)] - 2026-10-04
 
 ### Bug 修复
