@@ -3,8 +3,6 @@
 import logging
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
-from http import HTTPStatus
-from time import perf_counter
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
@@ -13,8 +11,6 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
-from starlette.middleware.base import RequestResponseEndpoint
-from starlette.responses import Response
 
 import qqmusic_api
 from qqmusic_api.core.engine import RequestEngine
@@ -187,32 +183,6 @@ def create_app() -> FastAPI:
     )
     configure_security(app, settings.security)
     app.middleware("http")(apply_security_middleware)
-
-    _SKIP_ACCESS_LOG_PATHS = frozenset({"/", "/health"})
-
-    @app.middleware("http")
-    async def _log_access(request: Request, call_next: RequestResponseEndpoint) -> Response:
-        if request.url.path in _SKIP_ACCESS_LOG_PATHS:
-            return await call_next(request)
-        start = perf_counter()
-        response = await call_next(request)
-        elapsed_ms = (perf_counter() - start) * 1000
-        try:
-            status_phrase = HTTPStatus(response.status_code).phrase
-        except ValueError:
-            status_phrase = ""
-        client_host = request.client.host if request.client is not None else "-"
-        status_suffix = f" {status_phrase}" if status_phrase else ""
-        logger.info(
-            "HTTP %s %s -> %d%s (%.1f ms) from %s",
-            request.method,
-            request.url.path,
-            response.status_code,
-            status_suffix,
-            elapsed_ms,
-            client_host,
-        )
-        return response
 
     _configure_cors(app)
 

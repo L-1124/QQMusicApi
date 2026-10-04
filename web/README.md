@@ -79,7 +79,7 @@ wslc run -d -p 8080:8080 --name qqmusic-api-web \
 
 挂载说明:
 
-* `web/data/` — 设备信息、凭据状态库、日志等持久化数据。
+* `web/data/` — 设备信息、凭据状态库等持久化数据。
 * `web/accounts.toml` — 可选，自定义全局凭据账号。
 * `web/config.toml` — 可选，自定义 Web 配置。
 

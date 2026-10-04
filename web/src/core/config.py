@@ -14,19 +14,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 class LogConfig(BaseModel):
     """日志配置."""
 
-    mode: Annotated[Literal["console", "file", "both"], Field(description="日志模式: console/file/both")] = "console"
     level: Annotated[Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"], Field(description="日志级别")] = "INFO"
-    file_path: str = Field(default="web/data/logs/app.log", description="日志文件路径 (当 mode 为 file 或 both 时使用)")
-    console_format: str = Field(
-        default="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level:<8}</level> | <cyan>{extra[logger_name]:<15}</cyan> | <level>{message}</level>",
-        description="控制台日志格式",
-    )
-    file_format: str = Field(
-        default="{time:YYYY-MM-DD HH:mm:ss} | {level:<8} | {extra[logger_name]:<15} | {message}",
-        description="文件日志格式",
-    )
-    max_bytes: int = Field(default=10485760, ge=1, description="单个日志文件最大字节数 (10MB)")
-    backup_count: int = Field(default=5, ge=0, description="保留的备份日志文件数")
 
 
 class ServerConfig(BaseModel):
@@ -222,8 +210,6 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def _resolve_paths(self) -> "Settings":
         """将相对路径统一解析为基于项目根目录的绝对路径."""
-        if not Path(self.logging.file_path).is_absolute():
-            self.logging.file_path = str(PROJECT_ROOT / self.logging.file_path)
         if not Path(self.credential.store.path).is_absolute():
             self.credential.store.path = str(PROJECT_ROOT / self.credential.store.path)
         if not Path(self.client.device_path).is_absolute():
