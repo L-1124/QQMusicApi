@@ -118,6 +118,10 @@ class Credential(BaseModel):
         current_time = int(time.time())
         return current_time >= self.musickey_create_time + self.key_expires_in
 
+    def is_valid(self) -> bool:
+        """检查凭据是否包含可用登录态 (musicid 与 musickey 均有效)."""
+        return self.musicid > 0 and bool(self.musickey)
+
 
 class RequestItem(TypedDict):
     """请求项."""

@@ -126,7 +126,7 @@ class CgiExecutor:
                     results[call.index] = exc
                     continue
                 raise
-            if request.require_login and not bool(call.scope.credential.musicid and call.scope.credential.musickey):
+            if request.require_login and not call.scope.credential.is_valid():
                 exc = CredentialInvalidError("请求需要登录, 未提供有效的登录凭证")
                 if return_exceptions:
                     results[call.index] = exc

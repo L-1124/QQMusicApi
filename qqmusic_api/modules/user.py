@@ -44,7 +44,7 @@ class UserApi(ApiModule):
         if credential is not None:
             return credential
         current = self._executor.credential
-        if current.musicid and current.musickey:
+        if current.is_valid():
             return current
         return self.PLACEHOLDER_CREDENTIAL
 
