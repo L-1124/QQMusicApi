@@ -30,7 +30,6 @@ class WebQRLoginType(str, Enum):
 
 
 WEB_QR_LOGIN_TYPES = {WebQRLoginType.QQ: QRLoginType.QQ, WebQRLoginType.WX: QRLoginType.WX}
-WEB_QR_LOGIN_TYPE_DESCRIPTION = "二维码登录类型. 当前 Web 层仅支持 `qq` / `wx`."
 
 
 class QRCodeData(BaseModel):

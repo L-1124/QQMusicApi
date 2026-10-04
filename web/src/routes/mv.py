@@ -4,7 +4,7 @@ from qqmusic_api.models.mv import GetMvUrlsResponse
 from qqmusic_api.modules.mv import MvApi
 
 from ..routing.route_types import PUBLIC_300, WebRoute
-from ._helpers import P, Q, R
+from ._helpers import P, R
 
 ROUTES: tuple[WebRoute, ...] = (
     R(
@@ -13,11 +13,9 @@ ROUTES: tuple[WebRoute, ...] = (
         cache=PUBLIC_300,
     ),
     R(
-        "mv",
-        "get_mv_urls",
+        MvApi.get_mv_urls,
         "/mv/get_mv_urls",
-        GetMvUrlsResponse,
-        params=(Q("vids", list[str], description="视频 VID 列表."),),
+        cache=PUBLIC_300,
     ),
     R(
         "mv",
