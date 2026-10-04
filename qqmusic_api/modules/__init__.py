@@ -12,6 +12,7 @@ from .search import SearchApi
 from .singer import SingerApi
 from .song import SongApi
 from .songlist import SonglistApi
+from .sound_power import SoundPowerApi
 from .top import TopApi
 from .user import UserApi
 
@@ -28,6 +29,7 @@ __all__ = [
     "SingerApi",
     "SongApi",
     "SonglistApi",
+    "SoundPowerApi",
     "TopApi",
     "UserApi",
 ]

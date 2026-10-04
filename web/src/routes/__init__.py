@@ -11,6 +11,7 @@ from .search import ROUTES as SEARCH_ROUTES
 from .singer import ROUTES as SINGER_ROUTES
 from .song import ROUTES as SONG_ROUTES
 from .songlist import ROUTES as SONGLIST_ROUTES
+from .sound_power import ROUTES as SOUND_POWER_ROUTES
 from .top import ROUTES as TOP_ROUTES
 from .user import ROUTES as USER_ROUTES
 
@@ -25,6 +26,7 @@ ROUTES: tuple[WebRoute, ...] = (
     *SINGER_ROUTES,
     *SONG_ROUTES,
     *SONGLIST_ROUTES,
+    *SOUND_POWER_ROUTES,
     *TOP_ROUTES,
     *USER_ROUTES,
 )

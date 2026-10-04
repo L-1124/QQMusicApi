@@ -14,7 +14,7 @@ device.json
 .ccb/
 docs/superpowers/
 .omo/
-
+.omp/
 # Distribution / packaging
 .Python
 build/

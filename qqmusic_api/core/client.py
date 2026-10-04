@@ -26,6 +26,7 @@ if TYPE_CHECKING:
     from ..modules.singer import SingerApi
     from ..modules.song import SongApi
     from ..modules.songlist import SonglistApi
+    from ..modules.sound_power import SoundPowerApi
     from ..modules.top import TopApi
     from ..modules.user import UserApi
 
@@ -189,6 +190,13 @@ class Client:
         from ..modules.songlist import SonglistApi
 
         return SonglistApi(self)
+
+    @cached_property
+    def sound_power(self) -> "SoundPowerApi":
+        """音响力与听歌榜模块."""
+        from ..modules.sound_power import SoundPowerApi
+
+        return SoundPowerApi(self)
 
     @cached_property
     def user(self) -> "UserApi":

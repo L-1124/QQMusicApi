@@ -14,6 +14,7 @@ from qqmusic_api.modules.search import SearchApi
 from qqmusic_api.modules.singer import SingerApi
 from qqmusic_api.modules.song import SongApi
 from qqmusic_api.modules.songlist import SonglistApi
+from qqmusic_api.modules.sound_power import SoundPowerApi
 from qqmusic_api.modules.top import TopApi
 from qqmusic_api.modules.user import UserApi
 
@@ -28,6 +29,7 @@ MODULE_TYPES: dict[str, type[ApiModule]] = {
     "singer": SingerApi,
     "song": SongApi,
     "songlist": SonglistApi,
+    "sound_power": SoundPowerApi,
     "top": TopApi,
     "user": UserApi,
 }
