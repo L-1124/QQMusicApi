@@ -1,5 +1,6 @@
 """请求版本策略中心."""
 
+import time
 from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import Enum
@@ -88,6 +89,7 @@ class VersionPolicy:
         if platform == Platform.ANDROID:
             session_uid = getattr(session, "uid", None)
             session_sid = getattr(session, "sid", None)
+            uid_part = str(credential.musicid) if credential.musicid else guid
             params = CommonParams(
                 ct=profile.ct,
                 cv=profile.cv,
@@ -97,6 +99,7 @@ class VersionPolicy:
                 authst=credential.musickey or None,
                 tmeAppID="qqmusic",
                 tmeLoginType=credential.login_type or None,
+                traceid=f"10002_{uid_part}_{int(time.time())}",
                 QIMEI36=qimei["q36"] if qimei is not None else "",
                 OpenUDID=guid,
                 udid=guid,

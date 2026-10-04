@@ -38,6 +38,7 @@ class CommonParams(BaseModel):
     # [App] Android 核心指纹
     qimei: str | None = Field(default=None, alias="QIMEI")
     qimei36: str | None = Field(default=None, alias="QIMEI36")
+    traceid: str | None = Field(default=None)
     # [App] 硬件标识
     open_udid: str | None = Field(default=None, alias="OpenUDID")
     open_udid2: str | None = Field(default=None, alias="OpenUDID2")

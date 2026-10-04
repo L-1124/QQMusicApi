@@ -516,9 +516,10 @@ async def test_prepare_batch_web_skips_qimei_and_session(cgi_executor: CgiExecut
     """测试 WEB 平台不获取 QIMEI 也不刷新 Android 会话."""
     android_session = cast("Any", cgi_executor._android_session)
     qimei = cast("Any", cgi_executor._qimei_manager)
-    await cgi_executor._prepare_batch(_batch([_cgi_request()], _scope(Platform.WEB)))
+    prepared = await cgi_executor._prepare_batch(_batch([_cgi_request()], _scope(Platform.WEB)))
     assert qimei.calls == 0
     assert android_session.calls == 0
+    assert "traceid" not in prepared.kwargs["json"]["comm"]
 
 
 async def test_prepare_batch_android_ensures_session_and_qimei(cgi_executor: CgiExecutor):
@@ -538,8 +539,19 @@ async def test_prepare_batch_android_ensures_session_and_qimei(cgi_executor: Cgi
     assert comm["udid"] == "primary_udid"
     assert comm["OpenUDID2"] == "secondary_udid"
     assert comm["phonetype"] == "A&amp;B&lt;&quot;&gt;"
+    assert comm["traceid"].startswith("10002_1_")
     assert all(isinstance(value, str) for value in comm.values())
     assert prepared.kwargs["headers"]["User-Agent"].startswith("QQMusic ")
+
+
+async def test_prepare_batch_android_traceid_unlogged(cgi_executor: CgiExecutor):
+    """测试未登录状态下 ANDROID 平台使用 guid 构造 traceid."""
+    device = await cgi_executor._device_store.get_device()
+    device.open_udid = "unlogged_guid"
+    scope = _scope(Platform.ANDROID, credential=Credential())
+    prepared = await cgi_executor._prepare_batch(_batch([_cgi_request()], scope))
+    comm = prepared.kwargs["json"]["comm"]
+    assert comm["traceid"].startswith("10002_unlogged_guid_")
 
 
 async def test_prepare_batch_web_user_agent(cgi_executor: CgiExecutor):
