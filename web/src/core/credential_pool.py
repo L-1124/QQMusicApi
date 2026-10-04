@@ -19,7 +19,7 @@ from qqmusic_api.core.engine import RequestEngine, RequestScope, ScopedRequestEx
 from qqmusic_api.modules.login import LoginApi
 
 from .config import AccountConfig
-from .credential_store import CredentialStore, credential_has_login, credential_needs_refresh
+from .credential_store import CredentialStore, credential_needs_refresh
 
 logger = logging.getLogger(__name__)
 
@@ -192,7 +192,7 @@ class CredentialPool:
         async def _check_one(musicid: int) -> None:
             async with semaphore:
                 credential = await run_sync(self._store.get, musicid)
-                if credential is None or not credential_has_login(credential):
+                if credential is None or not credential.is_valid():
                     logger.warning("启动检查: 凭证 %s 不可用, 标记为无效", musicid)
                     await run_sync(self._store.mark_invalid_row, musicid)
                     return

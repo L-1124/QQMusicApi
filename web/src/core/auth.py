@@ -9,7 +9,6 @@ from qqmusic_api import Credential, Platform
 from qqmusic_api.core.engine import RequestEngine
 
 from .credential_pool import CallerCredential, ResolvedCredential
-from .credential_store import credential_has_login
 from .deps import get_credential_config, get_credential_pool
 
 logger = logging.getLogger(__name__)
@@ -34,10 +33,9 @@ async def configured_credential_for_api(
     Returns:
         调用方 Cookie 来源的凭证, 或共享凭证池来源的凭证; 只有后者允许写回共享池.
     """
-    if credential_has_login(cookie_credential):
+    if cookie_credential.is_valid():
         logger.debug("API %s 使用 Cookie 凭证 (musicid: %s)", api_key, cookie_credential.musicid)
         return CallerCredential(credential=cookie_credential)
-
     credential_config = get_credential_config(request)
     if credential_config is None or not credential_config.api_enabled(api_key):
         logger.debug("API %s 未启用全局默认凭证或配置不存在", api_key)

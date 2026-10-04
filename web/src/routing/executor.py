@@ -24,7 +24,6 @@ from ..core.cache import (
 )
 from ..core.coalesce import Coalescer, Flight
 from ..core.credential_pool import CredentialPool, PoolCredential, ResolvedCredential
-from ..core.credential_store import credential_has_login
 from ..core.deps import get_cache_config, get_coalescer, get_credential_pool
 from ..core.error_mapping import HTTP_ERROR_MESSAGES, api_exception_status_code, is_upstream_failure
 from ..core.response import ApiResponse, error_response, success_response
@@ -235,7 +234,7 @@ async def _resolve_credential(context: RouteContext, *, strict: bool = True) -> 
         cookie_credential,
         platform=context.platform,
     )
-    if not credential_has_login(resolved.credential):
+    if not resolved.credential.is_valid():
         if strict:
             logger.error("凭证解析失败: 无有效登录凭证")
             raise HTTPException(status_code=401, detail="未提供有效的登录凭证")

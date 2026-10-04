@@ -149,7 +149,7 @@ class AccountConfig(BaseModel):
         merged.update({key: value for key, value in data.items() if key not in {"credential", "credential_json"}})
         return merged
 
-    def has_login(self) -> bool:
+    def is_valid(self) -> bool:
         """判断是否包含可用登录凭证."""
         return self.musicid > 0 and bool(self.musickey)
 

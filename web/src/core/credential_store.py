@@ -58,7 +58,7 @@ class CredentialStore:
         """同步账号种子到状态库."""
         with self._lock:
             connection = self._connect()
-            valid_accounts = [account for account in accounts if account.has_login()]
+            valid_accounts = [account for account in accounts if account.is_valid()]
             toml_ids = {account.musicid for account in valid_accounts}
 
             logger.info("同步账号种子: 总计 %d 个有效账号", len(valid_accounts))
@@ -93,7 +93,7 @@ class CredentialStore:
         credentials: list[Credential] = []
         for json_str in json_strings:
             credential = _load_credential(json_str)
-            if credential is not None and credential_has_login(credential):
+            if credential is not None and credential.is_valid():
                 credentials.append(credential)
         return credentials
 
@@ -112,7 +112,7 @@ class CredentialStore:
             logger.debug("凭证不存在: musicid %s", musicid)
             return None
         credential = _load_credential(row[0])
-        if credential is None or not credential_has_login(credential):
+        if credential is None or not credential.is_valid():
             logger.debug("凭证无效或缺少登录信息: musicid %s", musicid)
             return None
         logger.debug("凭证获取成功: musicid %s", musicid)
@@ -124,7 +124,7 @@ class CredentialStore:
         Note:
             该入口用于独立写入单行; ``sync_accounts`` 走单事务批量路径, 直接复用内部 ``_upsert``.
         """
-        if not credential_has_login(credential):
+        if not credential.is_valid():
             raise ValueError("Credential 缺少 musicid 或 musickey")
         logger.debug("写入账号种子: musicid %s", credential.musicid)
         with self._lock:
@@ -138,7 +138,7 @@ class CredentialStore:
         Returns:
             是否命中已有行; 未命中时返回 False 且不产生任何写入.
         """
-        if not credential_has_login(credential):
+        if not credential.is_valid():
             raise ValueError("Credential 缺少 musicid 或 musickey")
         with self._lock:
             connection = self._connect()
@@ -252,11 +252,6 @@ def credential_needs_refresh(credential: Credential) -> bool:
         )
         return True
     return False
-
-
-def credential_has_login(credential: Credential) -> bool:
-    """判断 Credential 是否包含可用登录凭证."""
-    return credential.musicid > 0 and bool(credential.musickey)
 
 
 def _load_credential(value: str) -> Credential | None:
