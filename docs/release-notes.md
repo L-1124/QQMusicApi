@@ -1,4 +1,64 @@
 
+## [[0.8.0](https://github.com/L-1124/QQMusicApi/compare/v0.7.3..v0.8.0)] - 2026-10-04
+
+### Bug 修复
+
+* **(core)** 修复请求分页提取器的参数克隆冲突 ([e74d00b](https://github.com/L-1124/QQMusicApi/commit/e74d00b6cc6274676adb9855902234c6a9a9fcb1)) by [@L-1124](https://github.com/L-1124)
+* **(tests)** 修复 disable_parse 移除后的测试残留并清理装饰性框线 ([39fc259](https://github.com/L-1124/QQMusicApi/commit/39fc259bdeefb3fd9f740d678a380da59e98f8da)) by [@L-1124](https://github.com/L-1124)
+* **(web)** 未捕获异常统一返回 JSON 形状的 500 响应 ([95e5ab4](https://github.com/L-1124/QQMusicApi/commit/95e5ab44c79e7503df969677e5848b5b376efafa)) by [@L-1124](https://github.com/L-1124)
+* **(web)** 屏蔽上游 5xx 异常细节并修正凭证快照的阻塞调用 ([2d384b0](https://github.com/L-1124/QQMusicApi/commit/2d384b021d0082dc2715c84884b36d29801ca342)) by [@L-1124](https://github.com/L-1124)
+* **(web)** 修复池凭证过期判定与刷新未同锁导致的重复登录 ([4426508](https://github.com/L-1124/QQMusicApi/commit/442650810e9fe43d0a646b4dfc8f76696dbb55e5)) by [@L-1124](https://github.com/L-1124)
+* **(web)** 修复调用方 Cookie 凭证被刷新并写回共享池的问题 ([4aeab21](https://github.com/L-1124/QQMusicApi/commit/4aeab216a26b873707c817457321b225a8e9d169)) by [@L-1124](https://github.com/L-1124)
+
+### 功能更新
+
+* **(core)** Android comm 参数补充注入 traceid ([84cc613](https://github.com/L-1124/QQMusicApi/commit/84cc6131a1cd44939d63edcdde5b3b554211bc88)) by [@L-1124](https://github.com/L-1124)
+* **(core)** 提升全局 Android 协议版本为 20.9.0.8 ([6ce5d7e](https://github.com/L-1124/QQMusicApi/commit/6ce5d7ef6c45cea392173c33e493d98f0f3d2913)) by [@L-1124](https://github.com/L-1124)
+* **(core)** 引入声明式 Endpoint 与无客户端网关 ([116e7fd](https://github.com/L-1124/QQMusicApi/commit/116e7fdb701f6d261ac913c3636b56f188c17ced)) by [@L-1124](https://github.com/L-1124) in [#304](https://github.com/L-1124/QQMusicApi/pull/304)
+* **(core)** 优化 comm 参数与设备标识语义 ([072011a](https://github.com/L-1124/QQMusicApi/commit/072011a5f5d9d60181148d79981701862906d6dc)) by [@L-1124](https://github.com/L-1124)
+* **(core)** 解耦设备缓存并完善并发控制 ([2eb66c4](https://github.com/L-1124/QQMusicApi/commit/2eb66c4c1651d6f525015c8c4bf6cb72e963c814)) by [@L-1124](https://github.com/L-1124)
+* **(core)** [**breaking**] 引入统一请求内核与显式流式读取 ([bc09d1c](https://github.com/L-1124/QQMusicApi/commit/bc09d1c60b1ffb093255938d63fa5a197af9939f)) by [@L-1124](https://github.com/L-1124) in [#303](https://github.com/L-1124/QQMusicApi/pull/303)
+* **(device)** 完善 Android 设备档案生成 ([4c67b50](https://github.com/L-1124/QQMusicApi/commit/4c67b50bfd4a03fde786e63b4fef0a587f3f4d12)) by [@L-1124](https://github.com/L-1124)
+* **(device)** 优化设备生成与 QIMEI 参数 ([f207f82](https://github.com/L-1124/QQMusicApi/commit/f207f8281e63da2b4fac4391dd7dbe10c527d68d)) by [@L-1124](https://github.com/L-1124)
+* **(sound_power)** 新增音响力与听歌榜模块及 Web 路由 ([514fc3f](https://github.com/L-1124/QQMusicApi/commit/514fc3f4f1357d0b73d95f6fd37f65ec9b6d86b7)) by [@L-1124](https://github.com/L-1124)
+* **(web)** 缓存未命中引入请求合并与上游失败标记熔断 ([807421d](https://github.com/L-1124/QQMusicApi/commit/807421db284db78e034d3abb1948228462d7d6e5)) by [@L-1124](https://github.com/L-1124)
+
+### 功能重构
+
+* **(album)** 迁移 AlbumApi 端点至 @cgi_endpoint 并更新 Web 路由 ([7522cea](https://github.com/L-1124/QQMusicApi/commit/7522ceadc69c4be3a3aa188b45f9f3d752109797)) by [@L-1124](https://github.com/L-1124)
+* **(comment)** 迁移 CommentApi 端点至 @cgi_endpoint 并更新 Web 路由 ([1565743](https://github.com/L-1124/QQMusicApi/commit/1565743030dc6bed7c2574ffc37ecb4aec93a919)) by [@L-1124](https://github.com/L-1124)
+* **(core)** 让 CgiRequestData.param 默认为空字典并移除冗余空参数 ([55f7b01](https://github.com/L-1124/QQMusicApi/commit/55f7b014ea4b118d2520278db8ffda900a871bf2)) by [@L-1124](https://github.com/L-1124)
+* **(core)** 彻底移除 disable_parse 选项并更新端点声明范式文档 ([5cf1a06](https://github.com/L-1124/QQMusicApi/commit/5cf1a0645f7fec6523ec05a725ab1ef161d577d1)) by [@L-1124](https://github.com/L-1124)
+* **(core)** 彻底分离端点元数据与运行期覆盖契约 ([46a1a2e](https://github.com/L-1124/QQMusicApi/commit/46a1a2e143698bbf77e3c8b318ff334c491f4755)) by [@L-1124](https://github.com/L-1124)
+* **(core)** 为端点装饰器增加分页类型重载与通用契约校验 ([f443e65](https://github.com/L-1124/QQMusicApi/commit/f443e6561ff5331d7023d2b538a9ace9dd1e8d6e)) by [@L-1124](https://github.com/L-1124)
+* **(lyric)** 迁移 LyricApi 端点至 @cgi_endpoint 并更新 Web 路由 ([e12ae87](https://github.com/L-1124/QQMusicApi/commit/e12ae875b1170d3eb7fbcf7724a801439807166f)) by [@L-1124](https://github.com/L-1124)
+* **(modules)** 为各模块端点声明 item_type 与 pager 契约并清理测试 ([8308052](https://github.com/L-1124/QQMusicApi/commit/8308052cfeee23c8bb78425d28d0bc6d997d8375)) by [@L-1124](https://github.com/L-1124)
+* **(mv)** 迁移 MvApi 端点至 @cgi_endpoint 并更新 Web 路由 ([d2e383c](https://github.com/L-1124/QQMusicApi/commit/d2e383cbcb8e304931afc04bf76167cce365cc1d)) by [@L-1124](https://github.com/L-1124)
+* **(recommend)** 迁移 RecommendApi 端点至 @cgi_endpoint 并更新 Web 路由 ([b97c043](https://github.com/L-1124/QQMusicApi/commit/b97c0436907e51a3ca489797e95f37de53cb1dde)) by [@L-1124](https://github.com/L-1124)
+* **(search)** 迁移 SearchApi 端点至 @cgi_endpoint 并更新 Web 路由 ([25fe3eb](https://github.com/L-1124/QQMusicApi/commit/25fe3ebeac8f65119d7b5ab3bc3f3e681c4a1b01)) by [@L-1124](https://github.com/L-1124)
+* **(singer)** [**breaking**] 移除 get_name_special_display 并合并至 get_info ([e293aa3](https://github.com/L-1124/QQMusicApi/commit/e293aa320f316ae9e654f90503c8a4b9186b0b91)) by [@L-1124](https://github.com/L-1124)
+* **(singer)** 迁移 SingerApi 端点至 @cgi_endpoint 并更新 Web 路由 ([79af270](https://github.com/L-1124/QQMusicApi/commit/79af2704002f53f29024eb0aabd82d9917b798d4)) by [@L-1124](https://github.com/L-1124)
+* **(song)** 迁移 SongApi 端点至 @cgi_endpoint 并更新 Web 路由 ([8c08868](https://github.com/L-1124/QQMusicApi/commit/8c08868cd72c633ac023635fcf4f28c58a25576d)) by [@L-1124](https://github.com/L-1124)
+* **(songlist)** 迁移 SonglistApi 端点至 @cgi_endpoint 并更新 Web 路由 ([ba50d18](https://github.com/L-1124/QQMusicApi/commit/ba50d1864e69d91e6ce896cf47085745e93bed7a)) by [@L-1124](https://github.com/L-1124)
+* **(top)** 迁移 TopApi 端点至 @cgi_endpoint 并更新 Web 路由 ([e2a1fee](https://github.com/L-1124/QQMusicApi/commit/e2a1fee9c7a3d5193a3b2a37b6f6b4a6bf5348de)) by [@L-1124](https://github.com/L-1124)
+* **(user)** 迁移 UserApi 端点至 @cgi_endpoint 并更新 Web 路由 ([49921f6](https://github.com/L-1124/QQMusicApi/commit/49921f600cb9ede33990bffa1d85ef502c985896)) by [@L-1124](https://github.com/L-1124)
+* **(web)** [**breaking**] 优化 web 端参数声明，减少冗余 ([ba95861](https://github.com/L-1124/QQMusicApi/commit/ba95861ee9391f5b5f60f89caa8d4de4af160c8b)) by [@L-1124](https://github.com/L-1124)
+* **(web)** 在路由注册器中增加 Web 模块白名单校验 ([9b0bc65](https://github.com/L-1124/QQMusicApi/commit/9b0bc6590ab597db25b5da378298dfd2a6817881)) by [@L-1124](https://github.com/L-1124)
+
+### 性能优化
+
+* **(qimei)** 优化设备特征计算与静态参数缓存 ([e19fdf2](https://github.com/L-1124/QQMusicApi/commit/e19fdf2f2e8f25a2b3bb24c03b7db16b90a832f6)) by [@L-1124](https://github.com/L-1124)
+
+### 文档更新
+
+* **(coding)** 补充声明式端点撰写指南并更新架构概览与调用流程 ([866bffb](https://github.com/L-1124/QQMusicApi/commit/866bffb6b20ef37ba81b36c7476164f9a8b8e556)) by [@L-1124](https://github.com/L-1124)
+* **(examples)** 新增音响力查询与听歌时长上报示例 ([a408059](https://github.com/L-1124/QQMusicApi/commit/a40805982fd53c2db45db1e878aa9ab6934141af)) by [@L-1124](https://github.com/L-1124)
+
+### 贡献者
+
+* @L-1124
+* @github-actions[bot]
+
 ## [[0.7.3](https://github.com/L-1124/QQMusicApi/compare/v0.7.2..v0.7.3)] - 2026-09-13
 
 ### Bug 修复
