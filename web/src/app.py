@@ -8,6 +8,7 @@ from time import perf_counter
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -241,6 +242,7 @@ def create_app() -> FastAPI:
         return error_response(
             status_code=422,
             msg="请求参数校验失败",
+            data={"errors": jsonable_encoder(exc.errors())},
         )
 
     @app.get("/", include_in_schema=False)

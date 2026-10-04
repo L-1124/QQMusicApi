@@ -1,6 +1,6 @@
 """Web API 标准响应结构."""
 
-from typing import Generic, TypeVar
+from typing import Any, Generic, TypeVar
 
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
@@ -21,6 +21,7 @@ class ErrorResponse(BaseModel):
 
     code: int = Field(default=-1, description="状态码, 错误时为 -1.")
     msg: str = Field(description="错误说明.")
+    data: Any = Field(default=None, description="错误详情 (如参数校验失败明细), 无详情时为 null.")
 
 
 def success_response(data: T) -> ApiResponse[T]:
@@ -32,7 +33,12 @@ def error_response(
     *,
     status_code: int,
     msg: str,
+    data: Any = None,
     headers: dict[str, str] | None = None,
 ) -> JSONResponse:
     """构造标准错误响应."""
-    return JSONResponse(status_code=status_code, content=ErrorResponse(msg=msg).model_dump(), headers=headers)
+    return JSONResponse(
+        status_code=status_code,
+        content=ErrorResponse(msg=msg, data=data).model_dump(exclude_none=True),
+        headers=headers,
+    )
