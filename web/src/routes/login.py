@@ -8,7 +8,7 @@ from ..modules.login import (
     QRCodeStatusData,
     WebQRLoginType,
 )
-from ..routing.route_types import AuthPolicy, WebRoute
+from ..routing.route_types import AuthPolicy, HttpMethod, WebRoute
 from ._helpers import P, Q, R
 
 ROUTES: tuple[WebRoute, ...] = (
@@ -48,6 +48,7 @@ ROUTES: tuple[WebRoute, ...] = (
         "phone_authcode",
         "/login/phone/authcode",
         PhoneAuthCodeData,
+        methods=(HttpMethod.POST,),
         params=(
             Q("phone", int | None, None, "明文手机号."),
             Q("encrypted_phone", str | None, None, "加密手机号."),
@@ -59,6 +60,7 @@ ROUTES: tuple[WebRoute, ...] = (
         "phone_authorize",
         "/login/phone/authorize",
         Credential,
+        methods=(HttpMethod.POST,),
         params=(
             Q("auth_code", str, description="短信验证码 (字符串, 保留前导零)."),
             Q("phone", int | None, None, "明文手机号."),
