@@ -40,7 +40,7 @@ asyncio.run(main())
 
 ## 单次请求覆盖
 
-如果你不想把凭证绑定到整个 `Client`，需要 `Crential` 的接口都支持使用 `credential` 参数进行单次请求覆盖。
+如果你不想把凭证绑定到整个 `Client`，需要登录态的接口都支持使用 `credential` 参数进行单次请求覆盖。
 
 ```python
 import asyncio
@@ -76,7 +76,7 @@ async def main() -> None:
             refresh_token="xxx",
             access_token="xxx",
         )
-        await credential.refresh(client)
+        credential = await client.login.refresh_credential(credential)
         print(credential.musicid, credential.musickey)
 
 asyncio.run(main())

@@ -1,11 +1,11 @@
-# Web 服务
+# QQMusic API Web 服务
 
 Web 服务将 QQMusicApi 暴露为 HTTP API。
 
 ## 1. 安装
 
 ```bash
-git clone https://github.com/luren-dc/QQMusicApi
+git clone https://github.com/L-1124/QQMusicApi
 cd QQMusicApi
 uv sync --group web
 ```
@@ -15,12 +15,12 @@ uv sync --group web
 ## 2. 启动服务
 
 ```bash
-uv run python web/run.py
+uv run --no-sync web/run.py
 ```
 
 ## 3. 查看 API 文档
 
-打开 [http://localhost:8000/docs](http://localhost:8000/docs) 可以查看所有可用接口。
+默认监听 `127.0.0.1:8080`。打开 [http://localhost:8080/docs](http://localhost:8080/docs) 可以查看所有可用接口，Swagger UI 与 ReDoc 分别位于 `/swagger` 与 `/redoc`。
 
 ## 4. 认证方式
 
