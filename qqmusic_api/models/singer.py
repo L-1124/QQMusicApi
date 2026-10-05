@@ -524,6 +524,18 @@ class SingerAlbumListResponse(Response):
     album_list: Annotated[list[AlbumBrief], NoneToEmptyList] = Field(default_factory=list, validation_alias="albumList")
 
 
+class SingerMvTagResponse(Response):
+    """歌手 MV 分类标签响应.
+
+    Attributes:
+        tags: MV 分类标签列表.
+    """
+
+    tags: Annotated[list[TagOption], NoneToEmptyList] = Field(
+        default_factory=list, json_schema_extra={"jsonpath": "$.list[*]"}
+    )
+
+
 class SingerMvListResponse(Response):
     """歌手 MV 列表响应.
 
