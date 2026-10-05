@@ -1,9 +1,9 @@
 """歌手相关 API."""
 
 from enum import Enum, IntEnum
-from typing import cast
+from typing import Any, Literal, TypedDict, cast, overload
 
-from ..core import Platform
+from ..core import PaginatedCgiRequest, Platform
 from ..core.endpoint import CgiRequestData, cgi_endpoint
 from ..core.pagination import (
     MultiFieldContinuationStrategy,
@@ -135,6 +135,30 @@ class IndexType(IntEnum):
     HASH = 27
 
 
+class AlbumExtension(TypedDict):
+    """专辑 Tab 扩展参数.
+
+    Attributes:
+        IsNeedFilterType: 是否下发分类筛选列表.
+        FilterType: 分类筛选值.
+    """
+
+    IsNeedFilterType: int
+    FilterType: int
+
+
+class VideoExtension(TypedDict):
+    """视频 Tab 扩展参数.
+
+    Attributes:
+        TagID: 视频标签筛选值.
+        IsNeedTagList: 是否下发标签列表.
+    """
+
+    TagID: int
+    IsNeedTagList: int
+
+
 class SingerApi(ApiModule):
     """歌手相关 API."""
 
@@ -235,6 +259,38 @@ class SingerApi(ApiModule):
             param={"SingerMid": mid},
         )
 
+    @overload
+    def get_tab_detail(
+        self,
+        mid: str,
+        tab_type: Literal[TabType.VIDEO],
+        page: int = 1,
+        num: int = 10,
+        order: OrderType | int = OrderType.LATEST,
+        extension: VideoExtension | None = None,
+    ) -> PaginatedCgiRequest[HomepageTabDetailResponse]: ...
+
+    @overload
+    def get_tab_detail(
+        self,
+        mid: str,
+        tab_type: Literal[TabType.ALBUM],
+        page: int = 1,
+        num: int = 10,
+        order: OrderType | int = OrderType.LATEST,
+        extension: AlbumExtension | None = None,
+    ) -> PaginatedCgiRequest[HomepageTabDetailResponse]: ...
+
+    @overload
+    def get_tab_detail(
+        self,
+        mid: str,
+        tab_type: TabType,
+        page: int = 1,
+        num: int = 10,
+        order: OrderType | int = OrderType.LATEST,
+    ) -> PaginatedCgiRequest[HomepageTabDetailResponse]: ...
+
     @cgi_endpoint(
         key="singer.get_tab_detail",
         module="music.UnifiedHomepage.UnifiedHomepageSrv",
@@ -249,6 +305,7 @@ class SingerApi(ApiModule):
         page: int = 1,
         num: int = 10,
         order: OrderType | int = OrderType.LATEST,
+        extension: VideoExtension | AlbumExtension | None = None,
     ) -> CgiRequestData:
         """获取歌手主页特定 Tab 的详情原始数据.
 
@@ -258,16 +315,20 @@ class SingerApi(ApiModule):
             page: 页码.
             num: 返回数量.
             order: 排序方式 (最新 / 最热).
+            extension: Tab 请求扩展参数.
         """
+        param: dict[str, Any] = {
+            "SingerMid": mid,
+            "IsQueryTabDetail": 1,
+            "TabID": tab_type.tab_id,
+            "PageNum": page - 1,
+            "PageSize": num,
+            "Order": int(order),
+        }
+        if extension:
+            param[tab_type.value[1].replace("Tab", "") + "Extension"] = extension
         return CgiRequestData(
-            param={
-                "SingerMid": mid,
-                "IsQueryTabDetail": 1,
-                "TabID": tab_type.tab_id,
-                "PageNum": page - 1,
-                "PageSize": num,
-                "Order": int(order),
-            },
+            param=param,
             pager_strategy=PageStrategy[HomepageTabDetailResponse](
                 page_key="PageNum",
                 page_size=num,

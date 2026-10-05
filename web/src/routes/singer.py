@@ -70,6 +70,14 @@ ROUTES: tuple[WebRoute, ...] = (
     R(
         SingerApi.get_tab_detail,
         "/singer/{mid}/tabs/{tab_type}",
+        params=(
+            Q(
+                "extension",
+                dict | None,
+                None,
+                description='Tab 请求扩展参数, 以 JSON 字符串传入 (如 {"IsNeedFilterType": 1, "FilterType": 2}).',
+            ),
+        ),
         cache=PUBLIC_600,
     ),
 )

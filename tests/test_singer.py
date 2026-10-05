@@ -82,8 +82,7 @@ async def test_get_tab_detail_song(client: Client) -> None:
         page=1,
         num=10,
     )
-    assert result.song_tab is not None
-    assert result.song_tab
+    assert result.song_tab.songs
 
 
 async def test_get_tab_detail_song_with_order(client: Client) -> None:
@@ -95,7 +94,7 @@ async def test_get_tab_detail_song_with_order(client: Client) -> None:
         num=5,
         order=1,
     )
-    assert result.song_tab
+    assert result.song_tab.songs
     assert result.order == 1
 
 
@@ -107,8 +106,21 @@ async def test_get_tab_detail_album(client: Client) -> None:
         page=1,
         num=10,
     )
-    assert result.album_tab is not None
-    assert result.album_tab
+    assert result.album_tab.albums
+    assert result.album_tab.type_list.default_id == 0
+
+
+async def test_get_tab_detail_album_with_filter(client: Client) -> None:
+    """测试携带分类筛选参数获取歌手专辑 Tab, 服务端返回筛选列表."""
+    result = await client.singer.get_tab_detail(
+        mid="000GGDys0yA0Nk",
+        tab_type=TabType.ALBUM,
+        page=1,
+        num=5,
+        extension={"IsNeedFilterType": 1, "FilterType": 2},
+    )
+    assert result.album_tab.type_list.items
+    assert {item.id for item in result.album_tab.type_list.items} == {0, 1, 2, 3, 4}
 
 
 async def test_get_tab_detail_video(client: Client) -> None:
@@ -119,8 +131,19 @@ async def test_get_tab_detail_video(client: Client) -> None:
         page=1,
         num=10,
     )
-    assert result.video_tab is not None
-    assert result.video_tab
+    assert result.video_tab.videos
+
+
+async def test_get_tab_detail_video_with_tag(client: Client) -> None:
+    """测试携带标签参数获取歌手视频 Tab, 服务端返回标签列表."""
+    result = await client.singer.get_tab_detail(
+        mid="000GGDys0yA0Nk",
+        tab_type=TabType.VIDEO,
+        page=1,
+        num=5,
+        extension={"TagID": 0, "IsNeedTagList": 1},
+    )
+    assert result.video_tab.tag_list
 
 
 async def test_get_desc(client: Client) -> None:
