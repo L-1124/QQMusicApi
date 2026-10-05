@@ -86,6 +86,19 @@ async def test_get_tab_detail_song(client: Client) -> None:
     assert result.song_tab
 
 
+async def test_get_tab_detail_song_with_order(client: Client) -> None:
+    """测试使用排序参数获取歌手歌曲 Tab 模型."""
+    result = await client.singer.get_tab_detail(
+        mid="0025NhlN2yWrP4",
+        tab_type=TabType.SONG,
+        page=1,
+        num=5,
+        order=1,
+    )
+    assert result.song_tab
+    assert result.order == 1
+
+
 async def test_get_tab_detail_album(client: Client) -> None:
     """测试获取歌手专辑 Tab 详情模型."""
     result = await client.singer.get_tab_detail(
@@ -149,6 +162,7 @@ async def test_get_songs_list_with_params(client: Client) -> None:
         mid="0025NhlN2yWrP4",
         num=10,
         page=2,
+        order=1,
     )
     assert result.song_list
     assert len(result.song_list) <= result.total_num
@@ -167,6 +181,7 @@ async def test_get_album_list_with_params(client: Client) -> None:
         mid="0025NhlN2yWrP4",
         num=10,
         page=2,
+        order=1,
     )
     assert result.album_list
 

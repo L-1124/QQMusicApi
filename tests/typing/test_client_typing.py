@@ -35,7 +35,7 @@ from qqmusic_api.models.songlist import GetSonglistDetailResponse
 from qqmusic_api.models.top import TopDetailResponse
 from qqmusic_api.models.user import DislikeListData, RelationUser, UserRelationListResponse
 from qqmusic_api.modules.search import SearchType
-from qqmusic_api.modules.singer import TabType
+from qqmusic_api.modules.singer import OrderType, TabType
 from qqmusic_api.modules.song import SongFileInfo
 
 pytestmark = pytest.mark.core
@@ -105,11 +105,15 @@ def test_client_facade_pure_paginated_types():
     tab_req = client.singer.get_tab_detail("001BLpXF2DyJe2", TabType.SONG)
     assert_type(tab_req, PaginatedCgiRequest[HomepageTabDetailResponse])
 
+    tab_song_req = client.singer.get_tab_detail("001BLpXF2DyJe2", TabType.SONG, order=OrderType.HOT)
+    assert_type(tab_song_req, PaginatedCgiRequest[HomepageTabDetailResponse])
+
+    tab_album_req = client.singer.get_tab_detail("001BLpXF2DyJe2", TabType.ALBUM, order=OrderType.LATEST)
+    assert_type(tab_album_req, PaginatedCgiRequest[HomepageTabDetailResponse])
     tab_annotated: PaginatedCgiRequest[HomepageTabDetailResponse] = client.singer.get_tab_detail(
-        "001BLpXF2DyJe2", TabType.SONG
+        "001BLpXF2DyJe2", TabType.SONG, order=0
     )
     assert_type(tab_annotated, PaginatedCgiRequest[HomepageTabDetailResponse])
-
     general_req = client.search.general_search("周杰伦")
     assert_type(general_req, PaginatedCgiRequest[GeneralSearchResponse])
 
