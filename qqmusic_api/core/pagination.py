@@ -334,6 +334,7 @@ class MultiFieldContinuationStrategy(PagerStrategy[T_Resp_contra], Generic[T_Res
         self.count_extractor = count_extractor
         self.page_size = page_size
         self.context_name = context_name
+        self._cached_next_params: PaginationParams | None = None
 
     def _build_next_params_candidate(
         self, params: PaginationParams, response: T_Resp_contra
@@ -359,10 +360,18 @@ class MultiFieldContinuationStrategy(PagerStrategy[T_Resp_contra], Generic[T_Res
                 if (self.page_size is not None and count < self.page_size) or count == 0:
                     return False
 
-        return self._build_next_params_candidate(params, response) is not None
+        self._cached_next_params = self._build_next_params_candidate(params, response)
+        return self._cached_next_params is not None
 
     def next_params(self, params: PaginationParams, response: T_Resp_contra) -> PaginationParams:
-        """获取下一页的请求参数."""
+        """获取下一页的请求参数.
+
+        复用 `has_next` 阶段缓存的构建结果, 避免 build_next_params 被重复调用.
+        缓存未命中时 (如直接调用 next_params) 才重新构建.
+        """
+        if self._cached_next_params is not None:
+            cached, self._cached_next_params = self._cached_next_params, None
+            return cached
         return self._resolve_next_params(params, response)
 
 
@@ -399,17 +408,22 @@ class ItemPaginatedRequestProtocol(PaginatedRequestProtocol[RequestResultT], Pro
 class AsyncPager(Generic[RequestResultT]):
     """有状态异步分页器."""
 
+    DEFAULT_LIMIT = 100
+
     def __init__(
         self,
         initial_request: "PaginatedRequestProtocol[RequestResultT]",
-        limit: int | None = None,
+        limit: int | None = DEFAULT_LIMIT,
     ) -> None:
         """初始化异步分页器.
 
         Args:
             initial_request: 初始翻页请求描述符.
-            limit: 最大可拉取页数限制.
+            limit: 最大可拉取页数限制. 防止配置错误的策略无限拉取.
+                设为 None 可关闭限制 (不推荐). 默认 100.
         """
+        if limit is not None and limit <= 0:
+            raise ValueError("limit 必须为正整数")
         self._initial_request = initial_request
         self._current_request: PaginatedRequestProtocol[RequestResultT] | None = initial_request
         self._limit = limit

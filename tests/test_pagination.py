@@ -363,10 +363,8 @@ async def test_async_pager_first_next_and_page_limit():
     with pytest.raises(StopAsyncIteration):
         await pager.next()
 
-    pager_zero = req.pager(limit=0)
-    assert pager_zero.has_more() is False
-    with pytest.raises(StopAsyncIteration):
-        await pager_zero.first()
+    with pytest.raises(ValueError, match="limit 必须为正整数"):
+        req.pager(limit=0)
 
 
 @pytest.mark.parametrize(
