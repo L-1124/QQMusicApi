@@ -1,4 +1,27 @@
 
+## [[0.8.2](https://github.com/L-1124/QQMusicApi/compare/v0.8.1..v0.8.2)] - 2026-10-05
+
+### Dep-bump
+
+* **(deps)** update dependencies via uv lock --upgrade ([70723ae](https://github.com/L-1124/QQMusicApi/commit/70723ae35e744c6aa190d10b79bf661ca66c5cdf)) by [@L-1124](https://github.com/L-1124)
+
+### 功能更新
+
+* **(singer)** 歌手主页 Tab 接口支持专辑分类筛选与视频标签扩展参数 ([e36aa2c](https://github.com/L-1124/QQMusicApi/commit/e36aa2c23ac9ed1731505f21dd56283b6bf874f8)) by [@L-1124](https://github.com/L-1124)
+* **(singer)** 歌手歌曲、专辑、MV 及主页 Tab 接口支持排序参数 ([182da5f](https://github.com/L-1124/QQMusicApi/commit/182da5f88060bdf3e9f5c70ce57b0a969bf61819)) by [@L-1124](https://github.com/L-1124)
+
+### 功能重构
+
+* **(singer)** 结构化歌手主页 Tab 响应模型 ([399efda](https://github.com/L-1124/QQMusicApi/commit/399efda9b1e1b667172066d25135573d3b21117e)) by [@L-1124](https://github.com/L-1124)
+* **(web)** 收敛纯转发路由至 endpoint 形式 ([d28a46f](https://github.com/L-1124/QQMusicApi/commit/d28a46f39431456375cf439b47d54c695ac7eee8)) by [@L-1124](https://github.com/L-1124)
+* **(web)** 清理路由 DSL 死代码与冗余 overload ([557892d](https://github.com/L-1124/QQMusicApi/commit/557892d3a719c161944989f6e4785cc3dc76a754)) by [@L-1124](https://github.com/L-1124)
+* **(web)** 移除 loguru 依赖与自定义访问日志中间件 ([ed153ed](https://github.com/L-1124/QQMusicApi/commit/ed153edb4c5c2d34a9aed94b6a4bb81b87425061)) by [@L-1124](https://github.com/L-1124)
+
+### 贡献者
+
+* @L-1124
+* @github-actions[bot]
+
 ## [[0.8.1](https://github.com/L-1124/QQMusicApi/compare/v0.8.0..v0.8.1)] - 2026-10-04
 
 ### Bug 修复
