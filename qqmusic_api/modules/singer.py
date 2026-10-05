@@ -21,6 +21,7 @@ from ..models.singer import (
     SingerDetailResponse,
     SingerIndexPageResponse,
     SingerMvListResponse,
+    SingerMvTagResponse,
     SingerSongListResponse,
     SingerTypeListResponse,
     VideoBrief,
@@ -100,6 +101,19 @@ class OrderType(IntEnum):
 
     LATEST = 0
     HOT = 1
+
+
+class AlbumFilterType(IntEnum):
+    """专辑分类筛选类型.
+
+    + STUDIO: 录音室专辑 (0)
+    + LIVE: 现场专辑 (1)
+    + EP: EP (11)
+    """
+
+    STUDIO = 0
+    LIVE = 1
+    EP = 11
 
 
 class IndexType(IntEnum):
@@ -437,6 +451,7 @@ class SingerApi(ApiModule):
         num: int = 10,
         page: int = 1,
         order: OrderType | int = OrderType.HOT,
+        filter_type: AlbumFilterType | int | None = None,
     ) -> CgiRequestData:
         """获取歌手的专辑列表.
 
@@ -445,9 +460,13 @@ class SingerApi(ApiModule):
             num: 返回专辑数量.
             page: 分页页码.
             order: 排序方式.
+            filter_type: 专辑分类筛选 (types, 值域见 AlbumFilterType).
         """
+        param: dict[str, Any] = {"singerMid": mid, "order": int(order), "number": num, "begin": (page - 1) * num}
+        if filter_type is not None:
+            param["types"] = [int(filter_type)]
         return CgiRequestData(
-            param={"singerMid": mid, "order": int(order), "number": num, "begin": (page - 1) * num},
+            param=param,
             pager_strategy=OffsetStrategy[SingerAlbumListResponse](
                 offset_key="begin",
                 page_size_key="number",
@@ -456,6 +475,20 @@ class SingerApi(ApiModule):
             ),
             items_extractor=lambda r: r.album_list,
         )
+
+    @cgi_endpoint(
+        key="singer.get_mv_tag",
+        module="MvService.MvInfoProServer",
+        method="GetSingerMvTag",
+        response_model=SingerMvTagResponse,
+    )
+    def get_mv_tag(self, mid: str) -> CgiRequestData:
+        """获取歌手 MV 分类标签列表.
+
+        Args:
+            mid: 歌手 MID.
+        """
+        return CgiRequestData(param={"singermid": mid})
 
     @cgi_endpoint(
         key="singer.get_mv_list",
@@ -470,6 +503,7 @@ class SingerApi(ApiModule):
         num: int = 10,
         page: int = 1,
         order: OrderType | int = OrderType.HOT,
+        tag_id: int | None = None,
     ) -> CgiRequestData:
         """获取歌手 MV 列表数据.
 
@@ -478,9 +512,13 @@ class SingerApi(ApiModule):
             num: 返回数量.
             page: 分页页码.
             order: 排序方式.
+            tag_id: MV 分类筛选.
         """
+        param: dict[str, Any] = {"singermid": mid, "order": int(order), "count": num, "start": (page - 1) * num}
+        if tag_id is not None:
+            param["tagid"] = tag_id
         return CgiRequestData(
-            param={"singermid": mid, "order": order, "count": num, "start": (page - 1) * num},
+            param=param,
             pager_strategy=OffsetStrategy[SingerMvListResponse](
                 offset_key="start",
                 page_size_key="count",
