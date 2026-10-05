@@ -234,6 +234,74 @@ class VideoBrief(MV):
     icon_type: int = 0
 
 
+class TabFilterItem(Response):
+    """Tab 筛选条目 (专辑类型 / 视频标签).
+
+    Attributes:
+        id: 筛选项 ID.
+        title: 筛选项名称.
+    """
+
+    id: int = Field(default=-1, validation_alias=AliasChoices("ID", "id"))
+    title: str = Field(default="", validation_alias=AliasChoices("Title", "name"))
+
+
+class TabFilterList(Response):
+    """服务端下发的 Tab 筛选列表.
+
+    Attributes:
+        default_id: 默认选中项 ID.
+        items: 筛选项列表.
+    """
+
+    default_id: int = Field(default=0, validation_alias="DefaultID")
+    items: Annotated[list[TabFilterItem], NoneToEmptyList] = Field(default_factory=list, validation_alias="ItemList")
+
+
+class SongTabInfo(Response):
+    """歌曲 Tab 内容.
+
+    Attributes:
+        songs: 歌曲列表.
+        tag_info_list: 歌曲标签信息列表 (客户端原样透传).
+    """
+
+    songs: Annotated[list[Song], NoneToEmptyList] = Field(
+        default_factory=list, json_schema_extra={"jsonpath": "$.List[*]"}
+    )
+    tag_info_list: Annotated[list[dict[str, Any]], NoneToEmptyList] = Field(
+        default_factory=list, validation_alias="SongTagInfoList"
+    )
+
+
+class AlbumTabInfo(Response):
+    """专辑 Tab 内容.
+
+    Attributes:
+        type_list: 服务端下发的专辑分类筛选列表.
+        albums: 专辑列表.
+    """
+
+    type_list: TabFilterList = Field(default_factory=TabFilterList, validation_alias="TypeList")
+    albums: Annotated[list[AlbumBrief], NoneToEmptyList] = Field(
+        default_factory=list, json_schema_extra={"jsonpath": "$.AlbumList[*]"}
+    )
+
+
+class VideoTabInfo(Response):
+    """视频 Tab 内容.
+
+    Attributes:
+        videos: 视频列表.
+        tag_list: 服务端下发的视频标签筛选列表.
+    """
+
+    videos: Annotated[list[VideoBrief], NoneToEmptyList] = Field(
+        default_factory=list, json_schema_extra={"jsonpath": "$.VideoList[*]"}
+    )
+    tag_list: Annotated[list[TabFilterItem], NoneToEmptyList] = Field(default_factory=list, validation_alias="TagList")
+
+
 class HomepageTabDetailResponse(Response):
     """歌手主页标签详情响应.
 
@@ -241,12 +309,12 @@ class HomepageTabDetailResponse(Response):
         tab_id: 当前标签页 ID.
         has_more: 是否还有更多结果.
         need_show_tab: 是否需要展示标签.
-        order: 排序值.
+        order: 服务端归一化后的排序值.
         tab_list: 标签页元信息列表.
-        introduction_tab: 简介标签内容.
-        song_tab: 歌曲标签内容.
-        album_tab: 专辑标签内容.
-        video_tab: 视频标签内容.
+        song_tab: 歌曲 Tab 内容.
+        album_tab: 专辑 Tab 内容.
+        video_tab: 视频 Tab 内容.
+        introduction_tab: 简介 Tab 内容.
     """
 
     tab_id: str = Field(default="", validation_alias="TabID")
@@ -254,18 +322,12 @@ class HomepageTabDetailResponse(Response):
     need_show_tab: int = Field(default=0, validation_alias="NeedShowTab")
     order: int = Field(default=0, validation_alias="Order")
     tab_list: Annotated[list[TabMeta], NoneToEmptyList] = Field(default_factory=list, validation_alias="TabList")
+    song_tab: SongTabInfo = Field(default_factory=SongTabInfo, validation_alias="SongTab")
+    album_tab: AlbumTabInfo = Field(default_factory=AlbumTabInfo, validation_alias="AlbumTab")
+    video_tab: VideoTabInfo = Field(default_factory=VideoTabInfo, validation_alias="VideoTab")
     introduction_tab: Annotated[list[dict[str, Any]], NoneToEmptyList] = Field(
         default_factory=list,
         json_schema_extra={"jsonpath": "$.IntroductionTab.List"},
-    )
-    song_tab: Annotated[list[Song], NoneToEmptyList] = Field(
-        default_factory=list, json_schema_extra={"jsonpath": "$.SongTab.List[*]"}
-    )
-    album_tab: Annotated[list[AlbumBrief], NoneToEmptyList] = Field(
-        default_factory=list, json_schema_extra={"jsonpath": "$.AlbumTab.AlbumList[*]"}
-    )
-    video_tab: Annotated[list[VideoBrief], NoneToEmptyList] = Field(
-        default_factory=list, json_schema_extra={"jsonpath": "$.VideoTab.VideoList[*]"}
     )
 
 
