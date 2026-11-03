@@ -83,3 +83,19 @@ async def test_like_song_roundtrip(authenticated_client: Client) -> None:
     song = (await authenticated_client.recommend.get_recommend_newsong(type=1)).songs[0]
     assert await authenticated_client.songlist.like_song([(song.id, song.type)])
     assert await authenticated_client.songlist.unlike_song([(song.id, song.type)])
+
+
+async def test_add_del_songs_roundtrip(authenticated_client: Client) -> None:
+    """测试在临时歌单中添加与删除歌曲后读回结果一致."""
+    songs = (await authenticated_client.recommend.get_recommend_newsong(type=1)).songs[:2]
+    song_info = [(s.id, s.type) for s in songs]
+    created = await authenticated_client.songlist.create("pytest-add-del")
+    try:
+        assert await authenticated_client.songlist.add_songs(created.dirid, song_info, tid=created.id)
+        added = await authenticated_client.songlist.get_detail(created.id, dirid=created.dirid, num=10)
+        assert {s.id for s in added.songs} == {s.id for s in songs}
+        assert await authenticated_client.songlist.del_songs(created.dirid, song_info, tid=created.id)
+        deleted = await authenticated_client.songlist.get_detail(created.id, dirid=created.dirid, num=10)
+        assert deleted.total == 0
+    finally:
+        await authenticated_client.songlist.delete(created.dirid)
