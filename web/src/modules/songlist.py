@@ -39,3 +39,16 @@ async def del_songs_adapter(context: RouteContext):
         tid=context.params["tid"],
         credential=context.credential,
     )
+
+
+@adapter("songlist", "reorder_songs")
+async def reorder_songs_adapter(context: RouteContext):
+    """按给定顺序重排歌单中的歌曲."""
+    return await context.execute_module(
+        SonglistApi,
+        SonglistApi.reorder_songs,
+        dirid=context.params["dirid"],
+        song_info=_song_info_tuples(context.params["song_id"], context.params["song_type"]),
+        tid=context.params["tid"],
+        credential=context.credential,
+    )

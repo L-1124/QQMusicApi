@@ -200,6 +200,44 @@ class SonglistApi(ApiModule):
                 return False
             raise
 
+    async def reorder_songs(
+        self,
+        dirid: int,
+        song_info: list[tuple[int, int]],
+        *,
+        tid: int = 0,
+        credential: Credential | None = None,
+    ) -> bool:
+        """按给定顺序重排歌单中的歌曲.
+
+        Note:
+            `song_info` 必须是歌单内**全部**歌曲的新顺序. 只提交部分歌曲时服务端同样返回成功,
+            但未提交歌曲的顺序会被打乱. 包含歌单中不存在的歌曲时会抛出 `CgiApiException` (code=80095).
+
+            `song_type` 直接使用 `get_detail` 等读取接口返回的 `Song.type` 即可.
+
+        Args:
+            dirid: 歌单目录 ID ("我喜欢" 为 201).
+            song_info: 按新顺序排列的歌曲信息列表, 每项为 `(song_id, song_type)`.
+            tid: 歌单 TID.
+            credential: 登录凭证.
+
+        Returns:
+            操作成功与否.
+        """
+        data = await self._build_cgi(
+            module="music.musicasset.PlaylistDetailWrite",
+            method="SeqSonglist",
+            param={
+                "dirId": dirid,
+                "tid": tid,
+                "v_songPair": _build_song_pairs(song_info),
+            },
+            credential=credential,
+            require_login=True,
+        )
+        return data.get("retCode") == 0
+
     async def like_song(
         self,
         song_info: list[tuple[int, int]],

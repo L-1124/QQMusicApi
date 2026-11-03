@@ -66,6 +66,12 @@ async def test_del_songs_requires_login(client: Client) -> None:
         await client.songlist.del_songs(dirid=1, song_info=[(100, 0)])
 
 
+async def test_reorder_songs_requires_login(client: Client) -> None:
+    """测试重排歌单歌曲需要登录凭证."""
+    with pytest.raises(CredentialInvalidError):
+        await client.songlist.reorder_songs(dirid=1, song_info=[(100, 1)])
+
+
 async def test_like_song_requires_login(client: Client) -> None:
     """测试收藏歌曲到我喜欢需要登录凭证."""
     with pytest.raises(CredentialInvalidError):
@@ -97,5 +103,24 @@ async def test_add_del_songs_roundtrip(authenticated_client: Client) -> None:
         assert await authenticated_client.songlist.del_songs(created.dirid, song_info, tid=created.id)
         deleted = await authenticated_client.songlist.get_detail(created.id, dirid=created.dirid, num=10)
         assert deleted.total == 0
+    finally:
+        await authenticated_client.songlist.delete(created.dirid)
+
+
+async def test_reorder_songs_roundtrip(authenticated_client: Client) -> None:
+    """测试在临时歌单中倒序重排歌曲后读回顺序一致."""
+    songs = (await authenticated_client.recommend.get_recommend_newsong(type=1)).songs[:4]
+    created = await authenticated_client.songlist.create("pytest-reorder")
+    try:
+        assert await authenticated_client.songlist.add_songs(
+            created.dirid, [(s.id, s.type) for s in songs], tid=created.id
+        )
+        before = (await authenticated_client.songlist.get_detail(created.id, dirid=created.dirid, num=10)).songs
+        target = list(reversed(before))
+        assert await authenticated_client.songlist.reorder_songs(
+            created.dirid, [(s.id, s.type) for s in target], tid=created.id
+        )
+        after = (await authenticated_client.songlist.get_detail(created.id, dirid=created.dirid, num=10)).songs
+        assert [s.id for s in after] == [s.id for s in target]
     finally:
         await authenticated_client.songlist.delete(created.dirid)
