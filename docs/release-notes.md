@@ -1,4 +1,27 @@
 
+## [[0.9.0](https://github.com/L-1124/QQMusicApi/compare/v0.8.2..v0.9.0)] - 2026-11-07
+
+### Bug 修复
+
+* **(core)** 修复响应 Cookie 快照空值读取异常 ([7413b56](https://github.com/L-1124/QQMusicApi/commit/7413b56183317381c3caf29bfbba855ca642135f)) by [@L-1124](https://github.com/L-1124)
+* **(songlist)** 歌单写接口按约定转换歌曲类型 ([8d46735](https://github.com/L-1124/QQMusicApi/commit/8d46735266ef81c5fbeccff15ddd211f7f966be6)) by [@tianfangyetan1](https://github.com/tianfangyetan1) in [#306](https://github.com/L-1124/QQMusicApi/pull/306)
+
+### 功能更新
+
+* **(singer)** 新增 MV 标签接口并为专辑与 MV 列表支持分类筛选参数 ([71a6231](https://github.com/L-1124/QQMusicApi/commit/71a62316fbded84bb771d7e75bc9925ffee1fe9f)) by [@L-1124](https://github.com/L-1124)
+* **(singer)** 新增歌手 MV 分类标签响应模型 ([7540eda](https://github.com/L-1124/QQMusicApi/commit/7540eda2bfb8196c609f159a6661b5bcc9762f27)) by [@L-1124](https://github.com/L-1124)
+* **(songlist)** 新增歌单歌曲排序接口及 Web 路由 ([6ae0164](https://github.com/L-1124/QQMusicApi/commit/6ae01646f3ef4defa94baa32104e08771891b02f)) by [@tianfangyetan1](https://github.com/tianfangyetan1) in [#307](https://github.com/L-1124/QQMusicApi/pull/307)
+
+### 功能重构
+
+* **(pagination)** 优化延续翻页参数构建并为分页器设置默认页数上限 ([27861e5](https://github.com/L-1124/QQMusicApi/commit/27861e51432ea6b6e88dc35c4e8c8e239c0339e8)) by [@L-1124](https://github.com/L-1124)
+
+### 贡献者
+
+* @L-1124
+* @tianfangyetan1 [#307](https://github.com/L-1124/QQMusicApi/pull/307)
+* @github-actions[bot]
+
 ## [[0.8.2](https://github.com/L-1124/QQMusicApi/compare/v0.8.1..v0.8.2)] - 2026-10-05
 
 ### Dep-bump
