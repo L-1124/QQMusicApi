@@ -15,7 +15,7 @@ ROUTES: tuple[WebRoute, ...] = (
         params=(
             Q("dirid", int, description="歌单目录 ID."),
             Q("song_id", list[int], description="歌曲 ID 列表."),
-            Q("song_type", list[int], description="歌曲类型列表."),
+            Q("song_type", list[int], description="读取接口返回的 Song.type 列表, 由 SDK 转换为歌单写入类型."),
             Q("tid", int, 0, "歌单 TID."),
         ),
         auth=AuthPolicy.COOKIE_OR_DEFAULT,
@@ -35,7 +35,7 @@ ROUTES: tuple[WebRoute, ...] = (
         params=(
             Q("dirid", int, description="歌单目录 ID."),
             Q("song_id", list[int], description="歌曲 ID 列表."),
-            Q("song_type", list[int], description="歌曲类型列表."),
+            Q("song_type", list[int], description="读取接口返回的 Song.type 列表, 由 SDK 转换为歌单写入类型."),
             Q("tid", int, 0, "歌单 TID."),
         ),
         auth=AuthPolicy.COOKIE_OR_DEFAULT,
