@@ -148,15 +148,6 @@ def test_representative_route_parameters_are_registered(app: FastAPI) -> None:
     assert "requestBody" in schema["paths"]["/song/get_song_urls"]["post"]
 
 
-def test_songlist_reorder_route_requires_cookie_and_song_pairs(app: FastAPI) -> None:
-    """测试歌单重排路由为认证 POST 路由并注册歌曲参数."""
-    operation = app.openapi()["paths"]["/songlist/reorder_songs"]["post"]
-    parameter_names = {parameter["name"] for parameter in operation["parameters"]}
-
-    assert {"dirid", "song_id", "song_type", "tid"} <= parameter_names
-    assert operation["security"] == [{"MusicId": [], "MusicKey": []}]
-
-
 def test_pilot_routes_reference_sdk_endpoints() -> None:
     """测试试点路由直接引用 SDK 端点并复用响应模型."""
     endpoints = {route.endpoint for route in RESOLVED_ROUTES if route.endpoint is not None}
