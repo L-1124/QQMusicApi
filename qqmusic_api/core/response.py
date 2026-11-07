@@ -36,7 +36,7 @@ class RawPayload:
         status_code: HTTP 状态码.
         url: 最终请求 URL (跟随重定向后).
         headers: 响应头, 键大小写不敏感.
-        cookies: 响应 Cookie 名值快照.
+        cookies: 响应 Cookie 名值快照
         content: 响应体字节.
         text: 响应体文本 (按响应编码解码).
     """
@@ -69,10 +69,7 @@ def snapshot_payload(response: "RawResponse") -> RawPayload:
     Returns:
         与响应内容等价的 RawPayload 快照.
     """
-    cookies: dict[str, str] = {}
-    # RequestsCookieJar 迭代产出 Cookie 对象而非键名, 必须经 keys() 取名值.
-    for name in response.cookies.keys():  # noqa: SIM118
-        cookies[name] = response.cookies[name]
+    cookies = dict(response.cookies.items())
     return RawPayload(
         status_code=response.status_code,
         url=response.url,
