@@ -6,6 +6,7 @@ from ..core.pagination import OffsetStrategy
 from ..models.base import Song
 from ..models.request import Credential
 from ..models.songlist import CreateDeleteSonglistResp, GetSonglistDetailResponse
+from ..utils.common import to_songlist_write_type
 from ._base import ApiModule
 
 
@@ -19,7 +20,9 @@ def _build_songlist_oper_param(
         "dirId": dirid,
         "tid": tid,
         "bFmtUtf8": True,
-        "v_songInfo": [{"songId": song_id, "songType": song_type} for song_id, song_type in song_info],
+        "v_songInfo": [
+            {"songId": song_id, "songType": to_songlist_write_type(song_type)} for song_id, song_type in song_info
+        ],
     }
 
 
@@ -132,7 +135,7 @@ class SonglistApi(ApiModule):
 
         Args:
             dirid: 歌单目录 ID.
-            song_info: 歌曲信息列表, 每项为 `(song_id, song_type)`.
+            song_info: 歌曲信息列表, 每项为 `(song_id, song_type)`, 类型使用读取结果的 `Song.type`.
             tid: 歌单 TID.
             credential: 登录凭证.
 
@@ -166,7 +169,7 @@ class SonglistApi(ApiModule):
 
         Args:
             dirid: 歌单目录 ID.
-            song_info: 歌曲信息列表, 每项为 `(song_id, song_type)`.
+            song_info: 歌曲信息列表, 每项为 `(song_id, song_type)`, 类型使用读取结果的 `Song.type`.
             tid: 歌单 TID.
             credential: 登录凭证.
 
@@ -200,7 +203,7 @@ class SonglistApi(ApiModule):
             "我喜欢" 歌单的目录 ID 固定为 201, 本方法即以 dirid=201 调用 `add_songs`.
 
         Args:
-            song_info: 歌曲信息列表, 每项为 `(song_id, song_type)`.
+            song_info: 歌曲信息列表, 每项为 `(song_id, song_type)`, 类型使用读取结果的 `Song.type`.
             credential: 登录凭证.
 
         Returns:
@@ -220,7 +223,7 @@ class SonglistApi(ApiModule):
             "我喜欢" 歌单的目录 ID 固定为 201, 本方法即以 dirid=201 调用 `del_songs`.
 
         Args:
-            song_info: 歌曲信息列表, 每项为 `(song_id, song_type)`.
+            song_info: 歌曲信息列表, 每项为 `(song_id, song_type)`, 类型使用读取结果的 `Song.type`.
             credential: 登录凭证.
 
         Returns:

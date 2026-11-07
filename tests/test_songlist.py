@@ -3,6 +3,18 @@
 import pytest
 
 from qqmusic_api import Client, CredentialInvalidError
+from qqmusic_api.modules.songlist import _build_songlist_oper_param
+
+
+@pytest.mark.core
+@pytest.mark.parametrize(
+    ("read_type", "write_type"),
+    [(0, 0), (1, 0), (2, 1), (3, 1), (4, 1), (5, 5), (6, 1), (110, 1), (111, 111), (112, 112), (113, 113), (114, 1)],
+)
+def test_songlist_write_type_mapping(read_type: int, write_type: int) -> None:
+    """测试读取类型转换为歌单写入类型, 保持歌曲 ID 不变."""
+    param = _build_songlist_oper_param(dirid=2, song_info=[(100, read_type)], tid=123)
+    assert param["v_songInfo"] == [{"songId": 100, "songType": write_type}]
 
 
 async def test_get_detail(client: Client) -> None:
@@ -83,3 +95,19 @@ async def test_like_song_roundtrip(authenticated_client: Client) -> None:
     song = (await authenticated_client.recommend.get_recommend_newsong(type=1)).songs[0]
     assert await authenticated_client.songlist.like_song([(song.id, song.type)])
     assert await authenticated_client.songlist.unlike_song([(song.id, song.type)])
+
+
+async def test_add_del_songs_roundtrip(authenticated_client: Client) -> None:
+    """测试在临时歌单中添加与删除歌曲后读回结果一致."""
+    songs = (await authenticated_client.recommend.get_recommend_newsong(type=1)).songs[:2]
+    song_info = [(s.id, s.type) for s in songs]
+    created = await authenticated_client.songlist.create("pytest-add-del")
+    try:
+        assert await authenticated_client.songlist.add_songs(created.dirid, song_info, tid=created.id)
+        added = await authenticated_client.songlist.get_detail(created.id, dirid=created.dirid, num=10)
+        assert {s.id for s in added.songs} == {s.id for s in songs}
+        assert await authenticated_client.songlist.del_songs(created.dirid, song_info, tid=created.id)
+        deleted = await authenticated_client.songlist.get_detail(created.id, dirid=created.dirid, num=10)
+        assert deleted.total == 0
+    finally:
+        await authenticated_client.songlist.delete(created.dirid)
