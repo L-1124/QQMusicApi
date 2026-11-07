@@ -47,6 +47,20 @@ ROUTES: tuple[WebRoute, ...] = (
         auth=AuthPolicy.COOKIE_OR_DEFAULT,
     ),
     R(
+        "songlist",
+        "reorder_songs",
+        "/songlist/reorder_songs",
+        bool,
+        methods=(HttpMethod.POST,),
+        params=(
+            Q("dirid", int, description="歌单目录 ID."),
+            Q("song_id", list[int], description="按新顺序排列的歌单全部歌曲 ID 列表."),
+            Q("song_type", list[int], description="与 song_id 一一对应的歌曲类型列表."),
+            Q("tid", int, 0, "歌单 TID."),
+        ),
+        auth=AuthPolicy.COOKIE_OR_DEFAULT,
+    ),
+    R(
         SonglistApi.get_detail,
         "/songlist/{songlist_id}/detail",
     ),
