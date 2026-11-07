@@ -6,22 +6,8 @@ from ..core.pagination import OffsetStrategy
 from ..models.base import Song
 from ..models.request import Credential
 from ..models.songlist import CreateDeleteSonglistResp, GetSonglistDetailResponse
+from ..utils.common import to_songlist_write_type
 from ._base import ApiModule
-
-
-def _to_write_song_type(song_type: int) -> int:
-    """将读取接口返回的歌曲类型转换为歌单写接口使用的类型."""
-    # Android 20.9.0.8 的读取类型先映射为内部类型, 再映射为写入类型.
-    if song_type in (0, 1):
-        return 0
-    if song_type in (5, 111, 112, 113):
-        return song_type
-    return 1
-
-
-def _build_song_pairs(song_info: list[tuple[int, int]]) -> list[dict[str, int]]:
-    """构建歌单写操作的歌曲列表参数."""
-    return [{"songId": song_id, "songType": _to_write_song_type(song_type)} for song_id, song_type in song_info]
 
 
 def _build_songlist_oper_param(
@@ -34,7 +20,9 @@ def _build_songlist_oper_param(
         "dirId": dirid,
         "tid": tid,
         "bFmtUtf8": True,
-        "v_songInfo": _build_song_pairs(song_info),
+        "v_songInfo": [
+            {"songId": song_id, "songType": to_songlist_write_type(song_type)} for song_id, song_type in song_info
+        ],
     }
 
 
