@@ -3,6 +3,7 @@
 from typing import Any
 
 import pytest
+from niquests import Response
 from pydantic import BaseModel, ValidationError
 
 from qqmusic_api.core.exceptions import (
@@ -222,6 +223,34 @@ def test_snapshot_payload_copies_all_fields():
     assert payload.cookies == {"sid": "abc"}
     assert payload.content == b'{"ok": true}'
     assert payload.text == '{"ok": true}'
+
+
+@pytest.mark.parametrize(
+    ("cookies", "expected"),
+    [
+        ([("ETK", "", "example.com", "/")], {"ETK": ""}),
+        ([("sid", "abc", "example.com", "/")], {"sid": "abc"}),
+        (
+            [("sid", "first", "example.com", "/"), ("sid", "last", "other.example.com", "/")],
+            {"sid": "last"},
+        ),
+        (
+            [("sid", "first", "example.com", "/"), ("sid", "last", "example.com", "/login")],
+            {"sid": "last"},
+        ),
+    ],
+)
+def test_snapshot_payload_cookie_jar_values(cookies: list[tuple[str, str, str, str]], expected: dict[str, str]) -> None:
+    """测试 Cookie 快照保留空值, 同名项采用最后遍历值且独立于原始容器."""
+    response = Response()
+    response.status_code = 200
+    for name, value, domain, path in cookies:
+        response.cookies.set(name, value, domain=domain, path=path)
+
+    payload = snapshot_payload(response)
+    response.cookies.clear()
+
+    assert payload.cookies == expected
 
 
 def test_snapshot_payload_json_decodes():
