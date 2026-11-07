@@ -3,6 +3,18 @@
 import pytest
 
 from qqmusic_api import Client, CredentialInvalidError
+from qqmusic_api.modules.songlist import _build_songlist_oper_param
+
+
+@pytest.mark.core
+@pytest.mark.parametrize(
+    ("read_type", "write_type"),
+    [(0, 0), (1, 0), (2, 1), (3, 1), (4, 1), (5, 5), (6, 1), (110, 1), (111, 111), (112, 112), (113, 113), (114, 1)],
+)
+def test_songlist_write_type_mapping(read_type: int, write_type: int) -> None:
+    """测试读取类型转换为歌单写入类型, 保持歌曲 ID 不变."""
+    param = _build_songlist_oper_param(dirid=2, song_info=[(100, read_type)], tid=123)
+    assert param["v_songInfo"] == [{"songId": 100, "songType": write_type}]
 
 
 async def test_get_detail(client: Client) -> None:

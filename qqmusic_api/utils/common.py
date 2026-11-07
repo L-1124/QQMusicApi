@@ -122,3 +122,12 @@ def parse_jsonpath(expression: str):
         JSONPathError: 当表达式存在语法错误时抛出。
     """
     return parse(expression)
+
+
+def to_songlist_write_type(song_type: int) -> int:
+    """将读取接口返回的歌曲类型转换为歌单写接口使用的类型."""
+    if song_type in (0, 1):
+        return 0
+    if song_type in (5, 111, 112, 113):
+        return song_type
+    return 1
