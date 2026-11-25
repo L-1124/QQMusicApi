@@ -41,6 +41,10 @@
 * 🚀 调用简便，函数命名易懂，代码注释详细
 * ⚡ 完全异步操作
 
+## 🌐 其他语言实现
+
+* 🦀 **[QQMusicApi-rs](https://github.com/jinzhongjia/QQMusicApi-rs)** — Rust 异步客户端库，覆盖本项目全部接口，并附带基于该库的终端播放器 [`qqmusic-tui`](https://github.com/jinzhongjia/QQMusicApi-rs/tree/main/crates/qqmusic-tui)。
+
 ## 📄 许可证
 
 本项目当前采用 **[GNU General Public License v3.0 or later](https://github.com/l-1124/QQMusicApi/blob/main/LICENSE)**。
